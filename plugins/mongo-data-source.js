@@ -1,17 +1,13 @@
 "use strict";
+/**
+ * Fastify plugin for connecting to a MongoDB data source.
+ * @param {import('fastify').FastifyInstance} fastify - The Fastify instance.
+ * @param {Object} opts - The plugin options.
+ * @param {Object} opts.mongo - The MongoDB connection options.
+ */
 
 const fp = require("fastify-plugin");
-/**
- * Fastify MongoDB plugin. It will connect to the database and expose the db object
- * @type {import("@fastify/mongodb")}
- */
-const fastifyMongo = require("@fastify/mongodb");
-module.exports = fp(
-  async function (fastify, opts) {
-    fastify.register(fastifyMongo, {
-      forceClose: true,
-      url: fastify.configSecret.MONGO_URL,
-    });
-  },
-  { dependencies: ["application-config"] },
-);
+
+module.exports = fp(async function (fastify, opts) {
+  fastify.register(fastifyMongo, opts.mongo);
+});
