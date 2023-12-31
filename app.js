@@ -22,13 +22,12 @@ module.exports = async function (fastify, opts) {
   // The commented out 'ignorePattern' option is another example of how to ignore files. This pattern ignores any file that does not contain 'load.js' in its name.
   // The 'indexPattern' option is a regular expression that matches index files to be autoloaded. In this case, any file named 'no' will be loaded.
   fastify.register(AutoLoad, {
-    dir: path.join(__dirname, "plugins"),
+    dir: path.join(__dirname, 'plugins'),
     dirNameRoutePrefix: false,
     ignorePattern: /.*.no-load\.js/,
-    // ignorePattern: /^((?!load\.js).)*$/,
-    indexPattern: /^no$/i,
-    options: Object.assign({}, opts),
-  });
+    indexPattern: /^no$/I,
+    options: fastify.config
+  })
 
   // This loads all schemas defined in the schemas directory
   // Schemas are used to validate the structure of incoming requests
@@ -56,6 +55,9 @@ module.exports = async function (fastify, opts) {
     cascadeHooks: true,
     options: Object.assign({}, opts),
   });
+
+  await fastify.register(require("./configs/config"));
+  fastify.log.info("Config loaded %o", fastify.config);
 };
 
 module.exports.options = require("./configs/server-options");
