@@ -1,4 +1,8 @@
 "use strict";
+
+const fp = require('fastify-plugin')
+const fastifySwagger = require('@fastify/swagger')
+const pkg = require('../package.json')
 /**
  * Registers the Swagger plugin for Fastify.
  *
