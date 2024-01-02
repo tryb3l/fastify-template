@@ -1,3 +1,4 @@
+"use strict";
 /**
  * Fastify plugin for enabling Cross-Origin Resource Sharing (CORS).
  *
@@ -6,7 +7,6 @@
  * @param {Object} opts - The options object.
  * @returns {Promise<void>} - A promise that resolves when the plugin is registered.
  */
-"use strict";
 
 const fp = require("fastify-plugin");
 const fastifyCors = require("@fastify/cors");

@@ -34,11 +34,11 @@ module.exports = async function (fastify, opts) {
    * @param {Object} options - The options for loading plugins.
    */
   fastify.register(AutoLoad, {
-    dir: path.join(__dirname, 'plugins'),
+    dir: path.join(__dirname, "plugins"),
     dirNameRoutePrefix: false,
     ignorePattern: /.*.no-load\.js/,
     indexPattern: /^no$/i,
-    options: fastify.config
+    options: fastify.config,
   });
 
   // This loads all schemas defined in the schemas directory
