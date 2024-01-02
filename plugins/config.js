@@ -17,7 +17,7 @@ module.exports = fp(
   function (fastify, opts, next) {
     fastify.register(fastifyEnv, {
       confKey: "configSecret",
-      schema: fastify.getSchema("schema.dotenv"),
+      schema: fastify.getSchema("schema:dotenv"),
     });
     next();
   },
