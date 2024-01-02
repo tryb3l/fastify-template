@@ -1,8 +1,8 @@
 module.exports = {
   ajv: {
     customOptions: {
-      coerceTypes: "array",
-      removeAdditional: "all",
-    },
-  },
-};
+      coerceTypes: 'array',
+      removeAdditional: 'all'
+    }
+  }
+}
