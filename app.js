@@ -15,24 +15,41 @@ const AutoLoad = require("@fastify/autoload");
 // Pass --options via CLI arguments in command to enable these options.
 const options = {};
 
+/**
+ * Registers plugins, schemas, and routes for the Fastify server.
+ *
+ * @param {Object} fastify - The Fastify instance.
+ * @param {Object} opts - The options passed to the Fastify instance.
+ * @returns {Promise<void>} - A promise that resolves when the setup is complete.
+ */
 module.exports = async function (fastify, opts) {
   // This code block is responsible for loading all plugins located in the 'plugins' directory.
   // These plugins are considered as support plugins and are reused throughout the application.
   // The 'ignorePattern' option is a regular expression that matches files to be ignored during the autoload process. In this case, any file ending with '.no-load.js' will be ignored.
   // The commented out 'ignorePattern' option is another example of how to ignore files. This pattern ignores any file that does not contain 'load.js' in its name.
   // The 'indexPattern' option is a regular expression that matches index files to be autoloaded. In this case, any file named 'no' will be loaded.
+  /**
+   * Registers support plugins located in the 'plugins' directory.
+   *
+   * @param {Object} options - The options for loading plugins.
+   */
   fastify.register(AutoLoad, {
     dir: path.join(__dirname, 'plugins'),
     dirNameRoutePrefix: false,
     ignorePattern: /.*.no-load\.js/,
-    indexPattern: /^no$/I,
+    indexPattern: /^no$/i,
     options: fastify.config
-  })
+  });
 
   // This loads all schemas defined in the schemas directory
   // Schemas are used to validate the structure of incoming requests
   // The indexPattern option is used to specify which files in the directory should be autoloaded
   // In this case, any file named loader.js will be loaded
+  /**
+   * Loads schemas defined in the 'schemas' directory.
+   *
+   * @param {Object} options - The options for loading schemas.
+   */
   fastify.register(AutoLoad, {
     dir: path.join(__dirname, "schemas"),
     indexPattern: /^loader.js$/i,
@@ -46,6 +63,11 @@ module.exports = async function (fastify, opts) {
   // The 'autoHooks' option when set to true, enables the automatic loading of hooks.
   // The 'cascadeHooks' option when set to true, enables the cascading of hooks. This means that a parent's hooks are applied before the child's hooks.
   // The 'options' option is used to pass additional options to the plugins. In this case, it's passing an object that is a copy of 'opts'.
+  /**
+   * Loads plugins defined in the 'routes' directory.
+   *
+   * @param {Object} options - The options for loading plugins.
+   */
   fastify.register(AutoLoad, {
     dir: path.join(__dirname, "routes"),
     indexPattern: /.*routes(\.js|\.cjs)$/i,
