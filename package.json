@@ -1,22 +1,27 @@
 {
   "name": "fastify-boilerplate",
   "version": "1.0.0",
-  "description": "This project was bootstrapped with Fastify-CLI.",
+  "description": "Fastify boilerplate for my projects with MongoDB, Swagger, CORS and more",
   "main": "app.js",
   "directories": {
-    "test": "test"
+    "test": "test",
+    "doc": "docs"
   },
   "scripts": {
     "pretest": "npm run lint",
     "test": "tap --before=test/run-before.js \"test/**/*.test.js\" --after=test/run-after.js --no-check-coverage",
-    "start": "fastify start -l info --options app.js",
+    "start": "fastify start --options app.js",
     "dev": "npm run start -- --watch --pretty-logs --debug",
     "mongo:start": "docker run -d -p 27017:27017 --rm --name fastify-mongo mongo:6",
     "mongo:stop": "docker container stop fastify-mongo",
     "lint": "standard",
     "lint:fix": "standard --fix"
   },
-  "keywords": [],
+  "keywords": [
+    "fastify",
+    "fastify-cli",
+    "fastify-boilerplate"
+  ],
   "author": "Bohdan Trybel <bogdan.trybel@gmail.com> (https://github.com/tryb3l)",
   "license": "ISC",
   "dependencies": {
