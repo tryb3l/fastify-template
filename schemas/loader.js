@@ -1,3 +1,4 @@
+"use strict";
 /**
  * Fastify plugin function. It must add all the JSON schemas we will need for our application
  * @typedef {import('fastify').FastifyPluginCallback} FastifyPluginCallback
