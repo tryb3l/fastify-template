@@ -81,5 +81,8 @@ module.exports = async function (fastify, opts) {
   await fastify.register(require("./configs/config"));
   fastify.log.info("Config loaded %o", fastify.config);
 };
+module.exports = async function (fastify, opts) {
+  fastify.log.info("The .env file has been read %s", process.env.MONGO_URL);
+};
 
 module.exports.options = require("./configs/server-options");
