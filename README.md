@@ -1,23 +1,37 @@
-# Getting Started with [Fastify-CLI](https://www.npmjs.com/package/fastify-cli)
-This project was bootstrapped with Fastify-CLI.
+# Minimalistic fastify boilerplate repository
 
-## Available Scripts
+### Requirements
 
-In the project directory, you can run:
+To execute this example you'll need to install the Node.JS, docker. mongodb - locally can be installed locally or it can be used in docker environment.
 
-### `npm run dev`
+#### You can use the following versions:
 
-To start the app in dev mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+- Node.js 20+
+- MongoDB 6
+- Latest docker engine
 
-### `npm start`
+### To run the project using docker environment:
 
-For production mode
+#### execute in your terminal: make all
 
-### `npm run test`
+### TODO:
 
-Run the test cases.
+#### documentation
 
-## Learn More
+#### logging
 
-To learn Fastify, check out the [Fastify documentation](https://www.fastify.io/docs/latest/).
+#### authentication
+
+#### authorization
+
+#### esm examples
+
+#### tests (unit and integration) using native testrunner
+
+#### swagger support
+
+#### eslint
+
+#### docker-compose
+
+#### typescript support
