@@ -1,7 +1,7 @@
 {
   "name": "fastify-boilerplate",
   "version": "1.0.0",
-  "description": "Fastify boilerplate for my projects with MongoDB, Swagger, CORS and more",
+  "description": "Fastify boilerplate for my REST projects with MongoDB, Swagger, CORS and more",
   "main": "app.js",
   "directories": {
     "test": "test",
@@ -20,7 +20,11 @@
   "keywords": [
     "fastify",
     "fastify-cli",
-    "fastify-boilerplate"
+    "fastify-boilerplate",
+    "boilerplate",
+    "mongodb",
+    "rest",
+    "api"
   ],
   "author": "Bohdan Trybel <bogdan.trybel@gmail.com> (https://github.com/tryb3l)",
   "repository": {
