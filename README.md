@@ -1,4 +1,4 @@
-# Minimalistic fastify boilerplate repository
+# Minimalistic fastify boilerplate
 
 ### Requirements
 
