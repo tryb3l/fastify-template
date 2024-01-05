@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "$id": "schema:example:create:body",
+  "required": ["title"],
+  "additionalProperties": false,
+  "properties": {
+    "title": {
+      "type": "string"
+    }
+  }
+}
