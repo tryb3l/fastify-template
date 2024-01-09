@@ -1,0 +1,6 @@
+{
+  "type": "object",
+  "$id": "schema:note:status:response",
+  "additionalProperties": false,
+  "properties": {}
+}

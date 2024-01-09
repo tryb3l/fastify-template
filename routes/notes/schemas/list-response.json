@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "$id": "schema:note:list:response",
+  "additionalProperties": false,
+  "properties": {
+    "data": {
+      "type": "array",
+      "items": {
+        "$ref": "schema:note"
+      }
+    },
+    "totalCount": {
+      "type": "integer"
+    }
+  }
+}

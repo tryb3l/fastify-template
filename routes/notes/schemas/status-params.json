@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "$id": "schema:note:status:params",
+  "required": ["id", "status"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "archived"]
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "$id": "schema:note:update:body",
+  "additionalProperties": false,
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "done": {
+      "type": "boolean"
+    }
+  }
+}
