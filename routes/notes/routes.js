@@ -1,53 +1,55 @@
 "use strict";
+
 module.exports = async function noteRoutes(fastify, _opts) {
   const notes = fastify.mongo.db.collection("notes");
   fastify.route({
     method: "GET",
     url: "/",
+    schema: {
+      queryString: fastify.getSchema("schema:note:list:query"),
+      response: {
+        200: fastify.getSchema("schema:note:list:response"),
+      },
+    },
     handler: async function listNotes(request, reply) {
       const { skip, limit, title } = request.query;
-      const filter = title ? { title: new RegExp(title, "i") } : {};
-      const data = await notes
-        .find(filter, {
-          limit,
-          skip,
-        })
-        .toArray();
-      const totalCount = await notes.countDocuments(filter);
-      return { data, totalCount };
+      const notes = await this.mongoDataSource.listNotes({
+        filter: { title },
+        skip,
+        limit,
+      });
+      const totalCount = await this.mongoDataSource.countNotes();
+      return { data: notes, totalCount };
     },
   });
+
   fastify.route({
     method: "POST",
     url: "/",
+    schema: {
+      body: fastify.getSchema("schema:note:create:body"),
+      response: {
+        201: fastify.getSchema("schema:note:create:response"),
+      },
+    },
     handler: async function createNote(request, reply) {
-      const _id = new this.mongo.ObjectId();
-      const now = new Date();
-      const createdAt = now;
-      const modifiedAt = now;
-      const newNote = {
-        _id,
-        id: _id,
-        ...request.body,
-        done: false,
-        createdAt,
-        modifiedAt,
-      };
-      await notes.insertOne(newNote);
+      const insertedId = await this.mongoDataSource.createNote(request.body);
       reply.code(201);
-      return { id: _id };
+      return { id: insertedId };
     },
   });
+
   fastify.route({
     method: "GET",
     url: "/:id",
+    schema: {
+      params: fastify.getSchema("schema:note:read:params"),
+      response: {
+        200: fastify.getSchema("schema:note"),
+      },
+    },
     handler: async function readNote(request, reply) {
-      const note = await notes.findOne(
-        {
-          _id: new this.mongo.ObjectId(request.params.id),
-        },
-        { projection: { _id: 0 } },
-      );
+      const note = await this.mongoDataSource.readNote(request.params.id);
       if (!note) {
         reply.code(404);
         return { error: "Record is not found" };
@@ -58,15 +60,14 @@ module.exports = async function noteRoutes(fastify, _opts) {
   fastify.route({
     method: "PUT",
     url: "/:id",
+    schema: {
+      params: fastify.getSchema("schema:note:read:params"),
+      body: fastify.getSchema("schema:note:update:body"),
+    },
     handler: async function updateNote(request, reply) {
-      const res = await notes.updateOne(
-        { _id: new fastify.mongo.ObjectId(request.params.id) },
-        {
-          $set: {
-            ...request.body,
-            modifiedAt: new Date(),
-          },
-        },
+      const res = await this.mongoDataSource.updateNote(
+        request.params.id,
+        request.body,
       );
       if (res.modifiedCount === 0) {
         reply.code(404);
@@ -78,6 +79,9 @@ module.exports = async function noteRoutes(fastify, _opts) {
   fastify.route({
     method: "DELETE",
     url: "/:id",
+    schema: {
+      params: fastify.getSchema("schema:note:read:params"),
+    },
     handler: async function deleteNote(request, reply) {
       const res = await notes.deleteOne({
         _id: new fastify.mongo.ObjectId(request.params.id),
@@ -92,13 +96,19 @@ module.exports = async function noteRoutes(fastify, _opts) {
   fastify.route({
     method: "POST",
     url: "/:id/:status",
+    schema: {
+      params: fastify.getSchema("schema:note:status:params"),
+      response: {
+        204: fastify.getSchema("schema:note:status:response"),
+      },
+    },
     handler: async function changeStatus(request, reply) {
-      const done = request.params.status === "done";
+      const active = request.params.status === "active";
       const res = await notes.updateOne(
         { _id: new fastify.mongo.ObjectId(request.params.id) },
         {
           $set: {
-            done,
+            active,
             modifiedAt: new Date(),
           },
         },
