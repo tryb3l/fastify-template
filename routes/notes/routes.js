@@ -13,12 +13,12 @@ module.exports = async function noteRoutes(fastify, _opts) {
     },
     handler: async function listNotes(request, reply) {
       const { skip, limit, title } = request.query;
-      const notes = await this.mongoDataSource.listNotes({
+      const notes = await this.notesDataSource.listNotes({
         filter: { title },
         skip,
         limit,
       });
-      const totalCount = await this.mongoDataSource.countNotes();
+      const totalCount = await this.notesDataSource.countNotes();
       return { data: notes, totalCount };
     },
   });
@@ -33,7 +33,7 @@ module.exports = async function noteRoutes(fastify, _opts) {
       },
     },
     handler: async function createNote(request, reply) {
-      const insertedId = await this.mongoDataSource.createNote(request.body);
+      const insertedId = await this.notesDataSource.createNote(request.body);
       reply.code(201);
       return { id: insertedId };
     },
@@ -49,7 +49,7 @@ module.exports = async function noteRoutes(fastify, _opts) {
       },
     },
     handler: async function readNote(request, reply) {
-      const note = await this.mongoDataSource.readNote(request.params.id);
+      const note = await this.notesDataSource.readNote(request.params.id);
       if (!note) {
         reply.code(404);
         return { error: "Record is not found" };
@@ -65,7 +65,7 @@ module.exports = async function noteRoutes(fastify, _opts) {
       body: fastify.getSchema("schema:note:update:body"),
     },
     handler: async function updateNote(request, reply) {
-      const res = await this.mongoDataSource.updateNote(
+      const res = await this.notesDataSource.updateNote(
         request.params.id,
         request.body,
       );
