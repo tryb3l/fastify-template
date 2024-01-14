@@ -46,6 +46,7 @@
     "@fastify/swagger": "8.13.0",
     "@fastify/swagger-ui": "2.0.1",
     "csv-parse": "^5.5.3",
+    "csv-stringify": "^6.4.5",
     "fastify": "^4.25.2",
     "fastify-cli": "^6.0.1",
     "fastify-plugin": "^4.5.1",
