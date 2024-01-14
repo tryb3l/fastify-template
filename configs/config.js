@@ -7,7 +7,7 @@ module.exports = fp(
       schema: fastify.getSchema("schema:dotenv"),
     });
 
-    await fastify.decorate("config", {
+    fastify.decorate("config", {
       mongo: {
         forceClose: true,
         url: fastify.secrets.MONGO_URL,

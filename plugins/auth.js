@@ -1,3 +1,5 @@
+"use strict";
+
 const fp = require("fastify-plugin");
 const fastifyJwt = require("@fastify/jwt");
 
@@ -13,7 +15,6 @@ module.exports = fp(
     fastify.decorate(
       "authenticate",
       async function authenticate(request, reply) {
-        // [4]
         try {
           await request.jwtVerify();
         } catch (err) {
@@ -21,13 +22,11 @@ module.exports = fp(
         }
       },
     );
-    fastify.decorateRequest("revokeToken", function () {
-      //
-      [6];
+    fastify.decorateRequest("revokeToken", async function () {
       revokedTokens.set(this.user.jti, true);
     });
     fastify.decorateRequest("generateToken", async function () {
-      const token = await fastify.jwt.sign(
+      const token = fastify.jwt.sign(
         {
           id: String(this.user._id),
           username: this.user.username,
