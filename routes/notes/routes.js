@@ -1,6 +1,7 @@
 "use strict";
 
 module.exports = async function noteRoutes(fastify, _opts) {
+  fastify.addHook("onRequest", fastify.authenticate);
   const notes = fastify.mongo.db.collection("notes");
   fastify.route({
     method: "GET",
