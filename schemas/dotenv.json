@@ -1,7 +1,7 @@
 {
   "type": "object",
   "$id": "schema:dotenv",
-  "required": ["MONGO_URL"],
+  "required": ["MONGO_URL", "JWT_SECRET"],
   "properties": {
     "NODE_ENV": {
       "type": "string",
@@ -13,6 +13,13 @@
     },
     "MONGO_URL": {
       "type": "string"
+    },
+    "JWT_SECRET": {
+      "type": "string"
+    },
+    "JWT_EXPIRE_IN": {
+      "type": "string",
+      "default": "1h"
     }
   }
 }
