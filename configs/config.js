@@ -12,6 +12,9 @@ module.exports = fp(
         forceClose: true,
         url: fastify.secrets.MONGO_URL,
       },
+      jwt: {
+        secret: fastify.secrets.JWT_SECRET,
+      },
     });
     next();
   },
