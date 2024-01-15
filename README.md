@@ -7,7 +7,7 @@ To execute this example you'll need to install the Node.JS, docker. mongodb - lo
 #### You can use the following versions:
 
 - Node.js 20+
-- MongoDB 6
+- MongoDB 7
 - Latest docker engine
 
 ### To run the project using docker environment:
@@ -15,8 +15,6 @@ To execute this example you'll need to install the Node.JS, docker. mongodb - lo
 #### execute in your terminal: make all
 
 ### TODO:
-
-#### documentation
 
 #### esm examples
 
