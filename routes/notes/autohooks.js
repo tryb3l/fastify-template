@@ -15,7 +15,7 @@ module.exports = fp(
         },
         async readNote(id, projection = {}) {
           const note = await notes.findOne(
-            { _id: new fastify.mongo.ObjectId(id) },
+            { _id: new fastify.mongo.ObjectId(id), userId: request.user.id },
             { projection: { ...projection, _id: 0 } },
           );
           return note;
@@ -61,7 +61,7 @@ module.exports = fp(
           const now = new Date();
           const userId = request.user.id;
           const toInsert = noteList.map((rawNote) => {
-            const _id = new fastify.mongodb.ObjectId();
+            const _id = new fastify.mongo.ObjectId();
             return {
               _id,
               userId,
@@ -72,11 +72,11 @@ module.exports = fp(
             };
           });
           await notes.insertMany(toInsert);
-          return toInsert.map(({ todo }) => todo.id);
+          return toInsert.map(({ note }) => note._id);
         },
         async updateNote(id, newNote) {
           return notes.updateOne(
-            { _id: new fastify.mongo.ObjectId(id) },
+            { _id: new fastify.mongo.ObjectId(id), userId: request.user.id },
             {
               $set: {
                 ...newNote,
@@ -86,7 +86,10 @@ module.exports = fp(
           );
         },
         async deleteNote(id) {
-          return notes.deleteOne({ _id: new fastify.mongo.ObjectId(id) });
+          return notes.deleteOne({
+            _id: new fastify.mongo.ObjectId(id),
+            userId: request.user.id,
+          });
         },
       };
     });

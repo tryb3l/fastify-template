@@ -1,9 +1,11 @@
+"use strict";
 const fp = require("fastify-plugin");
 const fastifyEnv = require("@fastify/env");
 module.exports = fp(
   async function (fastify, opts, next) {
     await fastify.register(fastifyEnv, {
       confKey: "secrets",
+      data: opts.configData,
       schema: fastify.getSchema("schema:dotenv"),
     });
 
