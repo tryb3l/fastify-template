@@ -14,6 +14,16 @@ lib-cov
 # Coverage directory used by tools like istanbul
 coverage
 
+#tap output
+tap-*.log
+
+#processinfo
+**/processinfo
+
+#test-results
+**/test-results
+
+
 # nyc test coverage
 .nyc_output
 
