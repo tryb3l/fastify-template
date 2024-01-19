@@ -6,8 +6,8 @@ module.exports = fp(
     await fastify.register(require("@fastify/swagger"), {
       swagger: {
         info: {
-          title: "Fastify app",
-          description: "Fastify Book examples",
+          title: "Notes app",
+          description: "Fastify CRUD application example",
           version: require("../package.json").version,
         },
       },
