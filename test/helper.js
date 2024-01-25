@@ -3,16 +3,14 @@
 // This file contains code that we reuse
 // between our tests.
 
-const { build } = require("fastify-cli/helper");
-const path = require("node:path");
-const AppPath = path.join(__dirname, "..", "app.js");
+const fcli = require("fastify-cli/helper");
 
 const startArgs = "-l silent --options app.js";
 
 const defaultEnv = {
   MONGO_URL: "mongodb://localhost:27017/test",
   NODE_ENV: "test",
-  JWT_SECRET: "secret-11111111"
+  JWT_SECRET: "secret-11111111",
 };
 function config(env) {
   return { configData: env };
@@ -20,7 +18,7 @@ function config(env) {
 
 // automatically build and tear down our instance
 async function buildApp(t, env, serverOptions) {
-  const app = await build(
+  const app = await fcli.build(
     startArgs,
     config({ ...defaultEnv, ...env }),
     serverOptions,
