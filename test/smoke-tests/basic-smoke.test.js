@@ -3,6 +3,15 @@
 const fcli = require("fastify-cli/helper");
 const startArgs = "-l info --options app.js";
 const t = require("tap");
+const dockerHelper = require("../helper-docker");
+const docker = dockerHelper();
+
+t.before(async function before() {
+  await docker.startContainer(mongo);
+});
+t.teardown(async () => {
+  await docker.stopContainer(dockerHelper.Containers.mongo);
+});
 
 async function buildApp(t, env = envParam, serverOptions) {
   const app = await fcli.build(startArgs, { configData: env }, serverOptions);
