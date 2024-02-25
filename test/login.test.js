@@ -16,3 +16,17 @@ t.test("cannot access protected routes", async (t) => {
     });
   }
 });
+
+t.test("register the user", async (t) => {
+  const app = await buildApp(t);
+  const response = await app.inject({
+    method: "POST",
+    url: "/register",
+    payload: {
+      username: "test",
+      password: "icanpass",
+    },
+  });
+  t.equal(response.statusCode, 201);
+  t.same(response.json(), { registered: true });
+});
