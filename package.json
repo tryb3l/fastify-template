@@ -11,7 +11,8 @@
     "doc": "docs"
   },
   "scripts": {
-    "test": "tap test/smoke-tests/basic-smoke.test.js",
+    "test": "tap --before=test/run-before.js test/**/**.test.js --after=test/run-after.js",
+    "test:nostop": "tap --before=test/before.js test/**/**.test.js",
     "start": "fastify start --options app.js",
     "dev": "npm run start -- --watch --pretty-logs -debug",
     "mongo:start": "docker run -d -p 27017:27017 --rm --name fastify-mongo mongo:7",
