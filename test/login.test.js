@@ -4,7 +4,9 @@ const t = require("tap");
 const { buildApp } = require("./helper");
 
 t.test("cannot access protected routes", async (t) => {
-  const app = await buildApp(t);
+  const app = await buildApp(t, {
+    MONGO_URL: "mongodb://localhost:27017/login-test-db",
+  });
   const privateRoutes = ["/me"];
   for (const url of privateRoutes) {
     const response = await app.inject({ method: "GET", url });
@@ -33,7 +35,9 @@ t.test("register error", async (t) => {
   };
 
   t.teardown(cleanCache);
-  const app = await buildApp(t);
+  const app = await buildApp(t, {
+    MONGO_URL: "mongodb://localhost:27017/login-test-db",
+  });
   const response = await app.inject({
     url: "/register",
     payload: {
@@ -45,7 +49,9 @@ t.test("register error", async (t) => {
 });
 
 t.test("register the user", async (t) => {
-  const app = await buildApp(t);
+  const app = await buildApp(t, {
+    MONGO_URL: "mongodb://localhost:27017/login-test-db",
+  });
   const response = await app.inject({
     method: "POST",
     url: "/register",
@@ -59,7 +65,9 @@ t.test("register the user", async (t) => {
 });
 
 t.test("successful login", async (t) => {
-  const app = await buildApp(t);
+  const app = await buildApp(t, {
+    MONGO_URL: "mongodb://localhost:27017/login-test-db",
+  });
   const login = await app.inject({
     method: "POST",
     url: "/authenticate",
