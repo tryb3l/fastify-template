@@ -17,6 +17,33 @@ t.test("cannot access protected routes", async (t) => {
   }
 });
 
+function cleanCache() {
+  Object.keys(require.cache).forEach(function (key) {
+    delete require.cache[key];
+  });
+}
+t.test("register error", async (t) => {
+  const path = "../routes/data-store.js";
+  cleanCache();
+  require(path);
+  require.cache[require.resolve(path)].exports = {
+    async store() {
+      throw new Error("Fail to store");
+    },
+  };
+
+  t.teardown(cleanCache);
+  const app = await buildApp(t);
+  const response = await app.inject({
+    url: "/register",
+    payload: {
+      username: "test",
+      password: "icanpass",
+    },
+  });
+  t.equal(response.statusCode, 500);
+});
+
 t.test("register the user", async (t) => {
   const app = await buildApp(t);
   const response = await app.inject({
