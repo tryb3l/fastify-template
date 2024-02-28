@@ -40,6 +40,27 @@ function dockerConsole() {
       }
     },
   };
+  async function pullImage(container) {
+    return new Promise((resolve, reject) => {
+      docker.pull(container.Image, (err, stream) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        docker.modem.followProgress(stream, onFinished, onProgress);
+      });
+      function onFinished(err, output) {
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolve(output);
+      }
+      function onProgress(event) {
+        console.log(event);
+      }
+    });
+  }
 }
 module.exports = dockerConsole;
 module.exports.Containers = Containers;
