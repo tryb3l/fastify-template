@@ -17,6 +17,27 @@ const Containers = {
 const Docker = require("dockerode");
 function dockerConsole() {
   const docker = new Docker();
+  async function pullImage(container) {
+    return new Promise((resolve, reject) => {
+      docker.pull(container.Image, (err, stream) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        docker.modem.followProgress(stream, onFinished, onProgress);
+      });
+      function onFinished(err, output) {
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolve(output);
+      }
+      function onProgress(event) {
+        console.log(event);
+      }
+    });
+  }
   return {
     async getRunningContainer(container) {
       const containers = await docker.listContainers();
@@ -39,28 +60,9 @@ function dockerConsole() {
         await containerObj.stop();
       }
     },
+    pullImage,
   };
-  async function pullImage(container) {
-    return new Promise((resolve, reject) => {
-      docker.pull(container.Image, (err, stream) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-        docker.modem.followProgress(stream, onFinished, onProgress);
-      });
-      function onFinished(err, output) {
-        if (err) {
-          reject(err);
-          return;
-        }
-        resolve(output);
-      }
-      function onProgress(event) {
-        console.log(event);
-      }
-    });
-  }
 }
+
 module.exports = dockerConsole;
 module.exports.Containers = Containers;
