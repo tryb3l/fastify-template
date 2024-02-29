@@ -7,7 +7,7 @@ jobs:
       mongodb:
         image: mongo:7
         ports:
-          - 27017:27017
+          - 27018:27017
     steps:
       - name: Check out the source code
         uses: actions/checkout@v3
