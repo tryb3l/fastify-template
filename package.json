@@ -13,6 +13,7 @@
   "scripts": {
     "test": "tap --before=test/run-before.js test/**/**.test.js --after=test/run-after.js",
     "test:nostop": "tap --before=test/before.js test/**/**.test.js",
+    "test:coverage": "tap --coverage-report=html --before=test/run-before.js test/**/**.test.js --after=test/run-after.js --no-check-coverage",
     "start": "fastify start --options app.js",
     "dev": "npm run start -- --watch --pretty-logs -debug",
     "mongo:start": "docker run -d -p 27017:27017 --rm --name fastify-mongo mongo:7",
