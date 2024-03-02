@@ -1,0 +1,24 @@
+version: "3.8"
+
+services:
+  mongo:
+    image: mongo:7
+    container_name: mongo
+    volumes:
+      - data:/data/db
+
+  app:
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    container_name: app
+    ports:
+      - "3042:3000"
+    environment:
+      MONGO_URL: mongodb://mongo:27017/note
+      JWT_SECRET: changethis
+    depends_on:
+      - serviceName: "mongo"
+
+volumes:
+  data:

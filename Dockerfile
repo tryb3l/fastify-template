@@ -16,4 +16,4 @@ COPY --chown=node:node --from=builder /build $APP_HOME
 USER node
 EXPOSE 3000
 ENTRYPOINT ["dumb-init"]
-CMD ["npm", "start"]
+CMD ["./node_modules/.bin/fastify", "start", "-a", "0.0.0.0", "-l", "info", "--options", "app.js"]
