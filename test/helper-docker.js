@@ -1,4 +1,5 @@
 "use strict";
+const Docker = require("dockerode");
 
 const Containers = {
   mongo: {
@@ -14,7 +15,6 @@ const Containers = {
   },
 };
 
-const Docker = require("dockerode");
 function dockerConsole() {
   const docker = new Docker();
   async function pullImage(container) {

@@ -18,12 +18,14 @@ coverage
 tap-*.log
 .tap
 
+#mongo logs
+data
+
 #processinfo
 **/processinfo
 
 #test-results
 **/test-results
-
 
 # nyc test coverage
 .nyc_output
