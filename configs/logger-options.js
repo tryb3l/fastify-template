@@ -1,7 +1,7 @@
 module.exports = {
   level: process.env.LOG_LEVEL || "warn",
   redact: {
-    cenzor: "*****",
+    censor: "*****",
     paths: ["req.headers.authorization", "req.body.password", "req.body.email"],
   },
   serializers: {
