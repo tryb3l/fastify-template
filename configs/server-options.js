@@ -1,4 +1,7 @@
+const loggerOptions = require("./logger-options");
 module.exports.options = {
+  disableRequestLogging: true,
+  logger: loggerOptions,
   ajv: {
     customOptions: {
       coerceTypes: "array",
