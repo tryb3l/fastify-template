@@ -9,5 +9,6 @@ module.exports.options = {
   logger: {
     prettyPrint: true,
     level: "debug",
+    disableRequestLogging: false,
   },
 };
