@@ -53,7 +53,8 @@
     "fastify": "^4.26.1",
     "fastify-cli": "^6.1.1",
     "fastify-plugin": "^4.5.1",
-    "fastify-secrets-env": "^2.1.8"
+    "fastify-secrets-env": "^2.1.8",
+    "split2": "^4.2.0"
   },
   "devDependencies": {
     "dockerode": "^4.0.2",
