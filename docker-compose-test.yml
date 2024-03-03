@@ -18,7 +18,7 @@ services:
       MONGO_URL: mongodb://mongo:27017/note
       JWT_SECRET: changethis
     depends_on:
-      - serviceName: "mongo"
+      - mongo
 
 volumes:
   data:
