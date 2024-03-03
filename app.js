@@ -15,7 +15,7 @@ module.exports = async function (fastify, opts) {
     indexPattern: /^loader.js$/i,
   });
 
-  await fastify.register(require("./configs/config"));
+  await fastify.register(require("./plugins/config"));
   fastify.log.info("Config loaded %o", fastify.config);
 
   // Do not touch the following lines
