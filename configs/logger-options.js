@@ -1,5 +1,9 @@
 module.exports = {
-  level: process.env.LOG_LEVEL || "info",
+  level: process.env.LOG_LEVEL || "warn",
+  redact: {
+    cenzor: "*****",
+    paths: ["req.headers.authorization", "req.body.password", "req.body.email"],
+  },
   serializers: {
     req: function (request) {
       const shouldLogBody = request.context.config.logBody === true;
