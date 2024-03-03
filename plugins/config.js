@@ -8,6 +8,7 @@ module.exports = fp(
       data: opts.configData,
       schema: fastify.getSchema("schema:dotenv"),
     });
+    fastify.log.level = fastify.secrets.LOG_LEVEL;
 
     fastify.decorate("config", {
       mongo: {
@@ -20,5 +21,5 @@ module.exports = fp(
     });
     next();
   },
-  { name: "application-config" },
+  { name: "application-config", dependencies: ["application-schemas"] },
 );
