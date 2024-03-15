@@ -61,7 +61,6 @@ module.exports = fp(
 
         const { hash } = await generateHash(request.body.password, user.salt);
         if (hash !== user.hash) {
-          // [2.5]
           const err = new Error("Wrong credentials provided");
           err.statusCode = 401;
           throw err;
