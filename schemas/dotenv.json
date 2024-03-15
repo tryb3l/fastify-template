@@ -7,12 +7,16 @@
       "type": "string",
       "default": "development"
     },
+    "MONGO_URL": {
+      "type": "string"
+    },
     "PORT": {
       "type": "integer",
       "default": 3000
     },
-    "MONGO_URL": {
-      "type": "string"
+    "LOG_LEVEL": {
+      "type": "string",
+      "default": "warn"
     },
     "JWT_SECRET": {
       "type": "string"
