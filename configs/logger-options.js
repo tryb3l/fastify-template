@@ -1,5 +1,9 @@
 module.exports = {
-  level: process.env.LOG_LEVEL || "warn",
+  level: process.env.LOG_LEVEL || "info",
+  timestamp: () => {
+    const dateString = new Date(Date.now()).toISOString();
+    return `,"@timestamp":"${dateString}"`;
+  },
   redact: {
     censor: "*****",
     paths: ["req.headers.authorization", "req.body.password", "req.body.email"],
@@ -9,7 +13,7 @@ module.exports = {
       const shouldLogBody = request.context.config.logBody === true;
       return {
         method: request.method,
-        url: request.url,
+        url: request.raw.url,
         routeUrl: request.routePath,
         version: request.headers?.["accept-version"],
         user: request.user?.id,
