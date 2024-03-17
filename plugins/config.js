@@ -4,7 +4,11 @@ const fp = require("fastify-plugin");
 const fastifyEnv = require("@fastify/env");
 
 module.exports = fp(
-  async function registerPluginsAndConfig() {
+  async function registerPluginsAndConfig(fastify, opts) {
+    if (fastify.hasDecorator("secrets")) {
+      return;
+    }
+
     await fastify.register(fastifyEnv, {
       confKey: "secrets",
       data: opts.configData,
