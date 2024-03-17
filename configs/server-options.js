@@ -16,16 +16,6 @@ module.exports = {
       prettyPrint: true,
       coerceTypes: "array",
       allErrors: true,
-      nullable: true,
-      unknownFormats: [
-        "int32",
-        "int64",
-        "binary",
-        "byte",
-        "date",
-        "date-time",
-        "password",
-      ],
     },
   },
 };
