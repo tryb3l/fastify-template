@@ -11,7 +11,7 @@
     "doc": "docs"
   },
   "scripts": {
-    "test": "tap --before=test/run-before.js test/**/**.test.js --after=test/run-after.js -- --no-check-coverage",
+    "test": "tap --before=test/run-before.js test/**/**.test.js --after=test/run-after.js",
     "test:nostop": "tap --before=test/before.js test/**/**.test.js",
     "test:coverage": "tap --coverage-report=html --before=test/run-before.js test/**/**.test.js --after=test/run-after.js",
     "start": "fastify start --options app.js",

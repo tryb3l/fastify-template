@@ -1,0 +1,7 @@
+# tap config file
+# color: false
+disable-coverage: true
+allow-empty-coverage: true
+allow-incomplete-coverage: true
+comments: true
+# coverage: false
