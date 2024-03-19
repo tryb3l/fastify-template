@@ -46,7 +46,7 @@
     "@fastify/session": "^10.7.0",
     "@fastify/swagger": "^8.14.0",
     "@fastify/swagger-ui": "3.0.0",
-    "@fastify/websocket": "^9.0.0",
+    "@fastify/websocket": "^10.0.1",
     "csv-parse": "^5.5.5",
     "csv-stringify": "^6.4.6",
     "fast-json-stringify": "^5.13.0",
