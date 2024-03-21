@@ -22,6 +22,4 @@ To execute this example you'll need to install the Node.JS, docker. mongodb - lo
 
 #### eslint
 
-#### docker-compose
-
 #### typescript support
