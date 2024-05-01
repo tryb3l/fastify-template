@@ -20,6 +20,3 @@ To execute this example you'll need to install the Node.JS, docker. mongodb - lo
 
 #### tests (unit and integration) using native testrunner
 
-#### eslint
-
-#### typescript support
