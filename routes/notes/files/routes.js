@@ -4,7 +4,7 @@ const fastifyMultipart = require("@fastify/multipart");
 const { parse: csvParse } = require("csv-parse");
 const { stringify: csvStringify } = require("csv-stringify");
 
-module.exports = async function fileNoteRoutes(fastify, _opts) {
+module.exports = async function fileNoteRoutes(fastify) {
   await fastify.register(fastifyMultipart, {
     attachFieldsToBody: "keyValues",
     async onFile(part) {

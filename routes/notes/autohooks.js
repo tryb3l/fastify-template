@@ -2,11 +2,11 @@
 const fp = require("fastify-plugin");
 const schemas = require("./schemas/loader");
 module.exports = fp(
-  async function noteAutoHooks(fastify, _opts) {
+  async function noteAutoHooks(fastify) {
     const notes = fastify.mongo.db.collection("notes");
     await fastify.register(schemas);
     fastify.decorateRequest("notesDataSource", null);
-    fastify.addHook("onRequest", async (request, reply) => {
+    fastify.addHook("onRequest", async (request) => {
       request.notesDataSource = {
         async countNotes(filter = {}) {
           filter.userId = request.user.id;
