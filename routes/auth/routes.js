@@ -9,6 +9,7 @@ module.exports = fp(
   async function applicationAuth(fastify) {
     fastify.post('/register', {
       schema: {
+        tags: ['auth'],
         body: fastify.getSchema('schema:auth:register'),
       },
       handler: async function registerHandler(request, reply) {
@@ -42,6 +43,7 @@ module.exports = fp(
 
     fastify.post('/authenticate', {
       schema: {
+        tags: ['auth'],
         body: fastify.getSchema('schema:auth:register'),
         response: {
           200: fastify.getSchema('schema:auth:token'),
@@ -72,6 +74,7 @@ module.exports = fp(
     fastify.get('/me', {
       onRequest: fastify.authenticate,
       schema: {
+        tags: ['auth'],
         headers: fastify.getSchema('schema:auth:token-header'),
         response: {
           200: fastify.getSchema('schema:user'),
@@ -85,6 +88,7 @@ module.exports = fp(
     fastify.post('/refresh', {
       onRequest: fastify.authenticate,
       schema: {
+        tags: ['auth'],
         headers: fastify.getSchema('schema:auth:token-header'),
         response: {
           200: fastify.getSchema('schema:auth:token'),
@@ -100,6 +104,10 @@ module.exports = fp(
 
     fastify.post('/logout', {
       onRequest: fastify.authenticate,
+      schema: {
+        tags: ['auth'],
+        headers: fastify.getSchema('schema:auth:token-header'),
+      },
       handler: async function logoutHandler(request, reply) {
         request.revokeToken()
         reply.code(204)
