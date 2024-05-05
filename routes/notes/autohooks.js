@@ -1,24 +1,24 @@
-"use strict";
-const fp = require("fastify-plugin");
-const schemas = require("./schemas/loader");
+'use strict'
+const fp = require('fastify-plugin')
+const schemas = require('./schemas/loader')
 module.exports = fp(
   async function noteAutoHooks(fastify) {
-    const notes = fastify.mongo.db.collection("notes");
-    await fastify.register(schemas);
-    fastify.decorateRequest("notesDataSource", null);
-    fastify.addHook("onRequest", async (request) => {
+    const notes = fastify.mongo.db.collection('notes')
+    await fastify.register(schemas)
+    fastify.decorateRequest('notesDataSource', null)
+    fastify.addHook('onRequest', async (request) => {
       request.notesDataSource = {
         async countNotes(filter = {}) {
-          filter.userId = request.user.id;
-          const totalCount = await notes.countDocuments(filter);
-          return totalCount;
+          filter.userId = request.user.id
+          const totalCount = await notes.countDocuments(filter)
+          return totalCount
         },
         async readNote(id, projection = {}) {
           const note = await notes.findOne(
-            { _id: new fastify.mongo.ObjectId(id), userId: request.user.id },
+            { _id: fastify.mongo.ObjectId.createFromTime(id) },
             { projection: { ...projection, _id: 0 } },
-          );
-          return note;
+          )
+          return note
         },
         async listNotes({
           filter = {},
@@ -28,24 +28,24 @@ module.exports = fp(
           asStream = false,
         } = {}) {
           if (filter.title) {
-            filter.title = new RegExp(filter.title, "i");
+            filter.title = new RegExp(filter.title, 'i')
           } else {
-            delete filter.title;
+            delete filter.title
           }
           const cursor = await notes.find(filter, {
             projection: { ...projection, _id: 0 },
             limit,
             skip,
-          });
+          })
           if (asStream) {
-            return cursor.stream();
+            return cursor.stream()
           }
-          return cursor.toArray();
+          return cursor.toArray()
         },
         async createNote({ title }) {
-          const _id = new fastify.mongo.ObjectId();
-          const now = new Date();
-          const userId = request.user.id;
+          const _id = new fastify.mongo.ObjectId()
+          const now = new Date()
+          const userId = request.user.id
           const { insertedId } = await notes.insertOne({
             _id,
             userId,
@@ -54,14 +54,14 @@ module.exports = fp(
             id: _id,
             createdAt: now,
             modifiedAt: now,
-          });
-          return insertedId;
+          })
+          return insertedId
         },
         async createNotes(noteList) {
-          const now = new Date();
-          const userId = request.user.id;
+          const now = new Date()
+          const userId = request.user.id
           const toInsert = noteList.map((rawNote) => {
-            const _id = new fastify.mongo.ObjectId();
+            const _id = new fastify.mongo.ObjectId()
             return {
               _id,
               userId,
@@ -69,30 +69,29 @@ module.exports = fp(
               id: _id,
               createdAt: now,
               modifiedAt: now,
-            };
-          });
-          await notes.insertMany(toInsert);
-          return toInsert.map(({ note }) => note._id);
+            }
+          })
+          await notes.insertMany(toInsert)
+          return toInsert.map(({ note }) => note._id)
         },
         async updateNote(id, newNote) {
           return notes.updateOne(
-            { _id: new fastify.mongo.ObjectId(id), userId: request.user.id },
+            { _id: fastify.mongo.ObjectId.createFromTime(id) },
             {
               $set: {
                 ...newNote,
                 modifiedAt: new Date(),
               },
             },
-          );
+          )
         },
         async deleteNote(id) {
           return notes.deleteOne({
-            _id: new fastify.mongo.ObjectId(id),
-            userId: request.user.id,
-          });
+            _id: fastify.mongo.ObjectId.createFromTime(id),
+          })
         },
-      };
-    });
+      }
+    })
   },
-  { encapsulate: true, dependencies: ["@fastify/mongodb"], name: "note-store" },
-);
+  { encapsulate: true, dependencies: ['@fastify/mongodb'], name: 'note-store' },
+)
