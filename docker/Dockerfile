@@ -1,11 +1,11 @@
-FROM node:21-alpine as builder
+FROM node:22-alpine as builder
 WORKDIR /build
 COPY package.json ./
 COPY package-lock.json ./
 ARG NPM_TOKEN
 ENV NPM_TOKEN $NPM_TOKEN
 RUN npm ci --only=production --ignore-scripts
-FROM node:21-alpine
+FROM node:22-alpine
 RUN apk update && apk add --no-cache dumb-init
 ENV HOME=/home/app
 ENV APP_HOME=$HOME/node/
