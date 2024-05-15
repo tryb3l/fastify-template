@@ -61,6 +61,7 @@ module.exports = async function noteRoutes(fastify) {
       return note
     },
   })
+  
   fastify.route({
     method: 'PUT',
     url: '/:id',
@@ -78,6 +79,7 @@ module.exports = async function noteRoutes(fastify) {
       reply.code(204)
     },
   })
+
   fastify.route({
     method: 'DELETE',
     url: '/:id',
@@ -96,6 +98,7 @@ module.exports = async function noteRoutes(fastify) {
       reply.code(204)
     },
   })
+
   fastify.route({
     method: 'POST',
     url: '/:id/:status',
