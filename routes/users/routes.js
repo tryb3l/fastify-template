@@ -24,7 +24,7 @@ module.exports = fp(async function userRoutes(fastify) {
         404: { type: 'object', properties: { error: { type: 'string' } } },
       },
     },
-    handler: async function listUsers(request, reply) {
+    handler: async function listUsers(reply) {
       const users = await this.usersDataSource.listUsers()
       if (users.length === 0) {
         reply.code(404)
