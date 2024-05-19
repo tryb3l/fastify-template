@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "$id": "schema:user:update:body",
+  "additionalProperties": false,
+  "properties": {
+    "username": {
+      "type": "string"
+    },
+    "password": {
+      "type": "string"
+    }
+  }
+}
