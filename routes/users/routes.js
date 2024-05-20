@@ -16,7 +16,7 @@ module.exports = fp(async function userRoutes(fastify) {
           type: 'object',
           properties: {
             data: {
-              type: 'array',
+              type: 'object',
               items: fastify.getSchema('schema:user'),
             },
           },
@@ -45,7 +45,8 @@ module.exports = fp(async function userRoutes(fastify) {
       },
     },
     handler: async function readUser(request, reply) {
-      const user = await this.usersDataSource.readUser(request.params.id)
+      const userId = fastify.mongo.ObjectId.createFromTime(request.params.id)
+      const user = await this.usersDataSource.readUser(userId)
       if (!user) {
         reply.code(404)
         return { error: 'User not found' }
