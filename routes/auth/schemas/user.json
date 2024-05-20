@@ -2,9 +2,27 @@
   "type": "object",
   "$id": "schema:user",
   "additionalProperties": false,
+  "required": ["username", "email", "password", "firstName", "lastName"],
   "properties": {
-    "username": {
-      "type": "string"
-    }
+    "_id": {
+      "type": "string",
+      "format": "uuid",
+      "readOnly": true
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "readOnly": true
+    },
+    "modifiedAt": {
+      "type": "string",
+      "format": "date-time",
+      "readOnly": true
+    },
+    "username": { "$ref": "schema:username#" },
+    "email": { "$ref": "schema:email#" },
+    "password": { "$ref": "schema:password#" },
+    "firstName": { "$ref": "schema:firstname#" },
+    "lastName": { "$ref": "schema:lastname#" }
   }
 }

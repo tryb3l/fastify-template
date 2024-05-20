@@ -1,16 +1,16 @@
 {
   "type": "object",
   "$id": "schema:auth:register",
-  "required": ["username", "password"],
+  "required": ["username", "email", "password"],
   "properties": {
     "username": {
-      "type": "string",
-      "pattern": "^[a-zA-Z0-9_]{3,50}$",
-      "maxLength": 50
+      "$ref": "schema:username#"
     },
     "password": {
-      "type": "string",
-      "maxLength": 20
+      "$ref": "schema:password#"
+    },
+    "email": {
+      "$ref": "schema:email#"
     }
   }
 }

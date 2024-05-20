@@ -1,0 +1,6 @@
+{
+  "type": "string",
+  "$id": "schema:firstname",
+  "minLength": 1,
+  "maxLength": 50
+}
