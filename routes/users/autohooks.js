@@ -17,11 +17,6 @@ module.exports = fp(
         limit = 50,
         asStream = false,
       } = {}) {
-        if (filter.title) {
-          filter.title = new RegExp(filter.title, 'i')
-        } else {
-          delete filter.title
-        }
         const cursor = await users.find(filter, {
           projection: { ...projection, _id: 0 },
           limit,
@@ -34,10 +29,21 @@ module.exports = fp(
       },
 
       async readUser(id, projection = {}) {
+        if (!fastify.mongo.ObjectId.isValid(id)) {
+          return null
+        } else if (!id) {
+          throw new Error('Missing user id')
+        }
+
         const user = await users.findOne(
           { _id: fastify.mongo.ObjectId.createFromTime(id) },
-          { projection: { ...projection, _id: 0 } },
+          { projection: { ...projection, _id: 1, email: 1, firstname: 1, lastname: 1 } },
         )
+
+        if (!user) {
+          throw new Error('User not found')
+        }
+
         return user
       },
 
