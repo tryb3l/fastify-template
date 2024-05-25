@@ -1,8 +1,13 @@
 {
   "type": "object",
-  "$id": "schema:user:list:query",
+  "$id": "schema:user:query:params",
   "additionalProperties": false,
+  "required": ["id"],
+
   "properties": {
+    "id": {
+      "type": "uuid"
+    },
     "limit": {
       "$ref": "schema:limit#/properties/limit"
     },

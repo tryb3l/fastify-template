@@ -2,7 +2,12 @@
   "type": "object",
   "$id": "schema:user:update:body",
   "additionalProperties": false,
+  "required": ["id"],
   "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
     "username": {
       "type": "string"
     },
