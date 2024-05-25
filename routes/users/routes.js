@@ -13,10 +13,10 @@ module.exports = fp(async function userRoutes(fastify) {
       tags: ['users'],
       response: {
         200: {
-          type: 'object',
+          type: 'array',
           properties: {
             data: {
-              type: 'object',
+              type: 'array',
               items: fastify.getSchema('schema:user'),
             },
           },
