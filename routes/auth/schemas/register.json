@@ -1,16 +1,16 @@
 {
   "type": "object",
   "$id": "schema:auth:register",
-  "required": ["username", "email", "password"],
+  "required": ["username", "password"],
   "properties": {
     "username": {
-      "$ref": "schema:username#"
+      "$ref": "schema:auth:username#"
     },
     "password": {
-      "$ref": "schema:password#"
+      "$ref": "schema:auth:password#"
     },
     "email": {
-      "$ref": "schema:email#"
+      "$ref": "schema:auth:email#"
     }
   }
 }

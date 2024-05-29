@@ -1,6 +1,6 @@
 {
   "type": "string",
-  "$id": "schema:lastname",
+  "$id": "schema:auth:lastname",
   "minLength": 3,
   "maxLength": 20,
   "pattern": "^[a-zA-Z0-9._-]+$"
