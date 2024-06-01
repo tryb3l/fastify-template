@@ -29,7 +29,6 @@ module.exports = fp(
             hash,
           })
           request.log.info({ userId: newUserId }, 'User registered')
-
           reply.code(201)
           return { registered: true }
         } catch (error) {
@@ -50,7 +49,6 @@ module.exports = fp(
       },
       handler: async function authenticateHandler(request, reply) {
         const user = await this.usersDataSource.readUser(request.body.username)
-
         if (!user) {
           // if we return 404, an attacker can use this to find out which users are registered
           const err = new Error('Wrong credentials provided')
