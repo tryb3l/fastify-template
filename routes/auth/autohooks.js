@@ -15,8 +15,12 @@ module.exports = fp(
         return user
       },
       async createUser(user) {
-        const newUser = await users.insertOne(user)
-        return newUser.insertedId
+        return users
+          .insertOne(user)
+          .then((result) => result.insertedId)
+          .catch((error) => {
+            throw error
+          })
       },
     })
   },
