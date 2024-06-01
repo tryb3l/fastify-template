@@ -2,6 +2,5 @@
   "type": "string",
   "$id": "schema:auth:username",
   "minLength": 3,
-  "maxLength": 20,
-  "pattern": "^[a-zA-Z0-9._-]+$"
+  "maxLength": 20
 }
