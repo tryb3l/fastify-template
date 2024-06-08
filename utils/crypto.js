@@ -1,6 +1,7 @@
 'use strict'
 
 const crypto = require('node:crypto')
+const fs = require('node:fs')
 const { isUint32Array } = require('node:util/types')
 
 const UINT32_MAX = 0xffffffff
@@ -124,6 +125,37 @@ const hashPassword = (password) => {
   })
 }
 
+let defaultHash
+hashPassword('').then((hash) => {
+  defaultHash = hash
+})
+
+const validatePassword = (password, serHash = defaultHash) => {
+  const { params, salt, hash } = deserializeHash(serHash)
+  return new Promise((resolve, reject) => {
+    const callback = (err, hashedPassword) => {
+      if (err) {
+        reject(err)
+        return
+      }
+      resolve(crypto.timingSafeEqual(hashedPassword, hash))
+    }
+    crypto.scrypt(password, salt, hash.length, params, callback)
+  })
+}
+
+const md5 = (filePath) => {
+  const hash = crypto.createHash('md5')
+  const file = fs.createReadStream(filePath)
+  return new Promise((resolve, reject) => {
+    file.on('error', reject)
+    hash.once('readable', () => {
+      resolve(hash.read().toString('hex'))
+    })
+    file.pipe(hash)
+  })
+}
+
 module.exports = {
   cryptoRandom,
   generateUUID,
@@ -134,4 +166,6 @@ module.exports = {
   serializeHash,
   deserializeHash,
   hashPassword,
+  validatePassword,
+  md5,
 }
