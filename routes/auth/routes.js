@@ -42,7 +42,7 @@ module.exports = fp(
     fastify.post('/authenticate', {
       schema: {
         tags: ['auth'],
-        body: fastify.getSchema('schema:auth:register'),
+        body: fastify.getSchema('schema:auth:authenticate'),
         response: {
           200: fastify.getSchema('schema:auth:token'),
         },

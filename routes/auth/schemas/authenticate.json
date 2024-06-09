@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "$id": "schema:auth:authenticate",
+  "required": ["username", "password"],
+  "properties": {
+    "username": {
+      "$ref": "schema:auth:username#"
+    },
+    "password": {
+      "$ref": "schema:auth:password#"
+    }
+  }
+}
