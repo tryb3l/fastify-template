@@ -103,7 +103,6 @@ t.test('successful login', async (t) => {
     url: '/auth/authenticate',
     payload: {
       username: 'John Doe',
-      email: 'doe@email.com',
       password: 'icanpa123123ss',
     },
   })
