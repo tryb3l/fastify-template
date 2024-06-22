@@ -8,19 +8,12 @@ module.exports = fp(async function userRoutes(fastify) {
 
   fastify.route({
     method: 'GET',
-    url: '/',
+    url: '/users',
     schema: {
       tags: ['users'],
+      headers: fastify.getSchema('schema:auth:token-header'),
       response: {
-        200: {
-          type: 'array',
-          properties: {
-            data: {
-              type: 'array',
-              items: fastify.getSchema('schema:user'),
-            },
-          },
-        },
+        200: fastify.getSchema('schema:user:list:response'),
         404: { type: 'object', properties: { error: { type: 'string' } } },
       },
     },
@@ -39,7 +32,8 @@ module.exports = fp(async function userRoutes(fastify) {
     url: '/:id',
     schema: {
       tags: ['users'],
-      params: fastify.getSchema('schema:user:read:params'),
+      headers: fastify.getSchema('schema:auth:token-header'),
+      params: fastify.getSchema('schema:user:read:params', 'schema:auth:token-header'),
       response: {
         200: fastify.getSchema('schema:user'),
       },
@@ -60,6 +54,7 @@ module.exports = fp(async function userRoutes(fastify) {
     url: '/:id',
     schema: {
       tags: ['users'],
+      headers: fastify.getSchema('schema:auth:token-header'),
       params: fastify.getSchema('schema:user:read:params'),
       body: fastify.getSchema('schema:user:update:body'),
     },
@@ -78,6 +73,7 @@ module.exports = fp(async function userRoutes(fastify) {
     url: '/:id',
     schema: {
       tags: ['users'],
+      headers: fastify.getSchema('schema:auth:token-header'),
       params: fastify.getSchema('schema:user:read:params'),
     },
     handler: async function deleteUser(request, reply) {
