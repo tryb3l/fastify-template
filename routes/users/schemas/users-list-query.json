@@ -3,11 +3,9 @@
   "$id": "schema:user:list:query",
   "additionalProperties": false,
   "properties": {
-    "limit": {
-      "$ref": "schema:limit#/properties/limit"
-    },
-    "skip": {
-      "$ref": "schema:skip#/properties/skip"
+    "id": {
+      "type": "string",
+      "format": "uuid"
     }
   }
 }
