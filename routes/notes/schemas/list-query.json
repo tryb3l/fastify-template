@@ -4,13 +4,13 @@
   "additionalProperties": false,
   "properties": {
     "title": {
-      "type": "string"
-    },
-    "limit": {
-      "$ref": "schema:limit#/properties/limit"
-    },
-    "skip": {
-      "$ref": "schema:skip#/properties/skip"
+      "type": "string",
+      "limit": {
+        "$ref": "schema:limit#/properties/limit"
+      },
+      "skip": {
+        "$ref": "schema:skip#/properties/skip"
+      }
     }
   }
 }

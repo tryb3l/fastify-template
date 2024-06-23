@@ -11,4 +11,6 @@ module.exports = fp(async function schemaLoaderPlugin(fastify) {
   fastify.addSchema(require('./note.json'))
   fastify.addSchema(require('./read-params.json'))
   fastify.addSchema(require('./update-body.json'))
+  fastify.addSchema(require('../../../schemas/limit.json'))
+  fastify.addSchema(require('../../../schemas/skip.json'))
 })
