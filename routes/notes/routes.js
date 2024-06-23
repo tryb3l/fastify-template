@@ -13,14 +13,15 @@ module.exports = async function noteRoutes(fastify) {
         200: fastify.getSchema('schema:note:list:response'),
       },
     },
-    handler: async function listNotes(request) {
+    handler: async function listNotes(request, reply) {
       const { skip, limit, title } = request.query
-      const notes = await this.notesDataSource.listNotes({
+      const notes = await request.notesDataSource.listNotes({
         filter: { title },
         skip,
         limit,
       })
-      const totalCount = await this.notesDataSource.countNotes()
+      const totalCount = await request.notesDataSource.countNotes()
+      reply.code(201)
       return { data: notes, totalCount }
     },
   })
@@ -53,11 +54,12 @@ module.exports = async function noteRoutes(fastify) {
       },
     },
     handler: async function readNote(request, reply) {
-      const note = await this.notesDataSource.readNote(request.params.id)
+      const note = await request.notesDataSource.readNote(request.params.id)
       if (!note) {
         reply.code(404)
         return { error: 'Record is not found' }
       }
+      reply.code(201)
       return note
     },
   })
@@ -71,7 +73,7 @@ module.exports = async function noteRoutes(fastify) {
       body: fastify.getSchema('schema:note:update:body'),
     },
     handler: async function updateNote(request, reply) {
-      const res = await this.notesDataSource.updateNote(request.params.id, request.body)
+      const res = await request.notesDataSource.updateNote(request.params.id, request.body)
       if (res.modifiedCount === 0) {
         reply.code(404)
         return { error: 'Record is not found' }
