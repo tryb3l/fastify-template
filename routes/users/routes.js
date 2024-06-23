@@ -29,7 +29,7 @@ module.exports = fp(async function userRoutes(fastify) {
 
   fastify.route({
     method: 'GET',
-    url: '/:id',
+    url: '/user/:id',
     schema: {
       tags: ['users'],
       headers: fastify.getSchema('schema:auth:token-header'),
@@ -51,7 +51,7 @@ module.exports = fp(async function userRoutes(fastify) {
 
   fastify.route({
     method: 'PUT',
-    url: '/:id',
+    url: '/user/:id',
     schema: {
       tags: ['users'],
       headers: fastify.getSchema('schema:auth:token-header'),
@@ -70,7 +70,7 @@ module.exports = fp(async function userRoutes(fastify) {
 
   fastify.route({
     method: 'DELETE',
-    url: '/:id',
+    url: '/user/:id',
     schema: {
       tags: ['users'],
       headers: fastify.getSchema('schema:auth:token-header'),
