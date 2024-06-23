@@ -36,7 +36,7 @@ module.exports = async function noteRoutes(fastify) {
       },
     },
     handler: async function createNote(request, reply) {
-      const insertedId = await this.notesDataSource.createNote(request.body)
+      const insertedId = await request.notesDataSource.createNote(request.body)
       reply.code(201)
       return { id: insertedId }
     },
@@ -61,7 +61,7 @@ module.exports = async function noteRoutes(fastify) {
       return note
     },
   })
-  
+
   fastify.route({
     method: 'PUT',
     url: '/:id',
