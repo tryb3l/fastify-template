@@ -96,6 +96,11 @@ module.exports = fp(
 
     async function refreshHandler(request) {
       const token = await request.generateToken()
+      if (!token) {
+        const err = new Error('Failed to generate token')
+        err.statusCode = 500
+        throw err
+      }
       return { token }
     }
 
