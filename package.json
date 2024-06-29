@@ -56,7 +56,7 @@
     "csv-parse": "^5.5.6",
     "csv-stringify": "^6.5.0",
     "fast-json-stringify": "^6.0.0",
-    "fastify": "^4.28.0",
+    "fastify": "^4.28.1",
     "fastify-cli": "^6.2.1",
     "fastify-html": "^0.5.0",
     "fastify-metrics": "^11.0.0",
