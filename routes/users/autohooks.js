@@ -10,41 +10,15 @@ module.exports = fp(
     fastify.register(schemas)
 
     fastify.decorate('usersDataSource', {
-      async listUsers({
-        filter = {},
-        projection = {},
-        skip = 0,
-        limit = 50,
-        asStream = false,
-      } = {}) {
-        const cursor = await users.find(filter, {
-          projection: { ...projection, _id: 0 },
-          limit,
-          skip,
-        })
-        if (asStream) {
-          return cursor.stream()
-        }
-        return cursor.toArray()
+
+      async listUsers({ filter = {}, skip = 0, limit = 10 } = {}) {
+        return users.find(filter).skip(skip).limit(limit).toArray()
       },
-
-      async readUser(id, projection = {}) {
-        if (!fastify.mongo.ObjectId.isValid(id)) {
-          return null
-        } else if (!id) {
-          throw new Error('Missing user id')
-        }
-
-        const user = await users.findOne(
-          { _id: fastify.mongo.ObjectId.createFromTime(id) },
-          { projection: { ...projection, _id: 1, email: 1, firstname: 1, lastname: 1 } },
-        )
-
-        if (!user) {
-          throw new Error('User not found')
-        }
-
-        return user
+      async countUsers({ filter = {} } = {}) {
+        return users.countDocuments(filter)
+      },
+      async readUserDetails(id) {
+        return users.findOne({ _id: fastify.mongo.ObjectId.createFromTime(id) })
       },
 
       async updateUser(id, newUser) {
