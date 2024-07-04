@@ -1,6 +1,7 @@
 'use strict'
 
 const fp = require('fastify-plugin')
+const crypto = require('node:crypto')
 
 module.exports = fp(async function userRoutes(fastify) {
   fastify.addHook('onRequest', fastify.authenticate)
@@ -12,42 +13,81 @@ module.exports = fp(async function userRoutes(fastify) {
     schema: {
       tags: ['users'],
       headers: fastify.getSchema('schema:auth:token-header'),
+      querystring: {
+        type: 'object',
+        properties: {
+          skip: { type: 'integer', default: 0 },
+          limit: { type: 'integer', default: 10 },
+          username: { type: 'string' },
+        },
+        required: [],
+      },
       response: {
-        200: fastify.getSchema('schema:user:list:response'),
+        200: {
+          type: 'object',
+          properties: {
+            data: { type: 'array', items: fastify.getSchema('schema:user') },
+            totalCount: { type: 'integer' },
+          },
+        },
         404: { type: 'object', properties: { error: { type: 'string' } } },
       },
     },
-    handler: async function listUsers(reply) {
-      const users = await this.usersDataSource.listUsers()
-      if (users.length === 0) {
-        reply.code(404)
-        return { error: 'No users found' }
-      }
-      return { data: users }
+    handler: async function listUsers(request, reply) {
+      const { skip, limit, username } = request.query
+      const filter = username ? { username } : {}
+      const users = await this.usersDataSource.listUsers({ filter, skip, limit })
+      const totalCount = await this.usersDataSource.countUsers({ filter })
+
+      const usersWithUUID = users.map((user) => ({ ...user, _id: crypto.randomUUID() }))
+      reply.code(200)
+      return { data: usersWithUUID, totalCount }
     },
   })
 
   fastify.route({
     method: 'GET',
-    url: '/user/:id',
+    url: '/user-details/:id',
     schema: {
       tags: ['users'],
       headers: fastify.getSchema('schema:auth:token-header'),
       params: fastify.getSchema('schema:user:read:params', 'schema:auth:token-header'),
       response: {
         200: fastify.getSchema('schema:user'),
+        404: { type: 'object', properties: { error: { type: 'string' } } },
+        401: { type: 'object', properties: { error: { type: 'string' } } },
       },
     },
-    handler: async function readUser(request, reply) {
-      const userId = fastify.mongo.ObjectId.createFromTime(request.params.id)
-      const user = await this.usersDataSource.readUser(userId)
+    handler: async function readUserDetails(request, reply) {
+      const user = await this.usersDataSource.readUserDetails(request.params.id)
       if (!user) {
         reply.code(404)
         return { error: 'User not found' }
       }
-      return user
+      return { data: users }
     },
-  })
+  }),
+    fastify.route({
+      method: 'GET',
+      url: '/user/:id',
+      schema: {
+        tags: ['users'],
+        headers: fastify.getSchema('schema:auth:token-header'),
+        params: fastify.getSchema('schema:user:read:params', 'schema:auth:token-header'),
+        response: {
+          200: fastify.getSchema('schema:user'),
+        },
+      },
+      handler: async function readUser(request, reply) {
+        const userId = fastify.mongo.ObjectId.createFromTime(request.params.id)
+        const user = await this.usersDataSource.readUser(userId)
+        if (!user) {
+          reply.code(404)
+          return { error: 'User not found' }
+        }
+        return user
+      },
+    })
 
   fastify.route({
     method: 'PUT',
