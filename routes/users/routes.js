@@ -1,7 +1,6 @@
 'use strict'
 
 const fp = require('fastify-plugin')
-const crypto = require('node:crypto')
 
 module.exports = fp(async function userRoutes(fastify) {
   fastify.addHook('onRequest', fastify.authenticate)
@@ -39,9 +38,8 @@ module.exports = fp(async function userRoutes(fastify) {
       const users = await this.usersDataSource.listUsers({ filter, skip, limit })
       const totalCount = await this.usersDataSource.countUsers({ filter })
 
-      const usersWithUUID = users.map((user) => ({ ...user, _id: crypto.randomUUID() }))
       reply.code(200)
-      return { data: usersWithUUID, totalCount }
+      return { data: users, totalCount }
     },
   })
 
