@@ -18,7 +18,7 @@ module.exports = fp(
         return users.countDocuments(filter)
       },
       async readUserDetails(id) {
-        return users.findOne({ _id: fastify.mongo.ObjectId.createFromTime(id) })
+        return users.findOne({ _id: id })
       },
 
       async updateUser(id, newUser) {
