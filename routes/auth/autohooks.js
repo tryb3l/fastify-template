@@ -2,6 +2,7 @@
 
 const fp = require('fastify-plugin')
 const schemas = require('./schemas/loader')
+const { randomUUID } = require('node:crypto')
 
 module.exports = fp(
   async function userAutoHooks(fastify) {
@@ -15,6 +16,7 @@ module.exports = fp(
         return user
       },
       async createUser(user) {
+        user._id = randomUUID()
         return users
           .insertOne(user)
           .then((result) => result.insertedId)
