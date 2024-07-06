@@ -4,7 +4,7 @@ const fp = require('fastify-plugin')
 
 module.exports = fp(async function userRoutes(fastify) {
   fastify.addHook('onRequest', fastify.authenticate)
-  const users = fastify.mongo.db.collection('users')
+  //const users = fastify.mongo.db.collection('users')
 
   fastify.route({
     method: 'GET',
@@ -51,18 +51,29 @@ module.exports = fp(async function userRoutes(fastify) {
       headers: fastify.getSchema('schema:auth:token-header'),
       params: fastify.getSchema('schema:user:read:params', 'schema:auth:token-header'),
       response: {
-        200: fastify.getSchema('schema:user'),
-        404: { type: 'object', properties: { error: { type: 'string' } } },
-        401: { type: 'object', properties: { error: { type: 'string' } } },
+        200: {
+          type: 'object',
+          properties: {
+            data: fastify.getSchema('schema:user'),
+          },
+        },
       },
     },
     handler: async function readUserDetails(request, reply) {
-      const user = await this.usersDataSource.readUserDetails(request.params.id)
-      if (!user) {
-        reply.code(404)
-        return { error: 'User not found' }
+      try {
+        const user = await this.usersDataSource.readUserDetails(request.params.id)
+        if (!user) {
+          reply.code(404)
+          return { error: 'User not found' }
+        }
+        console.log('Raw user object', user)
+
+        return { data: user }
+      } catch (error) {
+        console.error('Error fetching user details:', error)
+        reply.code(500)
+        return { error: 'Internal Server Error' }
       }
-      return { data: users }
     },
   }),
     fastify.route({
@@ -77,8 +88,7 @@ module.exports = fp(async function userRoutes(fastify) {
         },
       },
       handler: async function readUser(request, reply) {
-        const userId = fastify.mongo.ObjectId.createFromTime(request.params.id)
-        const user = await this.usersDataSource.readUser(userId)
+        const user = await this.usersDataSource.readUser(request.params.id)
         if (!user) {
           reply.code(404)
           return { error: 'User not found' }
@@ -93,7 +103,7 @@ module.exports = fp(async function userRoutes(fastify) {
     schema: {
       tags: ['users'],
       headers: fastify.getSchema('schema:auth:token-header'),
-      params: fastify.getSchema('schema:user:read:params'),
+      params: fastify.getSchema('schema:user:read:params', 'schema:auth:token-header'),
       body: fastify.getSchema('schema:user:update:body'),
     },
     handler: async function updateUser(request, reply) {
@@ -115,9 +125,7 @@ module.exports = fp(async function userRoutes(fastify) {
       params: fastify.getSchema('schema:user:read:params'),
     },
     handler: async function deleteUser(request, reply) {
-      const res = await users.deleteUser({
-        _id: fastify.mongo.ObjectId(request.params.id),
-      })
+      const res = await this.usersDataSource.deleteUser(request.params.id)
       if (res.deletedCount === 0) {
         reply.code(404)
         return { error: 'User is not found' }
