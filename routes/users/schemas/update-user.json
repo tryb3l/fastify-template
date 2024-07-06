@@ -4,11 +4,24 @@
   "additionalProperties": false,
   "required": ["id"],
   "properties": {
-    "id": {
-      "type": "string"
+    "_id": {
+      "type": "string",
+      "format": "uuid",
+      "readOnly": true
     },
-    "username": {
-      "type": "string"
-    }
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "readOnly": true
+    },
+    "modifiedAt": {
+      "type": "string",
+      "format": "date-time",
+      "readOnly": true
+    },
+    "username": { "$ref": "schema:auth:username#" },
+    "email": { "$ref": "schema:auth:email#" },
+    "firstName": { "$ref": "schema:auth:firstname#" },
+    "lastName": { "$ref": "schema:auth:lastname#" }
   }
 }
