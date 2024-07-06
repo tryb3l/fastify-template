@@ -10,20 +10,46 @@ module.exports = fp(
     fastify.register(schemas)
 
     fastify.decorate('usersDataSource', {
-
       async listUsers({ filter = {}, skip = 0, limit = 10 } = {}) {
-        return users.find(filter).skip(skip).limit(limit).toArray()
+        return await users
+          .find(filter, {
+            projection: {
+              _id: 1,
+              username: 1,
+              email: 1,
+              firstName: 1,
+              lastName: 1,
+              createdAt: 1,
+              modifiedAt: 1,
+            },
+          })
+          .skip(skip)
+          .limit(limit)
+          .toArray()
       },
       async countUsers({ filter = {} } = {}) {
-        return users.countDocuments(filter)
+        return await users.countDocuments(filter)
       },
       async readUserDetails(id) {
-        return users.findOne({ _id: id })
+        return await users.findOne(
+          { _id: id },
+          {
+            projection: {
+              _id: 1,
+              username: 1,
+              email: 1,
+              firstName: 1,
+              lastName: 1,
+              createdAt: 1,
+              modifiedAt: 1,
+            },
+          },
+        )
       },
 
       async updateUser(id, newUser) {
-        return users.updateOne(
-          { _id: fastify.mongo.ObjectId.createFromTime(id) },
+        return await users.updateOne(
+          { _id: id },
           {
             $set: {
               ...newUser,
@@ -34,8 +60,8 @@ module.exports = fp(
       },
 
       async deleteUser(id) {
-        return users.deleteOne({
-          _id: fastify.mongo.ObjectId.createFromTime(id),
+        return await users.deleteOne({
+          _id: id,
         })
       },
     })
