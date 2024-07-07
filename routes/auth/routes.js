@@ -13,7 +13,10 @@ module.exports = fp(
         body: fastify.getSchema('schema:auth:register'),
       },
       handler: async function registerHandler(request, reply) {
-        const existingUser = await this.usersDataSource.readUser(request.body.username)
+        const existingUser = await this.usersDataSource.readUser(
+          request.body.username,
+          request.body.email,
+        )
         if (existingUser) {
           const err = new Error('User already registered')
           err.statusCode = 409
