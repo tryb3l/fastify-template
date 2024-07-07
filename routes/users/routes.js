@@ -28,17 +28,37 @@ module.exports = fp(async function userRoutes(fastify) {
             totalCount: { type: 'integer' },
           },
         },
-        404: { type: 'object', properties: { error: { type: 'string' } } },
+        400: {
+          type: 'object',
+          properties: {
+            error: { type: 'string' },
+            message: { type: 'string' },
+            statusCode: { type: 'integer' },
+          },
+          required: ['error', 'message', 'statusCode'],
+        },
       },
     },
     handler: async function listUsers(request, reply) {
-      const { skip, limit, username } = request.query
-      const filter = username ? { username } : {}
-      const users = await this.usersDataSource.listUsers({ filter, skip, limit })
-      const totalCount = await this.usersDataSource.countUsers({ filter })
+      try {
+        const { skip, limit, username } = request.query
+        if (!Number.isInteger(skip) || skip < 0 || !Number.isInteger(limit) || limit < 0) {
+          reply.code(400)
+          return {
+            error: 'Bad Request',
+            message: 'Skip and limit must be non-negative integers',
+            statusCode: 400,
+          }
+        }
 
-      reply.code(200)
-      return { data: users, totalCount }
+        const filter = username ? { username } : {}
+        const users = await this.usersDataSource.listUsers({ filter, skip, limit })
+        const totalCount = await this.usersDataSource.countUsers({ filter })
+        reply.code(200)
+        return { data: users, totalCount }
+      } catch (error) {
+        reply.code(400).send({ error: 'Bad request', message: error.message, statusCode: 400 })
+      }
     },
   })
 
