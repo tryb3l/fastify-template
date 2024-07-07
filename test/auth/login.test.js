@@ -47,7 +47,7 @@ function cleanCache() {
   })
 }
 
-t.skip('TODO: rework this test. register error', async (t) => {
+t.test('failed signup, invalid email format', async (t) => {
   const path = '../../routes/data-store.js'
   cleanCache()
   require(path)
@@ -67,11 +67,10 @@ t.skip('TODO: rework this test. register error', async (t) => {
     payload: {
       username: '123',
       password: 'icanpass',
-      email: 'fake@email.com',
+      email: 'fake#email.com',
     },
   })
-  t.equal(response.statusCode, 500)
-  t.same(response.json(), { registered: false })
+  t.equal(response.statusCode, 400)
 })
 
 t.test('failed login', async (t) => {
