@@ -4,7 +4,6 @@ const fp = require('fastify-plugin')
 
 module.exports = fp(async function userRoutes(fastify) {
   fastify.addHook('onRequest', fastify.authenticate)
-  //const users = fastify.mongo.db.collection('users')
 
   fastify.route({
     method: 'GET',
