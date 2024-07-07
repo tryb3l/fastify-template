@@ -25,6 +25,7 @@ module.exports = fp(
         try {
           const newUserId = await this.usersDataSource.createUser({
             username: request.body.username,
+            email: request.body.email,
             salt,
             hash,
           })
