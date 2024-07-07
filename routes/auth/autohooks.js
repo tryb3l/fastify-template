@@ -11,9 +11,9 @@ module.exports = fp(
     fastify.register(schemas)
 
     fastify.decorate('usersDataSource', {
-      async readUser(username) {
-        const user = await users.findOne({ username })
-        return user
+      async readUser(username, email) {
+        const user = await users.findOne({ $or: [{ username }, { email }] });
+        return user;
       },
       async createUser(user) {
         user._id = randomUUID()
