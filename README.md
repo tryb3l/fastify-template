@@ -15,10 +15,3 @@ To execute this example you'll need to install the Node.JS, docker. mongodb - lo
 ### To run the project using docker environment:
 
 #### execute in your terminal: make all
-
-### TODO:
-
-#### esm examples
-
-#### tests (unit and integration) using native testrunner
-
