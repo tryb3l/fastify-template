@@ -8,7 +8,7 @@ To execute this example you'll need to install the Node.JS, docker. mongodb - lo
 
 #### You can use the following versions:
 
-- Node.js 20+
+- Node.js 21+
 - MongoDB 7
 - Latest docker engine
 
