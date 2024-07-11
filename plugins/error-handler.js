@@ -17,6 +17,20 @@ module.exports = fp(function (fastify, opts, next) {
     if (err.statusCode === 429) {
       reply.code(429).send('You hit the rate limit! Slow down please!')
     }
+
+    if (reply.statusCode === 404) {
+      req.log.info({ req, res: reply, err: err }, 'Not found')
+      reply.code(404).send({ error: 'Not Found', message: 'The requested resource was not found' })
+      return
+    }
+    if (reply.statusCode === 400) {
+      req.log.info({ req, res: reply, err: err }, 'Bad request')
+      reply.code(400).send({
+        error: 'Bad Request',
+        message: 'The request could not be understood or was missing required parameters',
+      })
+      return
+    }
     req.log.info({ req, res: reply, err: err }, err?.message)
     reply.send(err)
   })
