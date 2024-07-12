@@ -30,6 +30,14 @@ module.exports = fp(function (fastify, opts, next) {
       })
       return
     }
+    if (reply.statusCode === 401) {
+      req.log.info({ req, res: reply, err: err }, 'Unauthorized')
+      reply.code(401).send({
+        error: 'Unauthorized',
+        message: 'You are not authorized to access this resource',
+      })
+      return
+    }
     req.log.info({ req, res: reply, err: err }, err?.message)
     reply.send(err)
   })
