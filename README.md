@@ -13,5 +13,3 @@ To execute this example you'll need to install the Node.JS, docker. mongodb - lo
 - Latest docker engine
 
 ### To run the project using docker environment:
-
-#### execute in your terminal: make all
