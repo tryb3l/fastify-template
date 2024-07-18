@@ -24,6 +24,13 @@
     "JWT_EXPIRE_IN": {
       "type": "string",
       "default": "1h"
+    },
+    "COOKIE_SECRET": {
+      "type": "string"
+    },
+    "COOKIE_MAX_AGE": {
+      "type": "integer",
+      "default": "1w"
     }
   }
 }
