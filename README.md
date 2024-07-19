@@ -1,4 +1,4 @@
-# Minimalistic fastify boilerplate
+# my fastify template for the future projects
 
 ## Status: [![CI](https://github.com/tryb3l/fastify-boilerplate/actions/workflows/ci.yml/badge.svg)](https://github.com/tryb3l/fastify-boilerplate/actions/workflows/ci.yml)
 
