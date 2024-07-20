@@ -18,8 +18,8 @@ t.test('cannot access protected routes', async (t) => {
     t.same(response.json(), {
       statusCode: 401,
       error: 'Unauthorized',
-      message: 'No Authorization was found in request.headers',
-      code: 'FST_JWT_NO_AUTHORIZATION_IN_HEADER',
+      message: 'No Authorization was found in request.cookies',
+      code: 'FST_JWT_NO_AUTHORIZATION_IN_COOKIE',
     })
   }
 })
