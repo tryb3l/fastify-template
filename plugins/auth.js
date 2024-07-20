@@ -26,6 +26,7 @@ module.exports = fp(
         return !revokedTokens.has(decodedToken.jti)
       },
     })
+
     fastify.decorate('authenticate', async function authenticate(request, reply) {
       try {
         await request.jwtVerify()
@@ -33,10 +34,12 @@ module.exports = fp(
         reply.send(err)
       }
     })
+
     fastify.decorateRequest('revokeToken', async function (request, reply) {
       revokedTokens.set(this.user.jti, true)
       reply.clearCookie('token')
     })
+
     fastify.decorateRequest('generateToken', async function (reply) {
       const token = fastify.jwt.sign(
         {
