@@ -18,8 +18,8 @@ t.test('cannot access protected routes', async (t) => {
     t.same(response.json(), {
       statusCode: 401,
       error: 'Unauthorized',
-      message: 'No Authorization was found in request.headers',
-      code: 'FST_JWT_NO_AUTHORIZATION_IN_HEADER',
+      message: 'No Authorization was found in request.cookies',
+      code: 'FST_JWT_NO_AUTHORIZATION_IN_COOKIE',
     })
   }
 })
@@ -109,6 +109,17 @@ t.test('successful login', async (t) => {
   t.match(login.json(), {
     token: /(\w*\.){2}.*/,
   })
+
+  // Verify Set-Cookie headers for token and sessionId
+  const setCookieHeaders = login.headers['set-cookie']
+  t.ok(
+    setCookieHeaders.some((header) => header.startsWith('token=')),
+    'Token cookie is set',
+  )
+  t.ok(
+    setCookieHeaders.some((header) => header.startsWith('sessionId=')),
+    'SessionId cookie is set',
+  )
 
   t.test('access protected route', async (t) => {
     const app = await buildApp(t, {

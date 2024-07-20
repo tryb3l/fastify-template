@@ -98,8 +98,8 @@ module.exports = fp(
       handler: refreshHandler,
     })
 
-    async function refreshHandler(request) {
-      const token = await request.generateToken()
+    async function refreshHandler(request, reply) {
+      const token = await request.generateToken(reply)
       if (!token) {
         const err = new Error('Failed to generate token')
         err.statusCode = 500

@@ -21,6 +21,12 @@ module.exports = fp(
       jwt: {
         secret: fastify.secrets.JWT_SECRET,
       },
+      session: {
+        secret: fastify.secrets.SESSION_SECRET,
+      },
+      cookie: {
+        secret: fastify.secrets.COOKIE_SECRET,
+      },
     })
   },
 
