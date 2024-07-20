@@ -110,6 +110,17 @@ t.test('successful login', async (t) => {
     token: /(\w*\.){2}.*/,
   })
 
+  // Verify Set-Cookie headers for token and sessionId
+  const setCookieHeaders = login.headers['set-cookie']
+  t.ok(
+    setCookieHeaders.some((header) => header.startsWith('token=')),
+    'Token cookie is set',
+  )
+  t.ok(
+    setCookieHeaders.some((header) => header.startsWith('sessionId=')),
+    'SessionId cookie is set',
+  )
+
   t.test('access protected route', async (t) => {
     const app = await buildApp(t, {
       MONGO_URL: 'mongodb://localhost:27017/login-test-db',
