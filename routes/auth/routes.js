@@ -10,6 +10,7 @@ module.exports = fp(
     fastify.post('/register', {
       schema: {
         tags: ['auth'],
+        summary: 'Register a new user',
         body: fastify.getSchema('schema:auth:register'),
       },
       handler: async function registerHandler(request, reply) {
@@ -46,6 +47,7 @@ module.exports = fp(
     fastify.post('/authenticate', {
       schema: {
         tags: ['auth'],
+        summary: 'Authenticate a user',
         body: fastify.getSchema('schema:auth:authenticate'),
         response: {
           200: fastify.getSchema('schema:auth:token'),
@@ -76,6 +78,7 @@ module.exports = fp(
       onRequest: fastify.authenticate,
       schema: {
         tags: ['auth'],
+        summary: 'Get current user details',
         headers: fastify.getSchema('schema:auth:token-header'),
         response: {
           200: fastify.getSchema('schema:user'),
@@ -90,6 +93,7 @@ module.exports = fp(
       onRequest: fastify.authenticate,
       schema: {
         tags: ['auth'],
+        summary: 'Refresh the token for the current user',
         headers: fastify.getSchema('schema:auth:token-header'),
         response: {
           200: fastify.getSchema('schema:auth:token'),
@@ -112,6 +116,7 @@ module.exports = fp(
       onRequest: fastify.authenticate,
       schema: {
         tags: ['auth'],
+        summary: 'Logout the current user',
         headers: fastify.getSchema('schema:auth:token-header'),
       },
       handler: async function logoutHandler(request, reply) {

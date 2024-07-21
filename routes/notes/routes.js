@@ -8,6 +8,7 @@ module.exports = async function noteRoutes(fastify) {
     url: '/',
     schema: {
       tags: ['note'],
+      summary: 'List notes',
       queryString: fastify.getSchema('schema:note:list:query'),
       response: {
         200: fastify.getSchema('schema:note:list:response'),
@@ -31,6 +32,7 @@ module.exports = async function noteRoutes(fastify) {
     url: '/',
     schema: {
       tags: ['note'],
+      summary: 'Create a note',
       body: fastify.getSchema('schema:note:create:body'),
       response: {
         201: fastify.getSchema('schema:note:create:response'),
@@ -48,6 +50,7 @@ module.exports = async function noteRoutes(fastify) {
     url: '/:id',
     schema: {
       tags: ['note'],
+      summary: 'Read a note by id',
       params: fastify.getSchema('schema:note:read:params'),
       response: {
         200: fastify.getSchema('schema:note'),
@@ -69,6 +72,7 @@ module.exports = async function noteRoutes(fastify) {
     url: '/:id',
     schema: {
       tags: ['note'],
+      summary: 'Update a note by id',
       params: fastify.getSchema('schema:note:read:params'),
       body: fastify.getSchema('schema:note:update:body'),
     },
@@ -87,6 +91,7 @@ module.exports = async function noteRoutes(fastify) {
     url: '/:id',
     schema: {
       tags: ['note'],
+      summary: 'Delete a note by id',
       params: fastify.getSchema('schema:note:read:params'),
     },
     handler: async function deleteNote(request, reply) {
@@ -106,6 +111,7 @@ module.exports = async function noteRoutes(fastify) {
     url: '/:id/:status',
     schema: {
       tags: ['note'],
+      summary: 'Change note status by id',
       params: fastify.getSchema('schema:note:status:params'),
       response: {
         204: fastify.getSchema('schema:note:status:response'),
