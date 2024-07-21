@@ -43,7 +43,8 @@ module.exports = async function fileNoteRoutes(fastify) {
     method: 'POST',
     url: '/import',
     schema: {
-      tags: ['file'],
+      tags: ['files'],
+      summary: 'Import a note list from a CSV file',
       body: {
         type: 'object',
         required: ['noteListFile'],
@@ -80,7 +81,8 @@ module.exports = async function fileNoteRoutes(fastify) {
     method: 'GET',
     url: '/export',
     schema: {
-      tags: ['file'],
+      tags: ['files'],
+      summary: 'Export a note list to a CSV file',
       querystring: fastify.getSchema('schema:note:list:export'),
     },
     handler: async function listNotes(request, reply) {
