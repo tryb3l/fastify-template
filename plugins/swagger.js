@@ -10,6 +10,14 @@ module.exports = fp(
           description: 'Fastify CRUD application example',
           version: require('../package.json').version,
         },
+        servers: [{ url: 'http://localhost:3000', description: 'development' }],
+        tags: [
+          { name: 'notes', description: 'Notes related end-points' },
+          { name: 'users', description: 'Users related end-points' },
+          { name: 'auth', description: 'Auth related end-points' },
+          { name: 'health', description: 'Health related end-points' },
+          { name: 'files', description: 'Files related end-points' },
+        ],
       },
     })
     await fastify.register(require('@fastify/swagger-ui'), {
