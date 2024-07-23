@@ -23,4 +23,25 @@ module.exports = fp(async function infrastructure(fastify) {
       return { status: 'ok' }
     },
   })
+
+  fastify.route({
+    method: 'GET',
+    url: '/ready',
+    schema: {
+      tags: ['infrastructure'],
+      summary: 'Readiness check',
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            status: { type: 'string' },
+          },
+        },
+      },
+    },
+    handler: async function readyHandler(request, reply) {
+      reply.code(200)
+      return { status: 'ok' }
+    },
+  })
 })
