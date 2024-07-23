@@ -15,7 +15,7 @@ module.exports = fp(
           { name: 'notes', description: 'Notes related end-points' },
           { name: 'users', description: 'Users related end-points' },
           { name: 'auth', description: 'Auth related end-points' },
-          { name: 'health', description: 'Health related end-points' },
+          { name: 'infrastructure', description: 'infrastructure related end-points' },
           { name: 'files', description: 'Files related end-points' },
         ],
       },
