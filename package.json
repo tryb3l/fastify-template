@@ -58,7 +58,7 @@
     "csv-stringify": "^6.5.0",
     "fast-json-stringify": "^6.0.0",
     "fastify": "^4.28.1",
-    "fastify-cli": "^6.2.1",
+    "fastify-cli": "^6.3.0",
     "fastify-html": "^0.5.0",
     "fastify-metrics": "^11.0.0",
     "fastify-plugin": "^4.5.1",
@@ -66,13 +66,13 @@
     "split2": "^4.2.0"
   },
   "devDependencies": {
-    "@eslint/js": "^9.7.0",
+    "@eslint/js": "^9.8.0",
     "dockerode": "^4.0.2",
-    "eslint": "^9.7.0",
+    "eslint": "^9.8.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-prettier": "^5.2.1",
     "globals": "^15.8.0",
-    "pino-pretty": "^11.2.1",
+    "pino-pretty": "^11.2.2",
     "prettier": "^3.3.3",
     "tap": "^21.0.0"
   }
