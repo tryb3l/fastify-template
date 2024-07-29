@@ -90,5 +90,3 @@ To execute this example, you'll need to install Node.js, Docker, and MongoDB. Mo
   ```sh
   make all
   ```
-
-## Project Structure
