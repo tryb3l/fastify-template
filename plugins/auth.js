@@ -40,14 +40,7 @@ module.exports = fp(
         },
       )
 
-      reply.setCookie('accessToken', token, {
-        path: '/',
-        httpOnly: true,
-        sameSite: 'strict',
-        secure: process.env.NODE_ENV === 'production',
-        maxAge: fastify.config.cookie.maxAge,
-        signed: true,
-      })
+      reply.setCookie('accessToken', token, { maxAge: fastify.config.cookie.accessMaxAge })
 
       return token
     })
@@ -64,14 +57,7 @@ module.exports = fp(
         },
       )
 
-      reply.setCookie('refreshToken', token, {
-        path: '/',
-        httpOnly: true,
-        sameSite: 'strict',
-        secure: process.env.NODE_ENV === 'production',
-        maxAge: fastify.config.cookie.maxAge,
-        signed: true,
-      })
+      reply.setCookie('refreshToken', token, { maxAge: fastify.config.cookie.refreshMaxAge })
 
       return token
     })
