@@ -8,7 +8,7 @@ module.exports = fp(
       secret: fastify.config.cookie.secret,
       parseOptions: {
         path: '/',
-        maxAge: fastify.config.cookie.maxAge || 1800000,
+        maxAge: fastify.config.cookie.accessMaxAge || 1800000,
         httpOnly: true,
         sameSite: 'strict',
         secure: process.env.NODE_ENV === 'production',
