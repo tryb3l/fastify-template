@@ -5,10 +5,10 @@ const cookie = require('@fastify/cookie')
 module.exports = fp(
   async function cookiePlugin(fastify) {
     fastify.register(cookie, {
-      secret: fastify.secrets.COOKIE_SECRET || 'my-secret',
+      secret: fastify.config.cookie.secret,
       parseOptions: {
         path: '/',
-        maxAge: fastify.secrets.COOKIE_MAX_AGE || 1800000,
+        maxAge: fastify.config.cookie.maxAge || 1800000,
         httpOnly: true,
         sameSite: 'strict',
         secure: process.env.NODE_ENV === 'production',
