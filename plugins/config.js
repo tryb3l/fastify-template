@@ -20,12 +20,12 @@ module.exports = fp(
     fastify.decorate('config', {
       jwt: {
         secret: fastify.secrets.JWT_SECRET,
-      },
-      session: {
-        secret: fastify.secrets.SESSION_SECRET,
+        accessExpireIn: fastify.secrets.JWT_EXPIRE_IN,
+        refreshExpireIn: fastify.secrets.JWT_REFRESH_EXPIRE_IN,
       },
       cookie: {
         secret: fastify.secrets.COOKIE_SECRET,
+        maxAge: fastify.secrets.COOKIE_MAX_AGE,
       },
     })
   },
