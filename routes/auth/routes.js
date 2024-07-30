@@ -103,13 +103,14 @@ module.exports = fp(
     })
 
     async function refreshHandler(request, reply) {
-      const token = await request.generateToken(reply)
-      if (!token) {
+      const accessToken = await request.generateAccessToken(reply)
+      const refreshToken = await request.generateRefreshToken(reply)
+      if (!accessToken || !refreshToken) {
         const err = new Error('Failed to generate token')
         err.statusCode = 500
         throw err
       }
-      return { token }
+      return { accessToken, refreshToken }
     }
 
     fastify.post('/logout', {
