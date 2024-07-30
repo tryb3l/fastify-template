@@ -25,7 +25,8 @@ module.exports = fp(
       },
       cookie: {
         secret: fastify.secrets.COOKIE_SECRET,
-        maxAge: fastify.secrets.COOKIE_MAX_AGE,
+        accessMaxAge: fastify.secrets.COOKIE_ACCESS_MAX_AGE,
+        refreshMaxAge: fastify.secrets.COOKIE_REFRESH_MAX_AGE,
       },
     })
   },
