@@ -113,12 +113,12 @@ t.test('successful login', async (t) => {
   // Verify Set-Cookie headers for token and sessionId
   const setCookieHeaders = login.headers['set-cookie']
   t.ok(
-    setCookieHeaders.some((header) => header.startsWith('token=')),
-    'Token cookie is set',
+    setCookieHeaders.some((header) => header.startsWith('accessToken=')),
+    'accessToken cookie is set',
   )
   t.ok(
-    setCookieHeaders.some((header) => header.startsWith('sessionId=')),
-    'SessionId cookie is set',
+    setCookieHeaders.some((header) => header.startsWith('refreshToken=')),
+    'refreshToken cookie is set',
   )
 
   t.test('access protected route', async (t) => {
