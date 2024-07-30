@@ -34,11 +34,11 @@
     },
     "COOKIE_ACCESS_MAX_AGE": {
       "type": "integer",
-      "default": "3600000"
+      "default": "3600"
     },
     "COOKIE_REFRESH_MAX_AGE": {
       "type": "integer",
-      "default": "2592000000"
+      "default": "2592000"
     }
   }
 }
