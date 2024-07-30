@@ -2,27 +2,14 @@
 
 const fp = require('fastify-plugin')
 const fastifyJwt = require('@fastify/jwt')
-const fastifySession = require('@fastify/session')
 
 module.exports = fp(
   async function authenticationPlugin(fastify) {
     const revokedTokens = new Map()
 
-    fastify.register(fastifySession, {
-      secret: fastify.secrets.SESSION_SECRET,
-      cookie: {
-        cookieName: 'sessionId',
-        signed: true,
-      },
-    })
-
     fastify.register(fastifyJwt, {
       secret: fastify.secrets.JWT_SECRET,
-      cookie: {
-        cookieName: 'token',
-        signed: true,
-      },
-      trusted: function isTrusted(request, decodedToken) {
+      trusted: function isTrusted(decodedToken) {
         return !revokedTokens.has(decodedToken.jti)
       },
     })
@@ -37,10 +24,11 @@ module.exports = fp(
 
     fastify.decorateRequest('revokeToken', async function (request, reply) {
       revokedTokens.set(this.user.jti, true)
-      reply.clearCookie('token')
+      reply.clearCookie('accessToken')
+      reply.clearCookie('refreshToken')
     })
 
-    fastify.decorateRequest('generateToken', async function (reply) {
+    fastify.decorateRequest('generateAccessToken', async function (reply) {
       const token = fastify.jwt.sign(
         {
           id: String(this.user._id),
@@ -48,25 +36,40 @@ module.exports = fp(
         },
         {
           jti: String(Date.now()),
-          expiresIn: fastify.secrets.JWT_EXPIRE_IN,
+          expiresIn: fastify.config.jwt.accessExpireIn,
         },
       )
 
-      reply.setCookie('token', token, {
+      reply.setCookie('accessToken', token, {
         path: '/',
         httpOnly: true,
         sameSite: 'strict',
         secure: process.env.NODE_ENV === 'production',
-        maxAge: fastify.secrets.COOKIE_MAX_AGE,
+        maxAge: fastify.config.cookie.maxAge,
         signed: true,
       })
 
-      reply.setCookie('sessionId', this.session.sessionId, {
+      return token
+    })
+
+    fastify.decorateRequest('generateRefreshToken', async function (reply) {
+      const token = fastify.jwt.sign(
+        {
+          id: String(this.user._id),
+          username: this.user.username,
+        },
+        {
+          jti: String(Date.now()),
+          expiresIn: fastify.config.jwt.refreshExpireIn,
+        },
+      )
+
+      reply.setCookie('refreshToken', token, {
         path: '/',
         httpOnly: true,
         sameSite: 'strict',
         secure: process.env.NODE_ENV === 'production',
-        maxAge: fastify.secrets.SESSION_MAX_AGE,
+        maxAge: fastify.config.cookie.maxAge,
         signed: true,
       })
 
