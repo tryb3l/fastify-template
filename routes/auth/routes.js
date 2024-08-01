@@ -70,6 +70,7 @@ module.exports = fp(
         }
 
         request.user = user
+
         return refreshHandler(request, reply)
       },
     })
@@ -85,7 +86,7 @@ module.exports = fp(
         },
       },
       handler: async function meHandler(request) {
-        return request.user
+        return { user: request.user }
       },
     })
 
