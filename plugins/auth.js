@@ -17,7 +17,6 @@ module.exports = fp(
     fastify.decorate('authenticate', async function authenticate(request, reply) {
       try {
         const token = request.cookies.accessToken
-        console.log(request.cookies.accessToken)
         if (!token) {
           throw new Error('No token provided')
         }
