@@ -8,7 +8,7 @@ module.exports = fp(
     const revokedTokens = new Map()
 
     fastify.register(fastifyJwt, {
-      secret: fastify.secrets.JWT_SECRET,
+      secret: fastify.config.jwt.secret,
       trusted: function isTrusted(decodedToken) {
         return !revokedTokens.has(decodedToken.jti)
       },
@@ -16,7 +16,13 @@ module.exports = fp(
 
     fastify.decorate('authenticate', async function authenticate(request, reply) {
       try {
-        await request.jwtVerify()
+        const token = request.cookies.accessToken
+        console.log(request.cookies.accessToken)
+        if (!token) {
+          throw new Error('No token provided')
+        }
+        request.headers.authorization = `Bearer ${token}`
+        await request.jwtVerify({ token })
       } catch (err) {
         reply.send(err)
       }
