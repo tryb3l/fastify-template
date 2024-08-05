@@ -104,14 +104,17 @@ module.exports = fp(
     })
 
     async function refreshHandler(request, reply) {
-      const accessToken = await request.generateAccessToken(reply)
-      const refreshToken = await request.generateRefreshToken(reply)
+      const accessToken = await request.generateAccessToken()
+      const refreshToken = await request.generateRefreshToken()
       if (!accessToken || !refreshToken) {
         const err = new Error('Failed to generate token')
         err.statusCode = 500
         throw err
       }
-      return { accessToken, refreshToken }
+      reply.setCookie('accessToken', accessToken, { maxAge: fastify.config.cookie.accessMaxAge })
+      reply.setCookie('refreshToken', refreshToken, {
+        maxAge: fastify.config.cookie.refreshMaxAge,
+      })
     }
 
     fastify.post('/logout', {
