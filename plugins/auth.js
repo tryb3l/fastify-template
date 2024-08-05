@@ -46,7 +46,7 @@ module.exports = fp(
           expiresIn: fastify.config.jwt.accessExpireIn,
         },
       )
-      console.log('generateAccessToken -> accessToken ', accessToken)
+
       return accessToken
     })
 
@@ -61,7 +61,7 @@ module.exports = fp(
           expiresIn: fastify.config.jwt.refreshExpireIn,
         },
       )
-      console.log('generateRefreshToken -> refreshToken ', refreshToken)
+
       return refreshToken
     })
   },
