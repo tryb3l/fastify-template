@@ -12,7 +12,7 @@ module.exports = fp(
         httpOnly: true,
         sameSite: 'strict',
         secure: process.env.NODE_ENV === 'production',
-        signed: true,
+        signed: false,
       },
     })
   },
