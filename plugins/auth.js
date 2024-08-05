@@ -7,34 +7,36 @@ module.exports = fp(
   async function authenticationPlugin(fastify) {
     const revokedTokens = new Map()
 
-    fastify.register(fastifyJwt, {
-      secret: fastify.config.jwt.secret,
-      trusted: function isTrusted(decodedToken) {
-        return !revokedTokens.has(decodedToken.jti)
+    fastify.register(
+      fastifyJwt,
+      {
+        secret: fastify.config.jwt.secret,
+        cookie: {
+          cookieName: 'refreshToken',
+          onlyCookie: true,
+        },
       },
-    })
+      {
+        trusted: function isTrusted(decodedToken) {
+          return !revokedTokens.has(decodedToken.jti)
+        },
+      },
+    )
 
-    fastify.decorate('authenticate', async function authenticate(request, reply) {
+    fastify.decorate('authenticate', async function (request, reply) {
       try {
-        const token = request.cookies.accessToken
-        if (!token) {
-          throw new Error('No token provided')
-        }
-        request.headers.authorization = `Bearer ${token}`
-        await request.jwtVerify({ token })
+        await request.jwtVerify({ onlyCookie: true })
       } catch (err) {
         reply.send(err)
       }
     })
 
-    fastify.decorateRequest('revokeToken', async function (request, reply) {
+    fastify.decorateRequest('revokeToken', async function () {
       revokedTokens.set(this.user.jti, true)
-      reply.clearCookie('accessToken')
-      reply.clearCookie('refreshToken')
     })
 
-    fastify.decorateRequest('generateAccessToken', async function (reply) {
-      const token = fastify.jwt.sign(
+    fastify.decorateRequest('generateAccessToken', async function () {
+      const accessToken = fastify.jwt.sign(
         {
           id: String(this.user._id),
           username: this.user.username,
@@ -44,14 +46,12 @@ module.exports = fp(
           expiresIn: fastify.config.jwt.accessExpireIn,
         },
       )
-
-      reply.setCookie('accessToken', token, { maxAge: fastify.config.cookie.accessMaxAge })
-
-      return token
+      console.log('generateAccessToken -> accessToken ', accessToken)
+      return accessToken
     })
 
-    fastify.decorateRequest('generateRefreshToken', async function (reply) {
-      const token = fastify.jwt.sign(
+    fastify.decorateRequest('generateRefreshToken', async function () {
+      const refreshToken = fastify.jwt.sign(
         {
           id: String(this.user._id),
           username: this.user.username,
@@ -61,10 +61,8 @@ module.exports = fp(
           expiresIn: fastify.config.jwt.refreshExpireIn,
         },
       )
-
-      reply.setCookie('refreshToken', token, { maxAge: fastify.config.cookie.refreshMaxAge })
-
-      return token
+      console.log('generateRefreshToken -> refreshToken ', refreshToken)
+      return refreshToken
     })
   },
   {
