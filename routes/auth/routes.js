@@ -82,11 +82,27 @@ module.exports = fp(
         summary: 'Get current user details',
         headers: fastify.getSchema('schema:auth:token-header'),
         response: {
-          200: fastify.getSchema('schema:user'),
+          200: {
+            type: 'object',
+            properties: {
+              data: fastify.getSchema('schema:user'),
+            },
+          },
         },
       },
-      handler: async function meHandler(request) {
-        return { user: request.user }
+      handler: async function meHandler(request, reply) {
+        try {
+          const user = request.user
+          if (!user) {
+            reply.code(404)
+            return { error: 'User not found' }
+          }
+          return { data: user }
+        } catch (error) {
+          console.error('Error fetching user details:', error)
+          reply.code(500)
+          return { error: 'Internal Server Error' }
+        }
       },
     })
 
