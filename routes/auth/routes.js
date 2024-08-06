@@ -115,6 +115,7 @@ module.exports = fp(
       reply.setCookie('refreshToken', refreshToken, {
         maxAge: fastify.config.cookie.refreshMaxAge,
       })
+      reply.send({ accessToken, refreshToken })
     }
 
     fastify.post('/logout', {
