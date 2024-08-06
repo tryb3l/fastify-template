@@ -100,39 +100,34 @@ t.test('successful login', async (t) => {
   const login = await app.inject({
     method: 'POST',
     url: '/auth/authenticate',
+    headers: {
+      'Content-Type': 'application/json',
+    },
     payload: {
       username: 'John Doe',
       password: 'icanpa123123ss',
     },
   })
   t.equal(login.statusCode, 200)
-  t.match(login.json(), {
-    token: /(\w*\.){2}.*/,
-  })
+  const cookies = login.cookies
+  const accessTokenCookie = cookies.find((cookie) => cookie.name === 'accessToken')
+  const refreshTokenCookie = cookies.find((cookie) => cookie.name === 'refreshToken')
 
-  // Verify Set-Cookie headers for token and sessionId
-  const setCookieHeaders = login.headers['set-cookie']
-  t.ok(
-    setCookieHeaders.some((header) => header.startsWith('accessToken=')),
-    'accessToken cookie is set',
-  )
-  t.ok(
-    setCookieHeaders.some((header) => header.startsWith('refreshToken=')),
-    'refreshToken cookie is set',
-  )
+  t.ok(accessTokenCookie, 'accessToken cookie should be set')
+  t.ok(refreshTokenCookie, 'refreshToken cookie should be set')
+  t.match(accessTokenCookie.value, /.+/, 'accessToken should have a value')
+  t.match(refreshTokenCookie.value, /.+/, 'refreshToken should have a value')
 
   t.test('access protected route', async (t) => {
-    const app = await buildApp(t, {
-      MONGO_URL: 'mongodb://localhost:27017/login-test-db',
-    })
     const response = await app.inject({
       method: 'GET',
       url: '/auth/me',
-      headers: {
-        authorization: `Bearer ${login.json().token}`,
+      cookies: {
+        accessToken: accessTokenCookie.value,
+        refreshToken: refreshTokenCookie.value,
       },
     })
     t.equal(response.statusCode, 200)
-    t.match(response.json(), { username: 'John Doe' })
+    t.match(response.json(), { data: { username: 'John Doe' } })
   })
 })
