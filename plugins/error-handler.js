@@ -16,6 +16,7 @@ module.exports = fp(function (fastify, opts, next) {
     }
     if (err.statusCode === 429) {
       reply.code(429).send('You hit the rate limit! Slow down please!')
+      return
     }
     if (reply.statusCode === 400) {
       req.log.info({ req, res: reply, err: err }, 'Bad request')
