@@ -17,11 +17,6 @@ module.exports = fp(function (fastify, opts, next) {
     if (err.statusCode === 429) {
       reply.code(429).send('You hit the rate limit! Slow down please!')
     }
-    if (reply.statusCode === 404) {
-      req.log.info({ req, res: reply, err: err }, 'Not found')
-      reply.code(404).send({ error: 'Not Found', message: 'The requested resource was not found' })
-      return
-    }
     if (reply.statusCode === 400) {
       req.log.info({ req, res: reply, err: err }, 'Bad request')
       reply.code(400).send({
@@ -40,6 +35,13 @@ module.exports = fp(function (fastify, opts, next) {
     }
     req.log.info({ req, res: reply, err: err }, err?.message)
     reply.send(err)
+  })
+  fastify.setNotFoundHandler((req, reply) => {
+    req.log.info({ req, res: reply }, 'Route not found')
+    reply.code(404).send({
+      error: 'Not Found',
+      message: 'The requested resource could not be found',
+    })
   })
   next()
 })
