@@ -4,6 +4,7 @@ const fastifyMultipart = require('@fastify/multipart')
 const { parse: csvParse } = require('csv-parse')
 const { stringify: csvStringify } = require('csv-stringify')
 
+//TODO: review routes and update due to changes in the codebase.
 module.exports = async function fileNoteRoutes(fastify) {
   await fastify.register(fastifyMultipart, {
     attachFieldsToBody: 'keyValues',
@@ -54,10 +55,11 @@ module.exports = async function fileNoteRoutes(fastify) {
             type: 'array',
             items: {
               type: 'object',
-              required: ['title', 'done'],
+              required: ['title', 'body', 'status'],
               properties: {
                 title: { type: 'string' },
-                done: { type: 'boolean' },
+                body: { type: 'string' },
+                status: { type: 'string', enum: ['active', 'archived'] },
               },
             },
           },
@@ -99,7 +101,7 @@ module.exports = async function fileNoteRoutes(fastify) {
         csvStringify({
           quoted_string: true,
           header: true,
-          columns: ['title', 'done', 'createdAt', 'updatedAt', 'id'],
+          columns: ['title', 'status', 'body', 'createdAt', 'updatedAt', 'id'],
           cast: {
             boolean: (value) => (value ? 'true' : 'false'),
             date: (value) => value.toISOString(),
