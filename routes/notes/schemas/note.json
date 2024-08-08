@@ -10,10 +10,22 @@
       "type": "string"
     },
     "title": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
     },
-    "done": {
-      "type": "boolean"
+    "body": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 10000
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 10
+      }
     },
     "createdAt": {
       "type": "string",
@@ -22,6 +34,10 @@
     "modifiedAt": {
       "type": "string",
       "format": "date-time"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "archived"]
     }
   }
 }
