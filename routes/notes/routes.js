@@ -118,12 +118,11 @@ module.exports = async function noteRoutes(fastify) {
       },
     },
     handler: async function changeStatus(request, reply) {
-      const active = request.params.status === 'active'
       const res = await notes.updateOne(
         { _id: new fastify.mongo.ObjectId(request.params.id) },
         {
           $set: {
-            active,
+            status: request.params.status,
             modifiedAt: new Date(),
           },
         },
