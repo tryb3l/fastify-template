@@ -2,7 +2,11 @@
   "type": "object",
   "$id": "schema:note:update:body",
   "additionalProperties": false,
+  "required": ["id"],
   "properties": {
+    "id": {
+      "type": "string"
+    },
     "status": {
       "type": "string",
       "enum": ["active", "archived"]
