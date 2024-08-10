@@ -2,6 +2,7 @@
   "type": "object",
   "$id": "schema:note",
   "additionalProperties": false,
+  "required": ["body"],
   "properties": {
     "_id": {
       "type": "string"
