@@ -65,18 +65,18 @@ module.exports = async function fileNoteRoutes(fastify) {
             },
           },
         },
-        response: {
-          201: {
-            type: 'array',
-            items: fastify.getSchema('schema:note:create:response'),
-          },
+      },
+      response: {
+        201: {
+          type: 'array',
+          items: fastify.getSchema('schema:note:create:response'),
         },
       },
-      handler: async function listNotes(request, reply) {
-        const inserted = await request.notesDataSource.createNotes(request.body.noteListFile)
-        reply.code(201)
-        return inserted
-      },
+    },
+    handler: async function listNotes(request, reply) {
+      const inserted = await request.notesDataSource.createNotes(request.body.noteListFile)
+      reply.code(201)
+      return inserted
     },
   })
 
@@ -102,7 +102,7 @@ module.exports = async function fileNoteRoutes(fastify) {
         csvStringify({
           quoted_string: true,
           header: true,
-          columns: ['title', 'status', 'body', 'createdAt', 'updatedAt'],
+          columns: ['title', 'status', 'body', 'createdAt', 'modifiedAt', 'id'],
           cast: {
             date: (value) => value.toISOString(),
             object: (value) => JSON.stringify(value),
