@@ -1,10 +1,15 @@
 'use strict'
 
+const fs = require('node:fs')
+const { promisify } = require('node:util')
+const { pipeline } = require('node:stream')
+const pump = promisify(pipeline)
 const fastifyMultipart = require('@fastify/multipart')
+const path = require('node:path')
 const { parse: csvParse } = require('csv-parse')
 const { stringify: csvStringify } = require('csv-stringify')
 
-module.exports = async function fileNoteRoutes(fastify) {
+module.exports = async function fileRoutes(fastify) {
   await fastify.register(fastifyMultipart, {
     attachFieldsToBody: 'keyValues',
     async onFile(part) {
@@ -22,7 +27,10 @@ module.exports = async function fileNoteRoutes(fastify) {
       for await (const line of stream) {
         lines.push({
           title: line.title,
-          done: line.done === 'true',
+          body: line.body,
+          status: line.status,
+          createdAt: line.createdat,
+          modifiedAt: line.modifiedat,
         })
       }
 
@@ -60,7 +68,7 @@ module.exports = async function fileNoteRoutes(fastify) {
                 body: { type: 'string' },
                 status: { type: 'string', enum: ['active', 'archived'] },
                 createdat: { type: 'string', format: 'date-time' },
-                updatedat: { type: 'string', format: 'date-time' },
+                modifiedAt: { type: 'string', format: 'date-time' },
               },
             },
           },
@@ -109,6 +117,52 @@ module.exports = async function fileNoteRoutes(fastify) {
           },
         }),
       )
+    },
+  })
+
+  fastify.route({
+    method: 'POST',
+    url: '/upload',
+    schema: {
+      tags: ['files'],
+      summary: 'Upload a file',
+      body: {
+        type: 'object',
+        required: ['file'],
+        properties: {
+          file: { type: 'string', format: 'binary' },
+        },
+      },
+    },
+    handler: async function uploadFile(request, reply) {
+      const parts = request.parts()
+      const uploadDir = './uploads'
+
+      // Ensure the upload directory exists
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true })
+      }
+
+      try {
+        for await (const part of parts) {
+          if (part.file) {
+            const filename = part.filename
+            const filePath = path.join(uploadDir, filename)
+
+            if (part.file.truncated) {
+              return reply.code(400).send({ error: 'File is too large' })
+            }
+
+            await pump(part.file, fs.createWriteStream(filePath))
+          } else {
+            console.log(part)
+          }
+        }
+        return { message: 'File uploaded' }
+      } catch (err) {
+        console.error(err)
+        return reply.code(500).send({ error: 'File upload failed' })
+      }
     },
   })
 }
