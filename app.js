@@ -41,6 +41,21 @@ module.exports = async function (fastify, opts) {
     cascadeHooks: true,
     options: Object.assign({}, opts),
   })
+
+  // Graceful shutdown handler
+  const shutdown = async ()=>{
+    try{
+      await fastify.close()
+      fastify.log.info('Server closed successfully')
+      process.exit(0)
+    }catch(err){
+      fastify.log.error('Error during server close %o', err)
+      process.exit(1)
+    }
+  }
+
+  process.on('SIGINT', shutdown)
+  process.on('SIGTERM', shutdown)
 }
 
 module.exports.options = options
