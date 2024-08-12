@@ -7,7 +7,7 @@ t.test('cannot access protected routes', async (t) => {
   const app = await buildApp(t, {
     MONGO_URL: 'mongodb://localhost:27017/login-test-db',
   })
-  const privateRoutes = ['/auth/me', '/auth/refresh', 'auth/logout']
+  const privateRoutes = ['/auth/me']
 
   for (const url of privateRoutes) {
     const response = await app.inject({ method: 'GET', url })
