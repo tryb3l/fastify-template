@@ -43,12 +43,12 @@ module.exports = async function (fastify, opts) {
   })
 
   // Graceful shutdown handler
-  const shutdown = async ()=>{
-    try{
+  const shutdown = async () => {
+    try {
       await fastify.close()
       fastify.log.info('Server closed successfully')
       process.exit(0)
-    }catch(err){
+    } catch (err) {
       fastify.log.error('Error during server close %o', err)
       process.exit(1)
     }
