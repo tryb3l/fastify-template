@@ -1,27 +1,18 @@
-"use strict";
+'use strict'
 
-const packageJson = require("../package.json");
-const { NodeTracerProvider } = require("@opentelemetry/sdk-trace-node");
-const {
-  SemanticResourceAttributes,
-} = require("@opentelemetry/semantic-conventions");
-const { Resource } = require("@opentelemetry/resources");
-const {
-  ParentBasedSampler,
-  TraceIdRatioBasedSampler,
-} = require("@opentelemetry/sdk-trace-base");
-const { registerInstrumentations } = require("@opentelemetry/instrumentation");
-const { DnsInstrumentation } = require("@opentelemetry/instrumentation-dns");
-const { HttpInstrumentation } = require("@opentelemetry/instrumentation-http");
-const {
-  FastifyInstrumentation,
-} = require("@opentelemetry/instrumentation-fastify");
-const {
-  MongoDBInstrumentation,
-} = require("@opentelemetry/instrumentation-mongodb");
+const packageJson = require('../package.json')
+const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node')
+const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions')
+const { Resource } = require('@opentelemetry/resources')
+const { ParentBasedSampler, TraceIdRatioBasedSampler } = require('@opentelemetry/sdk-trace-base')
+const { registerInstrumentations } = require('@opentelemetry/instrumentation')
+const { DnsInstrumentation } = require('@opentelemetry/instrumentation-dns')
+const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http')
+const { FastifyInstrumentation } = require('@opentelemetry/instrumentation-fastify')
+const { MongoDBInstrumentation } = require('@opentelemetry/instrumentation-mongodb')
 // [3]
-const { BatchSpanProcessor } = require("@opentelemetry/sdk-trace-base");
-const { ZipkinExporter } = require("@opentelemetry/exporter-zipkin");
+const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base')
+const { ZipkinExporter } = require('@opentelemetry/exporter-zipkin')
 
 const sdk = new NodeTracerProvider({
   sampler: new ParentBasedSampler({
@@ -33,7 +24,7 @@ const sdk = new NodeTracerProvider({
     [SemanticResourceAttributes.SERVICE_NAME]: packageJson.name,
     [SemanticResourceAttributes.SERVICE_VERSION]: packageJson.version,
   }),
-});
+})
 
 registerInstrumentations({
   tracerProvider: sdk,
@@ -43,11 +34,11 @@ registerInstrumentations({
     new FastifyInstrumentation(),
     new MongoDBInstrumentation(),
   ],
-});
+})
 
 const exporter = new ZipkinExporter({
-  url: "http://localhost:9411/api/v2/spans",
-});
-sdk.addSpanProcessor(new BatchSpanProcessor(exporter));
-sdk.register({});
-console.log("OpenTelemetry SDK started");
+  url: 'http://localhost:9411/api/v2/spans',
+})
+sdk.addSpanProcessor(new BatchSpanProcessor(exporter))
+sdk.register({})
+console.log('OpenTelemetry SDK started')
