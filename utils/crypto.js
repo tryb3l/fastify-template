@@ -6,7 +6,7 @@ const { isUint32Array } = require('node:util/types')
 
 const UINT32_MAX = 0xffffffff
 const BUF_LEN = 1024
-const BUF_SIZE = BUF_LEN * isUint32Array.BYTES_PER_ELEMENT
+const BUF_SIZE = BUF_LEN * Uint32Array.BYTES_PER_ELEMENT
 
 const randomPrefetcher = {
   buf: crypto.randomBytes(BUF_SIZE),
@@ -107,28 +107,24 @@ const deserializeHash = (phcString) => {
 const SALT_LEN = 32
 const KEY_LEN = 64
 
-const hashPassword = (password) => {
-  new Promise((resolve, reject) => {
-    crypto.randomBytes(SALT_LEN, (err, salt) => {
-      if (err) {
-        reject(err)
-        return
-      }
-      crypto.scrypt(password, salt, KEY_LEN, SCRYPT_PARAMS, (err, hash) => {
-        if (err) {
-          reject(err)
-          return
-        }
-        resolve(serializeHash(hash, salt))
-      })
-    })
-  })
+const hashPassword = async (password) => {
+  try {
+    const salt = await crypto.randomBytes(SALT_LEN)
+    const hash = await crypto.scryptSync(password, salt, KEY_LEN, SCRYPT_PARAMS)
+    return serializeHash(hash, salt)
+  } catch (err) {
+    throw new Error('Error hashing the password: ' + err)
+  }
 }
 
 let defaultHash
-hashPassword('').then((hash) => {
-  defaultHash = hash
-})
+hashPassword('')
+  .then((hash) => {
+    defaultHash = hash
+  })
+  .catch((err) => {
+    console.error('Error hashing password:', err)
+  })
 
 const validatePassword = (password, serHash = defaultHash) => {
   const { params, salt, hash } = deserializeHash(serHash)
