@@ -2,7 +2,6 @@
 
 const crypto = require('node:crypto')
 const fs = require('node:fs')
-const { isUint32Array } = require('node:util/types')
 
 const UINT32_MAX = 0xffffffff
 const BUF_LEN = 1024
