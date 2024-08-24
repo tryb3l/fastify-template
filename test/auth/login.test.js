@@ -4,11 +4,13 @@ const t = require('tap')
 const { buildApp } = require('../helper')
 
 t.test('cannot access protected routes', async (t) => {
+  //Arrange
   const app = await buildApp(t, {
     MONGO_URL: 'mongodb://localhost:27017/login-test-db',
   })
   const privateRoutes = ['/auth/me']
 
+  //Act//Assert
   for (const url of privateRoutes) {
     const response = await app.inject({ method: 'GET', url })
     t.equal(response.statusCode, 401)
@@ -22,9 +24,12 @@ t.test('cannot access protected routes', async (t) => {
 })
 
 t.test('register the user', async (t) => {
+  //Arrange
   const app = await buildApp(t, {
     MONGO_URL: 'mongodb://localhost:27017/login-test-db',
   })
+
+  //Act
   const response = await app.inject({
     method: 'POST',
     url: '/auth/register',
@@ -34,6 +39,8 @@ t.test('register the user', async (t) => {
       password: 'icanpa123123ss',
     },
   })
+
+  //Assert
   t.equal(response.statusCode, 201)
   t.same(response.json(), { registered: true })
 })
@@ -45,6 +52,7 @@ function cleanCache() {
 }
 
 t.test('failed signup, invalid email format', async (t) => {
+  //Arrange
   const path = '../../routes/data-store.js'
   cleanCache()
   require(path)
@@ -58,6 +66,8 @@ t.test('failed signup, invalid email format', async (t) => {
   const app = await buildApp(t, {
     MONGO_URL: 'mongodb://localhost:27017/login-test-db',
   })
+
+  //Act
   const response = await app.inject({
     method: 'POST',
     url: '/auth/register',
@@ -67,13 +77,18 @@ t.test('failed signup, invalid email format', async (t) => {
       email: 'fake#email.com',
     },
   })
+
+  //Assert
   t.equal(response.statusCode, 400)
 })
 
 t.test('failed login', async (t) => {
+  //Arrange
   const app = await buildApp(t, {
     MONGO_URL: 'mongodb://localhost:27017/login-test-db',
   })
+
+  //Act
   const response = await app.inject({
     method: 'POST',
     url: '/auth/authenticate',
@@ -82,6 +97,8 @@ t.test('failed login', async (t) => {
       password: 'wrong',
     },
   })
+
+  //Assert
   t.equal(response.statusCode, 401)
   t.same(response.json(), {
     statusCode: 401,
@@ -91,9 +108,12 @@ t.test('failed login', async (t) => {
 })
 
 t.test('successful login', async (t) => {
+  //Arrange
   const app = await buildApp(t, {
     MONGO_URL: 'mongodb://localhost:27017/login-test-db',
   })
+
+  //Act
   const login = await app.inject({
     method: 'POST',
     url: '/auth/authenticate',
@@ -105,6 +125,8 @@ t.test('successful login', async (t) => {
       password: 'icanpa123123ss',
     },
   })
+
+  //Assert
   t.equal(login.statusCode, 200)
   const cookies = login.cookies
   const accessTokenCookie = cookies.find((cookie) => cookie.name === 'accessToken')
@@ -116,6 +138,7 @@ t.test('successful login', async (t) => {
   t.match(refreshTokenCookie.value, /.+/, 'refreshToken should have a value')
 
   t.test('access protected route', async (t) => {
+    //Arrange//Act
     const response = await app.inject({
       method: 'GET',
       url: '/auth/me',
@@ -124,6 +147,8 @@ t.test('successful login', async (t) => {
         refreshToken: refreshTokenCookie.value,
       },
     })
+
+    //Assert
     t.equal(response.statusCode, 200)
     t.match(response.json(), { data: { username: 'John Doe' } })
   })
