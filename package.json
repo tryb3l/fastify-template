@@ -53,6 +53,7 @@
     "@fastify/swagger-ui": "4.1.0",
     "@fastify/under-pressure": "^8.5.1",
     "@fastify/websocket": "^10.0.1",
+    "close-with-grace": "^2.1.0",
     "csv-parse": "^5.5.6",
     "csv-stringify": "^6.5.1",
     "fast-json-stringify": "^6.0.0",

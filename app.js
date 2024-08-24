@@ -2,6 +2,7 @@
 
 const path = require('node:path')
 const AutoLoad = require('@fastify/autoload')
+const closeWithGrace = require('close-with-grace')
 
 // Pass --options via CLI arguments in command to enable these options.
 const options = require('./configs/server-options.js')
@@ -43,19 +44,15 @@ module.exports = async function (fastify, opts) {
   })
 
   // Graceful shutdown handler
-  const shutdown = async () => {
-    try {
-      await fastify.close()
-      fastify.log.info('Server closed successfully')
-      process.exit(0)
-    } catch (err) {
-      fastify.log.error('Error during server close %o', err)
-      process.exit(1)
+  // eslint-disable-next-line no-unused-vars
+  closeWithGrace(async function ({ signal, err, manual }) {
+    if (err) {
+      fastify.log.error({ err }, 'server closing with error')
+    } else {
+      fastify.log.info(`${signal} received, server closing`)
     }
-  }
-
-  process.on('SIGINT', shutdown)
-  process.on('SIGTERM', shutdown)
+    await fastify.close()
+  })
 }
 
 module.exports.options = options
