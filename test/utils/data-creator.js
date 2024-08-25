@@ -14,8 +14,13 @@ function randomPassword(length = 12) {
   return generateKey(length, 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789')
 }
 
+function randomString(length = 20) {
+  return generateKey(length, 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789')
+}
+
 module.exports = {
   randomUsername,
   randomEmail,
   randomPassword,
+  randomString,
 }
