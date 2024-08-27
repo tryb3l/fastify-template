@@ -13,12 +13,19 @@ module.exports = fp(
           const totalCount = await notes.countDocuments(filter)
           return totalCount
         },
-        async readNote(id, projection = {}) {
-          const note = await notes.findOne(
-            { _id: fastify.mongo.ObjectId.createFromTime(id) },
-            { projection: { ...projection, _id: 0 } },
+        async readNote(id) {
+          return await notes.findOne(
+            { _id: id },
+            {
+              projection: {
+                _id: 1,
+                title: 1,
+                body: 1,
+                tags: 1,
+                createdAt: 1,
+              },
+            },
           )
-          return note
         },
         async listNotes({
           filter = {},
