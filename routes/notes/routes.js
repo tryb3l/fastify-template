@@ -57,13 +57,19 @@ module.exports = async function noteRoutes(fastify) {
       },
     },
     handler: async function readNote(request, reply) {
-      const note = await request.notesDataSource.readNote(request.params.id)
-      if (!note) {
-        reply.code(404)
-        return { error: 'Record is not found' }
+      try {
+        const note = await this.notesDataSource.readNote(request.params.id)
+        if (!note) {
+          reply.code(404)
+          return { error: 'Note not found' }
+        }
+
+        return { data: note }
+      } catch (error) {
+        console.error('Error fetching note details:', error)
+        reply.code(500)
+        return { error: 'Internal Server Error' }
       }
-      reply.code(201)
-      return note
     },
   })
 
