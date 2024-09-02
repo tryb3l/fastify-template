@@ -40,7 +40,13 @@ module.exports = async function noteRoutes(fastify) {
     },
     handler: async function createNote(request, reply) {
       const insertedId = await request.notesDataSource.createNote(request.body)
-      reply.code(201)
+      try {
+        reply.code(201)
+      } catch (error) {
+        console.error('Error creating note:', error)
+        reply.code(500)
+        return { error: 'Internal Server Error' }
+      }
       return { id: insertedId }
     },
   })
