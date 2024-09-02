@@ -1,7 +1,7 @@
 {
   "type": "object",
   "$id": "schema:note:create:body",
-  "required": ["body"],
+  "required": ["body", "title"],
   "additionalProperties": false,
   "properties": {
     "title": {
