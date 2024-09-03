@@ -61,7 +61,7 @@
     "fastify-cli": "^6.3.0",
     "fastify-html": "^0.5.0",
     "fastify-metrics": "^11.0.0",
-    "fastify-plugin": "^4.5.1",
+    "fastify-plugin": "^5.0.0",
     "fastify-secrets-env": "^2.1.8",
     "split2": "^4.2.0"
   },
