@@ -16,6 +16,9 @@ module.exports = async function noteRoutes(fastify) {
     },
     handler: async function listNotes(request, reply) {
       const { skip, limit, title } = request.query
+      if (skip < 0 || limit < 0) {
+        return reply.status(400).send({ message: 'Skip and limit must be non-negative integers' })
+      }
       const notes = await request.notesDataSource.listNotes({
         filter: { title },
         skip,
