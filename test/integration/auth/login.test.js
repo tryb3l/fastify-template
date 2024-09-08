@@ -1,7 +1,7 @@
 'use strict'
 
 const t = require('tap')
-const { buildApp } = require('../helper')
+const { buildApp } = require('../../helper')
 
 t.test('cannot access protected routes', async (t) => {
   //Arrange
@@ -53,8 +53,8 @@ function cleanCache() {
 
 t.test('failed signup, invalid email format', async (t) => {
   //Arrange
-  const path = '../../routes/data-store.js'
-  cleanCache()
+  const path = '../../..'
+   cleanCache()
   require(path)
   require.cache[require.resolve(path)].exports = {
     async store() {
