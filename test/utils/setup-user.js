@@ -4,8 +4,8 @@ const { buildApp } = require('../helper')
 const { randomUsername, randomEmail, randomPassword } = require('./data-creator')
 
 async function setup(t) {
-  //Register the user
-  //Arrange
+  // Register the user
+  // Arrange
   const app = await buildApp(t, {
     MONGO_URL: 'mongodb://localhost:27017/test-db',
   })
@@ -14,7 +14,7 @@ async function setup(t) {
   const email = randomEmail(10, 5)
   const password = randomPassword(15)
 
-  //Act
+  // Act
   const registerResponse = await app.inject({
     method: 'POST',
     url: '/auth/register',
@@ -24,12 +24,12 @@ async function setup(t) {
       password: password,
     },
   })
-  //Assert
+  // Assert
   t.equal(registerResponse.statusCode, 201)
   t.same(registerResponse.json(), { registered: true })
 
-  //Authenticate the user
-  //Arrange
+  // Authenticate the user
+  // Arrange
   const loginResponse = await app.inject({
     method: 'POST',
     url: '/auth/authenticate',
@@ -41,7 +41,7 @@ async function setup(t) {
       password: password,
     },
   })
-  //Assert
+  // Assert
   t.equal(loginResponse.statusCode, 200)
   const cookies = loginResponse.cookies
   const accessTokenCookie = cookies.find((cookie) => cookie.name === 'accessToken')
@@ -55,7 +55,22 @@ async function setup(t) {
   const accessToken = accessTokenCookie.value
   const refreshToken = refreshTokenCookie.value
 
-  return { app, accessToken, refreshToken }
+  // Fetch the user ID
+  const userResponse = await app.inject({
+    method: 'GET',
+    url: '/auth/me',
+    headers: {
+      contentType: 'application/json',
+    },
+    cookies: {
+      accessToken: accessToken,
+      refreshToken: refreshToken,
+    },
+  })
+
+  const userId = userResponse.json().id
+
+  return { app, accessToken, refreshToken, userId }
 }
 
 module.exports = { setup }
