@@ -3,7 +3,6 @@
 module.exports = async function noteRoutes(fastify) {
   fastify.addHook('onRequest', fastify.authenticate)
 
-  const notes = fastify.mongo.db.collection('notes')
   fastify.route({
     method: 'GET',
     url: '/',
@@ -113,40 +112,8 @@ module.exports = async function noteRoutes(fastify) {
     },
     handler: async function deleteNoteHandler(request, reply) {
       const { id } = request.params
-      const res = await notes.deleteOne({
-        _id: id,
-      })
+      const res = await request.notesDataSource.deleteNote(id)
       if (res.deletedCount === 0) {
-        reply.code(404)
-        return { error: 'Record is not found' }
-      }
-      reply.code(204)
-    },
-  })
-
-  fastify.route({
-    method: 'POST',
-    url: '/:id/:status',
-    schema: {
-      tags: ['notes'],
-      summary: 'Change note status by id',
-      params: fastify.getSchema('schema:note:status:params'),
-      response: {
-        204: fastify.getSchema('schema:note:status:response'),
-      },
-    },
-    handler: async function changeStatusHandler(request, reply) {
-      const { id } = request.params
-      const res = await notes.updateOne(
-        { _id: id },
-        {
-          $set: {
-            status: request.params.status,
-            modifiedAt: new Date(),
-          },
-        },
-      )
-      if (res.modifiedCount === 0) {
         reply.code(404)
         return { error: 'Record is not found' }
       }
