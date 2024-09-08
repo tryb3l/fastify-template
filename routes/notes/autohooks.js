@@ -1,11 +1,16 @@
 'use strict'
 const fp = require('fastify-plugin')
 const schemas = require('./schemas/loader')
+const { randomUUID } = require('node:crypto')
+
 module.exports = fp(
   async function noteAutoHooks(fastify) {
     const notes = fastify.mongo.db.collection('notes')
-    await fastify.register(schemas)
+
+    fastify.register(schemas)
+
     fastify.decorateRequest('notesDataSource', null)
+
     fastify.addHook('onRequest', async (request) => {
       request.notesDataSource = {
         async countNotes(filter = {}) {
@@ -13,20 +18,7 @@ module.exports = fp(
           const totalCount = await notes.countDocuments(filter)
           return totalCount
         },
-        async readNote(id) {
-          return await notes.findOne(
-            { _id: id },
-            {
-              projection: {
-                _id: 1,
-                title: 1,
-                body: 1,
-                tags: 1,
-                createdAt: 1,
-              },
-            },
-          )
-        },
+
         async listNotes({
           filter = {},
           projection = {},
@@ -49,21 +41,25 @@ module.exports = fp(
           }
           return cursor.toArray()
         },
-        async createNote({ title }) {
-          const _id = new fastify.mongo.ObjectId()
+
+        async createNote({ title, body }) {
+          const _id = randomUUID()
           const now = new Date()
           const userId = request.user.id
+          const tags = []
           const { insertedId } = await notes.insertOne({
             _id,
             userId,
             title,
-            done: false,
+            body,
+            tags,
             id: _id,
             createdAt: now,
             modifiedAt: now,
           })
           return insertedId
         },
+
         async createNotes(noteList) {
           const now = new Date()
           const userId = request.user.id
@@ -79,11 +75,40 @@ module.exports = fp(
             }
           })
           await notes.insertMany(toInsert)
-          return toInsert.map(({ note }) => note._id)
+          return toInsert.map((note) => note._id)
+        },
+
+        async readNote(id, projection = {}) {
+          try {
+            const note = await notes.findOne(
+              { _id: id, userId: request.user.id },
+              {
+                projection: {
+                  _id: 1,
+                  id: 1,
+                  title: 1,
+                  body: 1,
+                  tags: 1,
+                  createdAt: 1,
+                  modifiedAt: 1,
+                  ...projection,
+                },
+              },
+            )
+            if (!note) {
+              console.error(`Note not found for ID: ${id} and User ID: ${request.user.id}`)
+              throw new Error('Note not found')
+            }
+
+            return note
+          } catch (error) {
+            console.error('Error reading note:', error)
+            throw error
+          }
         },
         async updateNote(id, newNote) {
           return notes.updateOne(
-            { _id: fastify.mongo.ObjectId.createFromTime(id) },
+            { _id: id, userId: request.user.id },
             {
               $set: {
                 ...newNote,
@@ -92,13 +117,18 @@ module.exports = fp(
             },
           )
         },
+
         async deleteNote(id) {
           return notes.deleteOne({
-            _id: fastify.mongo.ObjectId.createFromTime(id),
+            _id: id,
           })
         },
       }
     })
   },
-  { encapsulate: true, dependencies: ['@fastify/mongodb'], name: 'note-store' },
+  {
+    encapsulate: true,
+    dependencies: ['@fastify/mongodb'],
+    name: 'note-store',
+  },
 )
