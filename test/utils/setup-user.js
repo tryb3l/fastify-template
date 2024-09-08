@@ -24,6 +24,10 @@ async function setup(t) {
       password: password,
     },
   })
+
+  // Log the register response
+  console.log('Register Response:', registerResponse.statusCode, registerResponse.json())
+
   // Assert
   t.equal(registerResponse.statusCode, 201)
   t.same(registerResponse.json(), { registered: true })
@@ -41,6 +45,10 @@ async function setup(t) {
       password: password,
     },
   })
+
+  // Log the login response
+  console.log('Login Response:', loginResponse.statusCode, loginResponse.json())
+
   // Assert
   t.equal(loginResponse.statusCode, 200)
   const cookies = loginResponse.cookies
@@ -68,9 +76,9 @@ async function setup(t) {
     },
   })
 
-  const userId = userResponse.json().id
+  const userId = userResponse.json().data.id
 
-  return { app, accessToken, refreshToken, userId }
+  return { app, accessToken, refreshToken, userId, username, password }
 }
 
 module.exports = { setup }
