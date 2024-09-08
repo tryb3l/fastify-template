@@ -5,7 +5,8 @@
   "required": ["id"],
   "properties": {
     "id": {
-      "type": "string"
+      "type": "string",
+      "format": "uuid"
     },
     "status": {
       "type": "string",
