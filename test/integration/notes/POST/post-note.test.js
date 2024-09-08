@@ -1,8 +1,8 @@
 'use strict'
 
 const t = require('tap')
-const { setup } = require('../../utils/setup-user')
-const { randomString } = require('../../utils/data-creator')
+const { setup } = require('../../../utils/setup-user')
+const { randomString } = require('../../../utils/data-creator')
 
 t.beforeEach(async (t) => {
   const { app, accessToken, refreshToken } = await setup(t)
