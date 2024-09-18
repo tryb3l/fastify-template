@@ -1,7 +1,9 @@
+// routes/notes/autohooks.js
 'use strict'
 const fp = require('fastify-plugin')
 const schemas = require('./schemas/loader')
 const { randomUUID } = require('node:crypto')
+const { createNotFoundError, handleReadNoteError } = require('../../utils/error')
 
 module.exports = fp(
   async function noteAutoHooks(fastify) {
@@ -11,7 +13,7 @@ module.exports = fp(
 
     fastify.decorateRequest('notesDataSource', null)
 
-    fastify.addHook('onRequest', async (request) => {
+    fastify.addHook('onRequest', async (request, reply) => {
       request.notesDataSource = {
         async countNotes(filter = {}) {
           filter.userId = request.user.id
@@ -42,11 +44,10 @@ module.exports = fp(
           return cursor.toArray()
         },
 
-        async createNote({ title, body }) {
+        async createNote({ title, body, tags }) {
           const _id = randomUUID()
           const now = new Date()
           const userId = request.user.id
-          const tags = []
           const { insertedId } = await notes.insertOne({
             _id,
             userId,
@@ -96,16 +97,15 @@ module.exports = fp(
               },
             )
             if (!note) {
-              console.error(`Note not found for ID: ${id} and User ID: ${request.user.id}`)
-              throw new Error('Note not found')
+              request.log.info(`Note not found for ID: ${id} and User ID: ${request.user.id}`)
+              throw createNotFoundError('Note not found')
             }
-
             return note
           } catch (error) {
-            console.error('Error reading note:', error)
-            throw error
+            return handleReadNoteError(error, request, reply)
           }
         },
+
         async updateNote(id, newNote) {
           return notes.updateOne(
             { _id: id, userId: request.user.id },
