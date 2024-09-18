@@ -1,4 +1,5 @@
 'use strict'
+const { handleReadNoteError, createNotFoundError } = require('../../utils/error')
 
 module.exports = async function noteRoutes(fastify) {
   fastify.addHook('onRequest', fastify.authenticate)
@@ -62,7 +63,25 @@ module.exports = async function noteRoutes(fastify) {
       summary: 'Read a note by id',
       params: fastify.getSchema('schema:note:read:params'),
       response: {
-        200: fastify.getSchema('schema:note'),
+        200: { $ref: 'schema:note' },
+        404: {
+          type: 'object',
+          properties: {
+            statusCode: { type: 'integer' },
+            error: { type: 'string' },
+            message: { type: 'string' },
+            requestId: { type: 'string' },
+          },
+        },
+        401: {
+          type: 'object',
+          properties: {
+            statusCode: { type: 'integer' },
+            error: { type: 'string' },
+            message: { type: 'string' },
+            requestId: { type: 'string' },
+          },
+        },
       },
     },
     handler: async function readNoteHandler(request, reply) {
@@ -70,14 +89,11 @@ module.exports = async function noteRoutes(fastify) {
         const { id } = request.params
         const note = await request.notesDataSource.readNote(id)
         if (!note) {
-          reply.code(404)
-          return { error: 'Note not found' }
+          throw createNotFoundError('Note not found')
         }
-        reply.send({ data: note })
+        await reply.send({ data: note })
       } catch (error) {
-        console.error('Error fetching note details:', error)
-        reply.code(500)
-        return { error: error.message || 'Internal Server Error' }
+        await handleReadNoteError(error, request, reply)
       }
     },
   })
