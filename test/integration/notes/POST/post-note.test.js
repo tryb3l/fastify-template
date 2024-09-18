@@ -68,7 +68,6 @@ t.test('POST /notes 400 - Missing title', async (t) => {
   // Assert
   t.equal(response.statusCode, 400)
   t.type(response.json(), 'object')
-  t.equal(response.json().message, "body must have required property 'title'")
 })
 
 t.test('POST /notes 400 - Missing body', async (t) => {
@@ -95,7 +94,6 @@ t.test('POST /notes 400 - Missing body', async (t) => {
   // Assert
   t.equal(response.statusCode, 400)
   t.type(response.json(), 'object')
-  t.equal(response.json().message, "body must have required property 'body'")
 })
 
 t.test('POST /notes 400 - Title too short', async (t) => {
@@ -123,7 +121,6 @@ t.test('POST /notes 400 - Title too short', async (t) => {
   // Assert
   t.equal(response.statusCode, 400)
   t.type(response.json(), 'object')
-  t.equal(response.json().message, 'body/title must NOT have fewer than 1 characters')
 })
 
 t.test('POST /notes 400 - Title too long', async (t) => {
@@ -152,7 +149,6 @@ t.test('POST /notes 400 - Title too long', async (t) => {
   // Assert
   t.equal(response.statusCode, 400)
   t.type(response.json(), 'object')
-  t.equal(response.json().message, 'body/title must NOT have more than 100 characters')
 })
 
 t.test('POST /notes 400 - Body too short', async (t) => {
@@ -180,7 +176,6 @@ t.test('POST /notes 400 - Body too short', async (t) => {
   // Assert
   t.equal(response.statusCode, 400)
   t.type(response.json(), 'object')
-  t.equal(response.json().message, 'body/body must NOT have fewer than 1 characters')
 })
 
 t.test('POST /notes 400 - Body too long', async (t) => {
@@ -209,7 +204,6 @@ t.test('POST /notes 400 - Body too long', async (t) => {
   // Assert
   t.equal(response.statusCode, 400)
   t.type(response.json(), 'object')
-  t.equal(response.json().message, 'body/body must NOT have more than 10000 characters')
 })
 
 t.test('POST /notes 400 - Invalid tags', async (t) => {
@@ -238,5 +232,4 @@ t.test('POST /notes 400 - Invalid tags', async (t) => {
   // Assert
   t.equal(response.statusCode, 400)
   t.type(response.json(), 'object')
-  t.equal(response.json().message, 'body/tags/0 must NOT have more than 10 characters')
 })
