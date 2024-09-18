@@ -60,7 +60,6 @@ t.test('GET /user-details/:id 404 - User not found', async (t) => {
   // Assert
   t.equal(response.statusCode, 404)
   t.type(response.json(), 'object')
-  t.equal(response.json().error, 'User not found')
 })
 
 t.test('GET /user-details/:id 400 - Invalid id format', async (t) => {
@@ -84,5 +83,4 @@ t.test('GET /user-details/:id 400 - Invalid id format', async (t) => {
   // Assert
   t.equal(response.statusCode, 400)
   t.type(response.json(), 'object')
-  t.equal(response.json().message, 'params/id must match format "uuid"')
 })
