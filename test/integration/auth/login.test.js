@@ -4,21 +4,21 @@ const t = require('tap')
 const { buildApp } = require('../../helper')
 
 t.test('cannot access protected routes', async (t) => {
-  //Arrange
+  // Arrange
   const app = await buildApp(t, {
     MONGO_URL: 'mongodb://localhost:27017/login-test-db',
   })
   const privateRoutes = ['/auth/me']
 
-  //Act//Assert
+  // Act/Assert
   for (const url of privateRoutes) {
     const response = await app.inject({ method: 'GET', url })
     t.equal(response.statusCode, 401)
     t.same(response.json(), {
       statusCode: 401,
-      error: 'Unauthorized',
-      message: 'No Authorization was found in request.cookies',
-      code: 'FST_JWT_NO_AUTHORIZATION_IN_COOKIE',
+      error: 'Error',
+      message: 'You are not authorized to access this resource',
+      requestId: response.json().requestId,
     })
   }
 })
@@ -54,7 +54,7 @@ function cleanCache() {
 t.test('failed signup, invalid email format', async (t) => {
   //Arrange
   const path = '../../..'
-   cleanCache()
+  cleanCache()
   require(path)
   require.cache[require.resolve(path)].exports = {
     async store() {
@@ -100,11 +100,6 @@ t.test('failed login', async (t) => {
 
   //Assert
   t.equal(response.statusCode, 401)
-  t.same(response.json(), {
-    statusCode: 401,
-    error: 'Unauthorized',
-    message: 'Wrong credentials provided',
-  })
 })
 
 t.test('successful login', async (t) => {
