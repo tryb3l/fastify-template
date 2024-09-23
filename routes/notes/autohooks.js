@@ -48,8 +48,7 @@ module.exports = fp(
           const _id = randomUUID()
           const now = new Date()
           const userId = request.user.id
-          const { insertedId } = await notes.insertOne({
-            _id,
+          const note = {
             userId,
             title,
             body,
@@ -57,8 +56,9 @@ module.exports = fp(
             id: _id,
             createdAt: now,
             modifiedAt: now,
-          })
-          return insertedId
+          }
+          await notes.insertOne(note)
+          return note
         },
 
         async createNotes(noteList) {
@@ -107,7 +107,7 @@ module.exports = fp(
         },
 
         async updateNote(id, newNote) {
-          return notes.updateOne(
+          const result = await notes.findOneAndUpdate(
             { _id: id, userId: request.user.id },
             {
               $set: {
@@ -115,7 +115,15 @@ module.exports = fp(
                 modifiedAt: new Date(),
               },
             },
+            { returnDocument: 'after' },
           )
+
+          if (!result.value) {
+            request.log.info(`Note not found for ID: ${id} and User ID: ${request.user.id}`)
+            throw createNotFoundError('Note not found')
+          }
+
+          return result.value
         },
 
         async deleteNote(id) {
