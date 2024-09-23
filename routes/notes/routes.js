@@ -39,11 +39,11 @@ module.exports = async function noteRoutes(fastify) {
       summary: 'Create a note',
       body: fastify.getSchema('schema:note:create:body'),
       response: {
-        201: fastify.getSchema('schema:note:create:response'),
+        201: { $ref: 'schema:note' },
       },
     },
     handler: async function createNoteHandler(request, reply) {
-      const insertedId = await request.notesDataSource.createNote(request.body)
+      const note = await request.notesDataSource.createNote(request.body)
       try {
         reply.code(201)
       } catch (error) {
@@ -51,7 +51,7 @@ module.exports = async function noteRoutes(fastify) {
         reply.code(500)
         return { error: 'Internal Server Error' }
       }
-      return { id: insertedId }
+      await reply.send({ data: note })
     },
   })
 
@@ -100,21 +100,32 @@ module.exports = async function noteRoutes(fastify) {
 
   fastify.route({
     method: 'PUT',
-    url: '/:id',
+    url: '/',
     schema: {
       tags: ['notes'],
       summary: 'Update a note by id',
-      params: fastify.getSchema('schema:note:read:params'),
       body: fastify.getSchema('schema:note:update:body'),
+      response: {
+        200: { $ref: 'schema:note' },
+        404: {
+          type: 'object',
+          properties: {
+            statusCode: { type: 'integer' },
+            error: { type: 'string' },
+            message: { type: 'string' },
+            requestId: { type: 'string' },
+          },
+        },
+      },
     },
     handler: async function updateNoteHandler(request, reply) {
-      const { id } = request.params
-      const res = await request.notesDataSource.updateNote(id, request.body)
-      if (res.modifiedCount === 0) {
+      const { id, ...updateData } = request.body
+      const updatedNote = await request.notesDataSource.updateNote(id, updateData)
+      if (!updatedNote) {
         reply.code(404)
-        return { error: 'Record is not found' }
+        throw createNotFoundError('Note not found')
       }
-      reply.code(204)
+      await reply.send({ data: { updatedNote } })
     },
   })
 
