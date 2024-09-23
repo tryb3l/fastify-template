@@ -14,8 +14,23 @@ function randomPassword(length = 12) {
   return generateKey(length, 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789')
 }
 
-function randomString(length = 20) {
-  return generateKey(length, 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789')
+function randomString(
+  input = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
+  length = 20,
+) {
+  const defaultSymbols = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+  const allowedSymbols = typeof input === 'string' ? input : defaultSymbols
+  const finalLength = typeof input === 'number' ? input : length
+
+  return generateKey(finalLength, allowedSymbols)
+}
+
+function randomStringWithPrefix(
+  prefix = '',
+  allowedSymbols = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
+  length = 20,
+) {
+  return `${prefix}${generateKey(length, allowedSymbols)}`.slice(0, length)
 }
 
 module.exports = {
@@ -23,4 +38,5 @@ module.exports = {
   randomEmail,
   randomPassword,
   randomString,
+  randomStringWithPrefix,
 }
