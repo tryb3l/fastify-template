@@ -10,7 +10,7 @@ To execute this example, you'll need to install Node.js, Docker, and MongoDB. Mo
 
 #### You can use the following versions:
 
-- Node.js 21+
+- Node.js 22
 - MongoDB 7
 - Latest Docker engine
 
