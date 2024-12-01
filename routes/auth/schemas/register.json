@@ -11,6 +11,7 @@
     },
     "email": {
       "$ref": "schema:auth:email#"
-    }
+    },
+    "role": { "type": "string", "enum": ["user", "admin"] }
   }
 }
