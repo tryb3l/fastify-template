@@ -22,6 +22,7 @@
     "email": { "$ref": "schema:auth:email#" },
     "password": { "$ref": "schema:auth:password#" },
     "firstName": { "$ref": "schema:auth:firstname#" },
-    "lastName": { "$ref": "schema:auth:lastname#" }
+    "lastName": { "$ref": "schema:auth:lastname#" },
+    "role": { "type": "string", "enum": ["user", "admin"] }
   }
 }
