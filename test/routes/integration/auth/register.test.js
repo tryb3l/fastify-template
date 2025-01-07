@@ -1,7 +1,7 @@
 'use strict'
 
 const t = require('tap')
-const { buildApp } = require('../../helper')
+const { buildApp } = require('../../../helper')
 
 t.skip('register the user', async (t) => {
   const app = await buildApp(t, {

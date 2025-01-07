@@ -1,7 +1,13 @@
 {
-  "type": "object",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "schema:dotenv",
-  "required": ["MONGO_URL", "JWT_SECRET"],
+  "type": "object",
+  "required": [
+    "MONGO_URL",
+    "JWT_SECRET",
+    "COOKIE_SECRET"
+  ],
+  "additionalProperties": false,
   "properties": {
     "NODE_ENV": {
       "type": "string",
@@ -25,7 +31,7 @@
       "type": "string",
       "default": "1h"
     },
-    "REFRESH_TOKEN_EXPIRE_IN": {
+    "JWT_REFRESH_EXPIRE_IN": {
       "type": "string",
       "default": "30d"
     },
@@ -34,11 +40,11 @@
     },
     "COOKIE_ACCESS_MAX_AGE": {
       "type": "integer",
-      "default": "3600"
+      "default": 3600
     },
     "COOKIE_REFRESH_MAX_AGE": {
       "type": "integer",
-      "default": "2592000"
+      "default": 2592000
     }
   }
 }
