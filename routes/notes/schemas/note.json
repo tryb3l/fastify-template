@@ -1,41 +1,38 @@
 {
   "type": "object",
   "$id": "schema:note",
-  "additionalProperties": false,
   "properties": {
-    "data": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string",
-          "format": "uuid"
-        },
-        "title": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "title": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "body": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 10000
+      },
+      "tags": {
+        "type": "array",
+        "items": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 100
-        },
-        "body": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 10000
-        },
-        "tags": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 10
-          }
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "modifiedAt": {
-          "type": "string",
-          "format": "date-time"
+          "maxLength": 10
         }
+      },
+      "createdAt": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "modifiedAt": {
+        "type": "string",
+        "format": "date-time"
       }
     }
   }
