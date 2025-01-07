@@ -32,6 +32,12 @@ async function setup(t) {
   t.equal(registerResponse.statusCode, 201)
   t.same(registerResponse.json(), { registered: true })
 
+  // Update the user's role in the database if needed
+  if (role !== 'user') {
+    const usersCollection = app.mongo.db.collection('users')
+    await usersCollection.updateOne({ username: username }, { $set: { role: role } })
+  }
+
   // Authenticate the user
   // Arrange
   const loginResponse = await app.inject({
