@@ -55,4 +55,5 @@ module.exports = fp(function (fastify, opts, next) {
   })
 
   next()
-})
+},
+  {name: 'error-handler'})
