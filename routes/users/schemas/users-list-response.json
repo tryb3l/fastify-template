@@ -5,46 +5,46 @@
   "properties": {
     "type": "array",
     "items": {
-      "id": {
-        "type": "string",
-        "format": "uuid",
-        "readOnly": true
-      },
-      "createdAt": {
-        "type": "string",
-        "format": "date-time",
-        "readOnly": true
-      },
-      "modifiedAt": {
-        "type": "string",
-        "format": "date-time",
-        "readOnly": true
-      },
-      "username": {
-        "type": "string",
-        "minLength": 3,
-        "maxLength": 32
-      },
-      "email": {
-        "type": "string",
-        "format": "email"
-      },
-      "firstName": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 64
-      },
-      "lastName": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 64
-      },
-      "role": {
-        "type": "string",
-        "enum": [
-          "user",
-          "admin"
-        ]
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "modifiedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "username": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 32
+        },
+        "email": {
+          "type": "string",
+          "format": "email"
+        },
+        "firstName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "lastName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "user",
+            "admin"
+          ]
+        }
       }
     }
   },

@@ -1,7 +1,6 @@
 {
   "type": "object",
   "$id": "schema:user:list:query",
-  "additionalProperties": false,
   "properties": {
     "id": {
       "type": "string",
