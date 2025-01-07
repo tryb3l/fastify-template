@@ -7,6 +7,7 @@ module.exports = {
   logger: loggerOptions,
   requestIdLogLabel: false,
   requestIdHeader: 'x-request-id',
+  pluginTimeout: 20000,
   genReqId(req) {
     return req.headers['x-amz-request-id'] || crypto.randomUUID()
   },
