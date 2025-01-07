@@ -1,16 +1,33 @@
 'use strict'
 
-const fp = require('fastify-plugin')
+const path = require('path')
 
-module.exports = fp(async function schemaLoaderPlugin(fastify) {
-  fastify.addSchema(require('./register.json'))
-  fastify.addSchema(require('./authenticate.json'))
-  fastify.addSchema(require('./token-header.json'))
-  fastify.addSchema(require('./token.json'))
-  fastify.addSchema(require('./user.json'))
-  fastify.addSchema(require('./email.json'))
-  fastify.addSchema(require('./password.json'))
-  fastify.addSchema(require('./username.json'))
-  fastify.addSchema(require('./firstname.json'))
-  fastify.addSchema(require('./lastname.json'))
-})
+async function authSchemasLoader(fastify) {
+  console.log('Loading auth schemas')
+  const schemas = [
+    './register.json',
+    './authenticate.json',
+    './email.json',
+    './firstname.json',
+    './lastname.json',
+    './password.json',
+    './token-header.json',
+    './token.json',
+    './username.json',
+    './user.json'
+  ]
+
+  try {
+    for (const schemaPath of schemas) {
+      const schema = require(path.resolve(__dirname, schemaPath))
+      await fastify.addSchema(schema)
+      console.log(`Auth schema added: ${schema.$id}`)
+    }
+    console.log('Auth schemas loaded')
+  } catch (err) {
+    console.error('Error loading auth schemas:', err)
+    throw err
+  }
+}
+
+module.exports = { authSchemasLoader }

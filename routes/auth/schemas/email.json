@@ -1,6 +1,5 @@
 {
-  "type": "string",
   "$id": "schema:auth:email",
-  "format": "email",
-  "pattern": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+  "type": "string",
+  "format": "email"
 }
