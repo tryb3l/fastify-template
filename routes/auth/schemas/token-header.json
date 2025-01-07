@@ -1,10 +1,14 @@
 {
-  "type": "object",
   "$id": "schema:auth:token-header",
+  "type": "object",
   "properties": {
     "authorization": {
       "type": "string",
-      "pattern": "^Bearer [a-zA-Z0-9-._~+/]+=*$"
+      "pattern": "^Bearer\\s[A-Za-z0-9-_=]+\\.[A-Za-z0-9-_=]+\\.[A-Za-z0-9-_.+/=]*$",
+      "description": "Format: Bearer <token>"
     }
-  }
+  },
+  "required": [
+    "authorization"
+  ]
 }

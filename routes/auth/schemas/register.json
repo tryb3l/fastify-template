@@ -1,17 +1,32 @@
 {
-  "type": "object",
   "$id": "schema:auth:register",
-  "required": ["username", "password", "email"],
+  "type": "object",
   "properties": {
     "username": {
-      "$ref": "schema:auth:username#"
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 32
     },
     "password": {
-      "$ref": "schema:auth:password#"
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 64
     },
     "email": {
-      "$ref": "schema:auth:email#"
+      "type": "string",
+      "format": "email"
     },
-    "role": { "type": "string", "enum": ["user", "admin"] }
-  }
+    "role": {
+      "type": "string",
+      "enum": [
+        "user",
+        "admin"
+      ]
+    }
+  },
+  "required": [
+    "username",
+    "password",
+    "email"
+  ]
 }
