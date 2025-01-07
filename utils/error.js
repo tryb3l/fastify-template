@@ -8,6 +8,8 @@ function createNotFoundError(message) {
 }
 
 async function handleReadNoteError(error, request, reply) {
+  if (reply.sent) return
+
   if (error.name === 'NotFoundError') {
     const { id } = request.params
     request.log.info(`Note not found for ID: ${id} and User ID: ${request.user.id}`)
