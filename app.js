@@ -4,55 +4,45 @@ const path = require('node:path')
 const AutoLoad = require('@fastify/autoload')
 const closeWithGrace = require('close-with-grace')
 
-// Pass --options via CLI arguments in command to enable these options.
-const options = require('./configs/server-options.js')
-
 module.exports = async function (fastify, opts) {
-  // Place here your custom code!
-  fastify.log.info('The .env file has been read %s', process.env.MONGO_URL)
+  // Load schemas first
+  try {
+    // Register base schema
+    await fastify.addSchema(require('./schemas/dotenv.json'))
 
-  fastify.register(AutoLoad, {
-    dir: path.join(__dirname, 'schemas'),
-    indexPattern: /^loader.js$/i,
-  })
+    // Register all other schemas
+    await fastify.register(async (instance) => {
+      // Load auth schemas first since they're referenced by others
+      await require('./routes/auth/schemas/loader').authSchemasLoader(instance)
+      // Then load feature schemas
+      await require('./routes/notes/schemas/loader').noteSchemasLoader(instance)
+      await require('./routes/users/schemas/loader').loadUserSchemas(instance)
+    })
 
-  await fastify.register(require('./plugins/config'))
-  fastify.log.info('Config loaded %o', fastify.config)
+    // Load plugins
+    await fastify.register(require('./plugins/config'))
 
-  // Do not touch the following lines
+    // Load other plugins
+    await fastify.register(AutoLoad, {
+      dir: path.join(__dirname, 'plugins'),
+      ignorePattern: /.*.no-load\.js/,
+      indexPattern: /^no$/i,
+      options: Object.assign({}, opts)
+    })
 
-  // This loads all plugins defined in plugins
-  // those should be support plugins that are reused
-  // through your application
-  fastify.register(AutoLoad, {
-    dir: path.join(__dirname, 'plugins'),
-    ignorePattern: /.*.no-load\.js/,
-    indexPattern: /^no$/i,
-    options: fastify.config,
-  })
+    // Load routes last
+    await fastify.register(AutoLoad, {
+      dir: path.join(__dirname, 'routes'),
+      indexPattern: /.*routes(\.js|\.cjs)$/i,
+      ignorePattern: /(?:^|\/)(?:schemas|utils)(?:\/|$).*\.js/,
+      autoHooksPattern: /.*hooks(\.js|\.cjs)$/i,
+      autoHooks: true,
+      cascadeHooks: true,
+      options: Object.assign({}, opts)
+    })
 
-  // This loads all plugins defined in routes
-  // define your routes in one of these
-  fastify.register(AutoLoad, {
-    dir: path.join(__dirname, 'routes'),
-    indexPattern: /.*routes(\.js|\.cjs)$/i,
-    ignorePattern: /.*\.js/,
-    autoHooksPattern: /.*hooks(\.js|\.cjs)$/i,
-    autoHooks: true,
-    cascadeHooks: true,
-    options: Object.assign({}, opts),
-  })
-
-  // Graceful shutdown handler
-  // eslint-disable-next-line no-unused-vars
-  closeWithGrace(async function ({ signal, err, manual }) {
-    if (err) {
-      fastify.log.error({ err }, 'server closing with error')
-    } else {
-      fastify.log.info(`${signal} received, server closing`)
-    }
-    await fastify.close()
-  })
+  } catch (err) {
+    fastify.log.error(err)
+    throw err
+  }
 }
-
-module.exports.options = options
