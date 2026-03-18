@@ -10,8 +10,8 @@ module.exports = fp(
         swagger: {
           info: {
             title: 'Notes app',
-            description: 'Fastify CRUD application example',
-            version: require('../package.json').version,
+            description: 'Notes app API documentation',
+            version: '1.0.0',
           },
           servers: [{ url: 'http://localhost:3000', description: 'development' }],
           tags: [
@@ -20,6 +20,17 @@ module.exports = fp(
             { name: 'auth', description: 'Auth related end-points' },
             { name: 'infrastructure', description: 'infrastructure related end-points' },
             { name: 'files', description: 'Files related end-points' },
+          ],
+          securityDefinitions: {
+            bearerAuth: {
+              type: 'apiKey',
+              name: 'Authorization',
+              in: 'header',
+              description: 'Enter your token in the format: **Bearer &lt;token&gt;**',
+            },
+          },
+          security: [
+            { bearerAuth: [] }
           ],
         },
       })
