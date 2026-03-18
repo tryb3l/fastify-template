@@ -1,15 +1,14 @@
 'use strict'
 
-const fp = require('fastify-plugin')
 const generateHash = require('../auth/generate-hash')
 
-module.exports = fp(async function authRoutes(fastify) {
+module.exports = async function authRoutes(fastify) {
 
   fastify.post('/register', {
     schema: {
       tags: ['auth'],
       summary: 'Register a new user',
-      body: fastify.getSchema('schema:auth:register'),
+      body: { $ref: 'schema:auth:register#' }, 
       response: {
         201: {
           type: 'object',
@@ -32,10 +31,9 @@ module.exports = fp(async function authRoutes(fastify) {
         request.body.username,
         request.body.email,
       )
+      
       if (existingUser) {
-        const err = new Error('User already registered')
-        err.statusCode = 409
-        throw err
+        throw fastify.httpErrors.conflict('User already registered')
       }
 
       const { hash, salt } = await generateHash(request.body.password)
@@ -52,10 +50,10 @@ module.exports = fp(async function authRoutes(fastify) {
         request.log.info({ userId: newUserId }, 'User registered')
         reply.code(201)
         return { registered: true }
+        
       } catch (error) {
         request.log.error(error, 'Failed to register user')
-        reply.code(500)
-        return { registered: false }
+        throw fastify.httpErrors.internalServerError('Failed to register user')
       }
     },
   })
@@ -164,49 +162,22 @@ module.exports = fp(async function authRoutes(fastify) {
     }
   })
 
-  // fastify.get('/me', {
-  //   onRequest: fastify.authenticate,
-  //   schema: {
-  //     tags: ['auth'],
-  //     summary: 'Get current user details',
-  //     headers: fastify.getSchema('auth/schemas/schema:auth:token-header'),
-  //     response: {
-  //       200: {
-  //         type: 'object',
-  //         properties: {
-  //           data: {
-  //             $ref: 'auth/schemas/schema:user#',
-  //           },
-  //         },
-  //       },
-  //     },
-  //   },
-  //   handler: async function meHandler(request, reply) {
-  //     const user = request.user
-  //     if (!user) {
-  //       throw fastify.httpErrors.notFound('User not found')
-  //     }
-  //     return { data: user }
-  //   },
-  // })
 
   fastify.post('/logout', {
-    onRequest: fastify.authenticate,
-    schema: {
-      tags: ['auth'],
-      summary: 'Logout the current user',
-      querystring: fastify.getSchema('schema:auth:token-header'),
-    },
-    handler: async function logoutHandler(request, reply) {
-      await fastify.revokeToken(request.refreshTokenId);
-      reply.code(204)
-    },
+      onRequest: fastify.verifyRefreshToken,
+      schema: {
+        tags: ['auth'],
+        summary: 'Logout the current user',
+      },
+      
+      handler: async function logoutHandler(request, reply) {
+        await fastify.revokeToken(request.refreshTokenId);
 
-  })
-},
-  {
-    name: 'auth-routes',
-    dependencies: ['authentication-plugin', 'users-store'],
-    encapsulate: true,
-  },
-)
+        reply
+          .clearCookie('accessToken', { path: '/' })
+          .clearCookie('refreshToken', { path: '/' });
+
+        reply.code(204).send()
+      },
+    })
+  }

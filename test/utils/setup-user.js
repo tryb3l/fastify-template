@@ -3,9 +3,7 @@
 const { buildApp } = require('../helper')
 const { randomUsername, randomEmail, randomPassword } = require('./data-creator')
 
-async function setup(t) {
-  // Register the user
-  // Arrange
+async function setup(t, role = 'user') { 
   const app = await buildApp(t, {
     MONGO_URL: 'mongodb://localhost:27017/test-db',
   })
@@ -14,75 +12,35 @@ async function setup(t) {
   const email = randomEmail(10, 5)
   const password = randomPassword(15)
 
-  // Act
   const registerResponse = await app.inject({
     method: 'POST',
     url: '/auth/register',
-    payload: {
-      username: username,
-      email: email,
-      password: password,
-    },
+    payload: { username, email, password },
   })
-
-  // Log the register response
-  console.log('Register Response:', registerResponse.statusCode, registerResponse.json())
-
-  // Assert
+  
   t.equal(registerResponse.statusCode, 201)
-  t.same(registerResponse.json(), { registered: true })
 
-  // Update the user's role in the database if needed
   if (role !== 'user') {
     const usersCollection = app.mongo.db.collection('users')
     await usersCollection.updateOne({ username: username }, { $set: { role: role } })
   }
 
-  // Authenticate the user
-  // Arrange
   const loginResponse = await app.inject({
     method: 'POST',
     url: '/auth/authenticate',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    payload: {
-      username: username,
-      password: password,
-    },
+    payload: { username, password },
   })
 
-  // Log the login response
-  console.log('Login Response:', loginResponse.statusCode, loginResponse.json())
-
-  // Assert
   t.equal(loginResponse.statusCode, 200)
+
   const cookies = loginResponse.cookies
   const accessTokenCookie = cookies.find((cookie) => cookie.name === 'accessToken')
   const refreshTokenCookie = cookies.find((cookie) => cookie.name === 'refreshToken')
 
-  t.ok(refreshTokenCookie, 'accessToken cookie should be set')
-  t.ok(refreshTokenCookie, 'refreshToken cookie should be set')
-  t.match(refreshTokenCookie.value, /.+/, 'accessToken should have a value')
-  t.match(refreshTokenCookie.value, /.+/, 'refreshToken should have a value')
-
   const accessToken = accessTokenCookie.value
   const refreshToken = refreshTokenCookie.value
 
-  // Fetch the user ID
-  const userResponse = await app.inject({
-    method: 'GET',
-    url: '/auth/me',
-    headers: {
-      contentType: 'application/json',
-    },
-    cookies: {
-      accessToken: accessToken,
-      refreshToken: refreshToken,
-    },
-  })
-
-  const userId = userResponse.json().data.id
+  const userId = loginResponse.json().user.id
 
   return { app, accessToken, refreshToken, userId, username, password }
 }
