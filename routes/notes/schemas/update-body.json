@@ -1,28 +1,13 @@
 {
   "type": "object",
   "$id": "schema:note:update:body",
+  "additionalProperties": false,
   "properties": {
-    "id": {
-      "type": "string",
-      "format": "uuid"
-    },
-    "title": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 100
-    },
-    "body": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 10000
-    },
+    "title": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "body": { "type": "string", "minLength": 1, "maxLength": 10000 },
     "tags": {
       "type": "array",
-      "items": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 10
-      }
+      "items": { "type": "string", "minLength": 1, "maxLength": 10 }
     }
   }
 }
