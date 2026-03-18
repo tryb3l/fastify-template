@@ -1,6 +1,7 @@
 {
   "$id": "schema:auth:register",
   "type": "object",
+  "additionalProperties": false,
   "properties": {
     "username": {
       "type": "string",
