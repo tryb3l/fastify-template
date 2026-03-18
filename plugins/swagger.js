@@ -25,11 +25,12 @@ module.exports = fp(
       })
       fastify.log.info('Successfully registered @fastify/swagger')
 
-      await fastify.register(require('@fastify/swagger-ui'), {
-        routePrefix: '/docs',
-        exposeRoute: fastify.secrets.NODE_ENV !== 'production',
-      })
-      fastify.log.info('Successfully registered @fastify/swagger-ui')
+      if (fastify.secrets.NODE_ENV !== 'production') {
+        await fastify.register(require('@fastify/swagger-ui'), {
+          routePrefix: '/docs',
+        })
+        fastify.log.info('Successfully registered @fastify/swagger-ui')
+      }
     } catch (err) {
       fastify.log.error('Error registering swagger plugin:', err)
       throw err

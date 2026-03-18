@@ -2,6 +2,7 @@
 
 const fp = require('fastify-plugin')
 const fastifyEnv = require('@fastify/env')
+const envSchema = require('../schemas/dotenv.json')
 
 module.exports = fp(
   async function registerPluginsAndConfig(fastify, opts) {
@@ -16,7 +17,7 @@ module.exports = fp(
     await fastify.register(fastifyEnv, {
       confKey: 'secrets',
       data: opts.configData,
-      schema: fastify.getSchema('schema:dotenv'), // Make sure this is correct
+      schema: envSchema,
     })
     console.log("'@fastify/env' registered successfully");
 

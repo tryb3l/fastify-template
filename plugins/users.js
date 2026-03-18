@@ -2,14 +2,11 @@
 
 const fp = require('fastify-plugin');
 const { randomUUID } = require('node:crypto');
-const { authSchemasLoader } = require('../routes/auth/schemas/loader')
-const { userSchemasLoader } = require('../routes/users/schemas/loader')
 
 async function usersPlugin(fastify) {
 
   const users = fastify.mongo.db.collection('users');
   const revokedTokens = fastify.mongo.db.collection('revokedTokens');
-
 
   const usersDataSource = {
     async createUser(userData) {
@@ -164,7 +161,8 @@ async function usersPlugin(fastify) {
           return false;
         }
 
-        await fastify.usersDataSource.deleteRevokedTokens(id);
+        await this.deleteRevokedTokens(id);
+        
         fastify.log.info('Exiting deleteUser method');
         return true;
       } catch (error) {
@@ -251,6 +249,5 @@ async function usersPlugin(fastify) {
 
 module.exports = fp(usersPlugin, {
   name: 'users-store',
-  encapsulate: true,
   dependencies: ['db-plugin'],
 });
