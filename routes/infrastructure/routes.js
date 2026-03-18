@@ -4,6 +4,12 @@ module.exports = async function infrastructure(fastify) {
   fastify.route({
     method: 'GET',
     url: '/health',
+    config: {
+      rateLimit: {
+        max: 30,
+        timeWindow: '1 minute'
+      }
+    },
     schema: {
       tags: ['infrastructure'],
       summary: 'Health check',
@@ -24,6 +30,12 @@ module.exports = async function infrastructure(fastify) {
   fastify.route({
     method: 'GET',
     url: '/ready',
+    config: {
+      rateLimit: {
+        max: 30, 
+        timeWindow: '1 minute'
+      }
+    },
     schema: {
       tags: ['infrastructure'],
       summary: 'Readiness check',
