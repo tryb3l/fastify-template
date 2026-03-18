@@ -5,24 +5,16 @@ const AutoLoad = require('@fastify/autoload')
 const closeWithGrace = require('close-with-grace')
 
 module.exports = async function (fastify, opts) {
-  // Load schemas first
   try {
     // Register base schema
-    await fastify.addSchema(require('./schemas/dotenv.json'))
+    await require('./routes/auth/schemas/loader').authSchemasLoader(fastify)
+    await require('./routes/notes/schemas/loader').noteSchemasLoader(fastify)
+    await require('./routes/users/schemas/loader').loadUserSchemas(fastify)
 
-    // Register all other schemas
-    await fastify.register(async (instance) => {
-      // Load auth schemas first since they're referenced by others
-      await require('./routes/auth/schemas/loader').authSchemasLoader(instance)
-      // Then load feature schemas
-      await require('./routes/notes/schemas/loader').noteSchemasLoader(instance)
-      await require('./routes/users/schemas/loader').loadUserSchemas(instance)
-    })
-
-    // Load plugins
+    // Load Config
     await fastify.register(require('./plugins/config'))
 
-    // Load other plugins
+    // Load Plugins
     await fastify.register(AutoLoad, {
       dir: path.join(__dirname, 'plugins'),
       ignorePattern: /.*.no-load\.js/,
@@ -30,7 +22,7 @@ module.exports = async function (fastify, opts) {
       options: Object.assign({}, opts)
     })
 
-    // Load routes last
+    // Load Routes
     await fastify.register(AutoLoad, {
       dir: path.join(__dirname, 'routes'),
       indexPattern: /.*routes(\.js|\.cjs)$/i,
@@ -39,6 +31,24 @@ module.exports = async function (fastify, opts) {
       autoHooks: true,
       cascadeHooks: true,
       options: Object.assign({}, opts)
+    })
+
+    const closeListeners = closeWithGrace(
+      { delay: process.env.FASTIFY_CLOSE_GRACE_DELAY || 500 },
+      async function ({ signal, err, manual }) {
+        if (err) {
+          fastify.log.error({ err }, 'Server closing due to error')
+        } else {
+          fastify.log.info(`${signal} received, gracefully shutting down server...`)
+        }
+        
+        await fastify.close()
+      }
+    )
+
+    fastify.addHook('onClose', (instance, done) => {
+      closeListeners.uninstall()
+      done()
     })
 
   } catch (err) {
