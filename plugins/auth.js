@@ -110,10 +110,16 @@ module.exports = fp(async function (fastify) {
     fastify.log.info('Exiting revokeToken method')
   })
 
-  fastify.decorate('verifyRefreshToken', async function (request, reply) {
+fastify.decorate('verifyRefreshToken', async function (request, reply) {
     fastify.log.info('Entering verifyRefreshToken method')
     try {
-      const decoded = await request.jwtVerify({ only: true })
+      const token = request.cookies?.refreshToken || request.body?.refreshToken;
+      
+      if (!token) {
+        throw fastify.httpErrors.unauthorized('No refresh token provided');
+      }
+
+      const decoded = await fastify.jwt.verify(token);
 
       if (decoded.type !== 'refresh') {
         throw fastify.httpErrors.unauthorized('Invalid refresh token type')
@@ -132,18 +138,9 @@ module.exports = fp(async function (fastify) {
       request.user = user
       request.refreshTokenId = decoded.jti
     } catch (err) {
-      request.log.error(
-        {
-          err,
-          headers: request.headers,
-          cookies: request.cookies,
-          stack: err.stack,
-        },
-        'Verify refresh token failed'
-      )
+      request.log.error({ err }, 'Verify refresh token failed')
       throw fastify.httpErrors.unauthorized('Invalid refresh token')
     }
-    fastify.log.info('Exiting verifyRefreshToken method')
   })
 
   // Apply the hook to add userId to notesDataSource methods

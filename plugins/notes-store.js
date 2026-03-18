@@ -21,14 +21,7 @@ module.exports = fp(
         return totalCount
       },
 
-      async listNotes({
-        filter = {},
-        projection = {},
-        skip = 0,
-        limit = 50,
-        asStream = false,
-        userId
-      } = {}) {
+      async listNotes({ filter = {}, projection = {}, skip = 0, limit = 50, asStream = false } = {}, userId) {
         fastify.log.info('Entering listNotes method')
         filter.userId = userId;
 
@@ -87,7 +80,7 @@ module.exports = fp(
         return toInsert.map((note) => note._id)
       },
 
-      async readNote(id, projection = {}, userId) {
+      async readNote(id, userId, projection = {}) {
         fastify.log.info('Entering readNote method')
         try {
           const note = await notes.findOne(
