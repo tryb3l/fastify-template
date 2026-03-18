@@ -12,17 +12,7 @@ module.exports = async function authRoutes(fastify) {
       response: {
         201: {
           type: 'object',
-          properties: {
-            registered: { type: 'boolean' }
-          }
-        },
-        409: {
-          type: 'object',
-          properties: {
-            statusCode: { type: 'integer' },
-            error: { type: 'string' },
-            message: { type: 'string' }
-          }
+          properties: { registered: { type: 'boolean' } }
         }
       }
     },
@@ -38,23 +28,17 @@ module.exports = async function authRoutes(fastify) {
 
       const { hash, salt } = await generateHash(request.body.password)
 
-      try {
-        const newUserId = await fastify.usersDataSource.createUser({
-          username: request.body.username,
-          email: request.body.email,
-          salt,
-          hash,
-          role: 'user',
-        })
+      const newUserId = await fastify.usersDataSource.createUser({
+        username: request.body.username,
+        email: request.body.email,
+        salt,
+        hash,
+        role: 'user',
+      })
 
-        request.log.info({ userId: newUserId }, 'User registered')
-        reply.code(201)
-        return { registered: true }
-        
-      } catch (error) {
-        request.log.error(error, 'Failed to register user')
-        throw fastify.httpErrors.internalServerError('Failed to register user')
-      }
+      request.log.info({ userId: newUserId }, 'User registered')
+      reply.code(201)
+      return { registered: true }
     },
   })
 
@@ -62,7 +46,7 @@ module.exports = async function authRoutes(fastify) {
     schema: {
       tags: ['auth'],
       summary: 'Authenticate a user',
-      body: fastify.getSchema('schema:auth:authenticate'),
+      body: { $ref: 'schema:auth:authenticate#' },
       response: {
         200: {
           type: 'object',
@@ -81,7 +65,6 @@ module.exports = async function authRoutes(fastify) {
         }
       }
     },
-
     handler: async function authenticateHandler(request, reply) {
       const user = await fastify.usersDataSource.readUser(request.body.username)
       if (!user) {
@@ -93,7 +76,6 @@ module.exports = async function authRoutes(fastify) {
         throw fastify.httpErrors.unauthorized('Invalid credentials')
       }
 
-      // Generate both access and refresh tokens
       const { accessToken, refreshToken } = await request.generateTokens(user)
 
       const cookieOptions = {
@@ -128,11 +110,13 @@ module.exports = async function authRoutes(fastify) {
 
   fastify.post('/refresh', {
     onRequest: fastify.verifyRefreshToken,
+    schema: {
+      tags: ['auth'],
+      summary: 'Refresh access token',
+      description: 'Uses the httpOnly refresh cookie to generate a new access token.'
+    },
     handler: async function refreshHandler(request, reply) {
-      // Revoke old refresh token
       await fastify.revokeToken(request.refreshTokenId)
-
-      // Generate new tokens
       const { accessToken, refreshToken } = await request.generateTokens(request.user)
 
       const cookieOptions = {
@@ -153,7 +137,6 @@ module.exports = async function authRoutes(fastify) {
           maxAge: fastify.config.cookie.refreshMaxAge
         })
 
-      // Return new access token
       return {
         accessToken,
         refreshToken,
@@ -162,22 +145,20 @@ module.exports = async function authRoutes(fastify) {
     }
   })
 
-
   fastify.post('/logout', {
-      onRequest: fastify.verifyRefreshToken,
-      schema: {
-        tags: ['auth'],
-        summary: 'Logout the current user',
-      },
-      
-      handler: async function logoutHandler(request, reply) {
-        await fastify.revokeToken(request.refreshTokenId);
+    onRequest: fastify.verifyRefreshToken,
+    schema: {
+      tags: ['auth'],
+      summary: 'Logout the current user',
+    },
+    handler: async function logoutHandler(request, reply) {
+      await fastify.revokeToken(request.refreshTokenId);
 
-        reply
-          .clearCookie('accessToken', { path: '/' })
-          .clearCookie('refreshToken', { path: '/' });
+      reply
+        .clearCookie('accessToken', { path: '/' })
+        .clearCookie('refreshToken', { path: '/' });
 
-        reply.code(204).send()
-      },
-    })
-  }
+      reply.code(204).send()
+    },
+  })
+}
