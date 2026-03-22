@@ -1,8 +1,5 @@
 'use strict'
 
-// This file contains code that we reuse
-// between our tests.
-
 const fcli = require('fastify-cli/helper')
 
 const startArgs = '-l silent --options app.js'
@@ -20,9 +17,11 @@ function config(env) {
 // automatically build and tear down our instance
 async function buildApp(t, env, serverOptions) {
   const app = await fcli.build(startArgs, config({ ...defaultEnv, ...env }), serverOptions)
-  t.teardown(() => {
+  
+  t.after(() => {
     app.close()
   })
+  
   return app
 }
 
