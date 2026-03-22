@@ -1,86 +1,84 @@
 'use strict'
 
-const t = require('tap')
+const test = require('node:test')
+const assert = require('node:assert')
 const { setup } = require('../../../utils/setup-user')
 const { randomUUID } = require('node:crypto')
+const { generateMalformedUUIDs } = require('../../../utils/data-creator')
 
-t.test('GET /user-details/:id - Admin can fetch user details', async (t) => {
+test('GET /users/:id 200 - Admin can fetch user details', async (t) => {
+  // Arrange
   const { app, accessToken, userId, username } = await setup(t, 'admin')
 
+  // Act
   const response = await app.inject({
     method: 'GET',
-    url: `/user-details/${userId}`,
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
+    url: `/users/${userId}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
   })
 
-  t.equal(response.statusCode, 200)
-  t.type(response.json(), 'object')
-  t.equal(response.json().data.username, username)
+  // Assert
+  assert.strictEqual(response.statusCode, 200)
+  assert.strictEqual(response.json().data.username, username)
 })
 
-t.skip('GET /user-details/:id 404 - User not found', async (t) => {
+test('GET /users/:id 404 - User not found', async (t) => {
   // Arrange
-  const { app, accessToken, refreshToken } = t.context
+  const { app, accessToken } = await setup(t, 'admin')
   const nonExistentUserId = randomUUID()
 
   // Act
   const response = await app.inject({
     method: 'GET',
-    url: `/user-details/${nonExistentUserId}`,
-    headers: {
-      contentType: 'application/json',
-    },
-    cookies: {
-      accessToken: accessToken,
-      refreshToken: refreshToken,
-    },
+    url: `/users/${nonExistentUserId}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
   })
 
   // Assert
-  t.equal(response.statusCode, 404)
-  t.type(response.json(), 'object')
+  assert.strictEqual(response.statusCode, 404)
 })
 
-t.skip('GET /user-details/:id 400 - Invalid id format', async (t) => {
+test('GET /users/:id 400 - Invalid ID format', async (t) => {
   // Arrange
-  const { app, accessToken, refreshToken } = t.context
-  const invalidUserId = 'invalid-id'
+  const { app, accessToken } = await setup(t, 'admin')
+  const { tooShort } = generateMalformedUUIDs()
 
   // Act
   const response = await app.inject({
     method: 'GET',
-    url: `/user-details/${invalidUserId}`,
-    headers: {
-      contentType: 'application/json',
-    },
-    cookies: {
-      accessToken: accessToken,
-      refreshToken: refreshToken,
-    },
+    url: `/users/${tooShort}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
   })
 
   // Assert
-  t.equal(response.statusCode, 400)
-  t.type(response.json(), 'object')
+  assert.strictEqual(response.statusCode, 400)
 })
 
-t.test('GET /user-details/:id - Regular user receives 403 Forbidden', async (t) => {
+test('GET /users/:id 403 - Regular user receives 403 Forbidden', async (t) => {
+  // Arrange
   const { app, accessToken, userId } = await setup(t, 'user')
 
+  // Act
   const response = await app.inject({
     method: 'GET',
-    url: `/user-details/${userId}`,
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
+    url: `/users/${userId}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
   })
 
-  t.equal(response.statusCode, 403)
-  t.same(response.json(), {
-    statusCode: 403,
-    error: 'Forbidden',
-    message: 'Insufficient permissions',
+  // Assert
+  assert.strictEqual(response.statusCode, 403)
+})
+
+test('GET /users/:id 401 - Unauthenticated user receives 401 Unauthorized', async (t) => {
+  // Arrange
+  const { app, userId } = await setup(t, 'user')
+
+  // Act
+  const response = await app.inject({
+    method: 'GET',
+    url: `/users/${userId}`,
   })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 401)
 })
