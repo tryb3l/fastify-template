@@ -1,5 +1,6 @@
 'use strict'
 
+const assert = require('node:assert')
 const { randomString } = require('./data-creator')
 const { setup } = require('./setup-user')
 
@@ -16,7 +17,7 @@ async function createNote(t, noteData = {}) {
 
   const response = await app.inject({
     method: 'POST',
-    url: '/notes/',
+    url: '/notes',
     headers: {
       'Content-Type': 'application/json',
     },
@@ -27,9 +28,11 @@ async function createNote(t, noteData = {}) {
     payload: payload,
   })
 
-  if (response.statusCode !== 201) {
-    throw new Error(`Failed to create note: ${response.statusCode} ${response.body}`)
-  }
+  assert.strictEqual(
+    response.statusCode, 
+    201, 
+    `Failed to create note: ${response.statusCode} - ${response.payload}`
+  )
 
   return { note: response.json(), app, accessToken, refreshToken }
 }
