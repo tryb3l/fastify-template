@@ -2,13 +2,10 @@
 
 const fp = require('fastify-plugin')
 const { randomUUID } = require('node:crypto')
-const { noteSchemasLoader } = require('../routes/notes/schemas/loader')
 
 module.exports = fp(
   async function notesStorePlugin(fastify) {
     fastify.log.info('Starting registration of notes-store plugin')
-
-    //await noteSchemasLoader(fastify);
 
     const notes = fastify.mongo.db.collection('notes')
 
@@ -152,7 +149,6 @@ module.exports = fp(
     fastify.log.info('Successfully registered notes-store plugin')
   },
   {
-    encapsulate: true,
     dependencies: ['db-plugin'],
     name: 'notes-store',
   },
