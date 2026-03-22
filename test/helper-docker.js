@@ -4,7 +4,7 @@ const Docker = require('dockerode')
 const Containers = {
   mongo: {
     name: 'fastify-mongo',
-    Image: 'mongo:7',
+    Image: 'mongo:8',
     Tty: false,
     HostConfig: {
       PortBindings: {
