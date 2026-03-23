@@ -1,41 +1,29 @@
 'use strict'
 
-const t = require('tap')
+const test = require('node:test')
+const assert = require('node:assert')
 const { buildApp } = require('../../../helper')
+const { randomStringWithPrefix } = require('../../../utils/data-creator')
 
-t.test('the application should start', async (t) => {
-  const app = await buildApp(t, {
-    MONGO_URL: 'mongodb://localhost:27017/basic-test-db',
-  })
+test('GET random path 404 - not-found handler returns standard 404 JSON', async (t) => {
+  // Arrange
+  const app = await buildApp(t)
+  const nonExistentRoute = randomStringWithPrefix('/', 'abcdefghijklmnopqrstuvwxyz0123456789', 20)
 
-  await app.ready()
-  t.pass('the application is ready')
-})
-
-t.skip('Route is online and working', async (t) => {
-  const app = await buildApp(t, {
-    MONGO_URL: 'mongodb://localhost:27017/basic-test-db',
-  })
-  const response = await app.inject({
+  // Act
+  const res = await app.inject({
     method: 'GET',
-    url: '/',
+    url: nonExistentRoute,
   })
-  t.same(response.json(), { root: true })
-})
 
-t.skip('non-existent route returns 404', async (t) => {
-  const app = await buildApp(t, {
-    MONGO_URL: 'mongodb://localhost:27017/basic-test-db',
-  })
-  const response = await app.inject({
-    method: 'GET',
-    url: '/non-existent',
-  })
-  t.equal(response.statusCode, 404)
-  t.same(response.json(), {
-    statusCode: 404,
-    error: 'Not Found',
-    message: 'The requested resource could not be found',
-    requestId: response.json().requestId,
-  })
+  // Assert
+  assert.strictEqual(res.statusCode, 404)
+
+  const payload = res.json()
+  assert.strictEqual(payload.statusCode, 404)
+  assert.strictEqual(payload.error, 'Not Found')
+  assert.strictEqual(payload.message, 'The requested resource could not be found')
+
+  assert.ok(payload.requestId, 'Should contain a requestId')
+  assert.strictEqual(typeof payload.requestId, 'string', 'requestId should be a string')
 })
