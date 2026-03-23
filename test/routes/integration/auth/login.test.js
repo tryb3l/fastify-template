@@ -1,149 +1,86 @@
 'use strict'
 
-const t = require('tap')
-const { buildApp } = require('../../../helper')
-const path = require('../../../../routes/data-store')
+const test = require('node:test')
+const assert = require('node:assert')
+const { setup } = require('../../../utils/setup-user')
+const { randomUsername, randomPassword } = require('../../../utils/data-creator')
 
-t.skip('cannot access protected routes', async (t) => {
+test('POST /auth/authenticate 200 - User can successfully login and receive tokens', async (t) => {
   // Arrange
-  const app = await buildApp(t, {
-    MONGO_URL: 'mongodb://localhost:27017/login-test-db',
-  })
-  const privateRoutes = ['/auth/me']
+  const { app, username, password, userId } = await setup(t)
 
-  // Act/Assert
-  for (const url of privateRoutes) {
-    const response = await app.inject({ method: 'GET', url })
-    t.equal(response.statusCode, 401)
-    t.same(response.json(), {
-      statusCode: 401,
-      error: 'Error',
-      message: 'You are not authorized to access this resource',
-      requestId: response.json().requestId,
-    })
-  }
-})
-
-t.skip('register the user', async (t) => {
-  //Arrange
-  const app = await buildApp(t, {
-    MONGO_URL: 'mongodb://localhost:27017/login-test-db',
-  })
-
-  //Act
+  // Act
   const response = await app.inject({
     method: 'POST',
-    url: '/auth/register',
+    url: '/auth/authenticate',
     payload: {
-      username: 'John Doe',
-      email: 'doe@email.com',
-      password: 'icanpa123123ss',
-    },
-  })
-
-  //Assert
-  t.equal(response.statusCode, 201)
-  t.same(response.json(), { registered: true })
-})
-
-function cleanCache() {
-  Object.keys(require.cache).forEach(function (key) {
-    delete require.cache[key]
-  })
-}
-
-t.skip('failed signup, invalid email format', async (t) => {
-  // Arrange
-  const dataStorePath = path.resolve(__dirname, '../../../../routes/data-store')
-  cleanCache()
-  require(dataStorePath)
-  require.cache[require.resolve(dataStorePath)].exports = {
-    async store() {
-      throw new Error('Fail to store')
-    },
-  }
-  t.teardown(cleanCache)
-
-  const app = await buildApp(t, {
-    MONGO_URL: 'mongodb://localhost:27017/login-test-db',
-  })
-  const response = await app.inject({
-    method: 'POST',
-    url: '/auth/register',
-    payload: {
-      username: '123',
-      password: 'icanpass',
-      email: 'fake#email.com',
+      username: username,
+      password: password,
     },
   })
 
   // Assert
-  t.equal(response.statusCode, 400)
+  assert.strictEqual(response.statusCode, 200)
+  const body = response.json()
+  assert.ok(body.accessToken, 'Access token should be returned')
+  assert.ok(body.refreshToken, 'Refresh token should be returned')
+  assert.strictEqual(body.user.username, username)
+  assert.strictEqual(body.user.id, userId)
 })
 
-t.skip('failed login', async (t) => {
-  //Arrange
-  const app = await buildApp(t, {
-    MONGO_URL: 'mongodb://localhost:27017/login-test-db',
-  })
+test('POST /auth/authenticate 401 - Fails to login with wrong password', async (t) => {
+  // Arrange
+  const { app, username } = await setup(t)
 
-  //Act
+  // Act
   const response = await app.inject({
     method: 'POST',
     url: '/auth/authenticate',
     payload: {
-      username: 'test',
-      password: 'wrong',
+      username: username,
+      password: randomPassword(),
     },
   })
 
-  //Assert
-  t.equal(response.statusCode, 401)
+  // Assert
+  assert.strictEqual(response.statusCode, 401)
+  assert.strictEqual(response.json().message, 'Invalid credentials')
 })
 
-t.skip('successful login', async (t) => {
-  //Arrange
-  const app = await buildApp(t, {
-    MONGO_URL: 'mongodb://localhost:27017/login-test-db',
-  })
+test('POST /auth/authenticate 401 - Fails to login with non-existent username', async (t) => {
+  // Arrange
+  const { app } = await setup(t)
 
-  //Act
-  const login = await app.inject({
+  // Act
+  const response = await app.inject({
     method: 'POST',
     url: '/auth/authenticate',
-    headers: {
-      'Content-Type': 'application/json',
-    },
     payload: {
-      username: 'John Doe',
-      password: 'icanpa123123ss',
+      username: randomUsername(),
+      password: randomPassword(),
     },
   })
 
-  //Assert
-  t.equal(login.statusCode, 200)
-  const cookies = login.cookies
-  const accessTokenCookie = cookies.find((cookie) => cookie.name === 'accessToken')
-  const refreshTokenCookie = cookies.find((cookie) => cookie.name === 'refreshToken')
+  // Assert
+  assert.strictEqual(response.statusCode, 401)
+  assert.strictEqual(response.json().message, 'Invalid credentials')
+})
 
-  t.ok(accessTokenCookie, 'accessToken cookie should be set')
-  t.ok(refreshTokenCookie, 'refreshToken cookie should be set')
-  t.match(accessTokenCookie.value, /.+/, 'accessToken should have a value')
-  t.match(refreshTokenCookie.value, /.+/, 'refreshToken should have a value')
+test('POST /auth/authenticate 400 - Fails schema validation on missing password', async (t) => {
+  // Arrange
+  const { app, username } = await setup(t)
 
-  t.skip('access protected route', async (t) => {
-    //Arrange//Act
-    const response = await app.inject({
-      method: 'GET',
-      url: '/auth/me',
-      cookies: {
-        accessToken: accessTokenCookie.value,
-        refreshToken: refreshTokenCookie.value,
-      },
-    })
-
-    //Assert
-    t.equal(response.statusCode, 200)
-    t.match(response.json(), { data: { username: 'John Doe' } })
+  // Act
+  const response = await app.inject({
+    method: 'POST',
+    url: '/auth/authenticate',
+    payload: {
+      username: username,
+      // Missing password
+    },
   })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 400)
+  assert.ok(response.json().message)
 })
