@@ -109,9 +109,8 @@ module.exports = fp(
       },
 
       async updateNote(id, newNote, userId) {
-        fastify.log.info('Entering updateNote method')
         const result = await notes.findOneAndUpdate(
-          { id: id, userId: userId },
+          { id, userId },
           {
             $set: {
               ...newNote,
@@ -121,13 +120,13 @@ module.exports = fp(
           { returnDocument: 'after' },
         )
 
-        if (!result.value) {
-          fastify.log.info(`Note not found for ID: ${id} and User ID: ${userId}`)
+        const updatedNote = result?.value ?? result
+
+        if (!updatedNote) {
           throw fastify.httpErrors.notFound('Note not found')
         }
 
-        fastify.log.info('Exiting updateNote method')
-        return result.value
+        return updatedNote
       },
 
       async deleteNote(id, userId) {
