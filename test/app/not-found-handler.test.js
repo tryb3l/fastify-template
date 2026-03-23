@@ -3,38 +3,48 @@
 const { test } = require('node:test')
 const assert = require('node:assert')
 const { buildApp } = require('../helper')
+const { randomStringWithPrefix } = require('../utils/data-creator')
 
-test.skip('should call the notFoundHandler when no route is found', async (t) => {
+test('GET request to a non-existent route returns standard 404 JSON', async (t) => {
   // Arrange
   const app = await buildApp(t)
+  const nonExistentRoute = randomStringWithPrefix('/', 'abcdefghijklmnopqrstuvwxyz', 20)
 
   // Act
   const response = await app.inject({
     method: 'GET',
-    url: '/not-found',
+    url: nonExistentRoute,
   })
 
   // Assert
   assert.strictEqual(response.statusCode, 404)
-  assert.strictEqual(response.json().message, 'Not Found')
+
+  const payload = response.json()
+  assert.strictEqual(payload.statusCode, 404)
+  assert.strictEqual(payload.error, 'Not Found')
+  assert.strictEqual(payload.message, 'The requested resource could not be found')
+  assert.strictEqual(typeof payload.requestId, 'string')
 })
 
-test.skip('should be rate limited', async (t) => {
+test('POST request with payload to a non-existent route returns standard 404 JSON', async (t) => {
+  // Arrange
   const app = await buildApp(t)
+  const nonExistentRoute = randomStringWithPrefix('/api/v1/missing-', 'abcdefghijklmnopqrstuvwxyz', 24)
 
-  for (let i = 0; i < 3; i++) {
-    const res = await app.inject({
-      method: 'GET',
-      url: '/this-route-does-not-exist',
-    })
-
-    assert.strictEqual(res.statusCode, 404)
-  }
-
-  const res = await app.inject({
-    method: 'GET',
-    url: '/this-route-does-not-exist',
+  // Act
+  const response = await app.inject({
+    method: 'POST',
+    url: nonExistentRoute,
+    headers: { 'Content-Type': 'application/json' },
+    payload: { fakeData: 'should be ignored' }
   })
 
-  assert.strictEqual(res.statusCode, 429)
+  // Assert
+  assert.strictEqual(response.statusCode, 404)
+
+  const payload = response.json()
+  assert.strictEqual(payload.statusCode, 404)
+  assert.strictEqual(payload.error, 'Not Found')
+  assert.strictEqual(payload.message, 'The requested resource could not be found')
+  assert.strictEqual(typeof payload.requestId, 'string')
 })
