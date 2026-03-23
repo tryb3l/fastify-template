@@ -20,8 +20,6 @@ module.exports = async function fileRoutes(fastify) {
     },
   })
 
-  fastify.addHook('onRequest', fastify.authenticate)
-
   fastify.route({
     method: 'POST',
     url: '/import',
@@ -38,32 +36,39 @@ module.exports = async function fileRoutes(fastify) {
     },
     handler: async function importNotes(request, reply) {
       const data = await request.file()
-      if (!data) throw fastify.httpErrors.badRequest('Missing file')
+      if (!data) throw this.httpErrors.badRequest('Missing file')
 
       const lines = []
-      
+
       const stream = data.file.pipe(
         csvParse({
           bom: true,
           skip_empty_lines: true,
           trim: true,
-          columns: true,
+          relax_column_count: true,
         })
       )
 
+      let isHeaderRow = true
+
       for await (const line of stream) {
+        if (isHeaderRow) {
+          isHeaderRow = false
+          continue
+        }
+
+        const [title, body, ...tags] = line
+
         lines.push({
-          title: line.title,
-          body: line.body,
-          tags: line.tags ? line.tags.split(',') : [], 
+          title,
+          body,
+          tags,
         })
       }
 
-      // Add request.user.id!
-      const insertedIds = await request.notesDataSource.createNotes(lines, request.user.id)
-      
-      reply.code(201)
-      return insertedIds
+      const insertedIds = await this.notesDataSource.createNotes(lines, request.user._id)
+
+      return reply.code(201).send(insertedIds)
     },
   })
 
@@ -77,16 +82,19 @@ module.exports = async function fileRoutes(fastify) {
     },
     handler: async function exportNotes(request, reply) {
       const { title } = request.query
-      
-      const cursorStream = await request.notesDataSource.listNotes({
-        filter: { title },
+
+      const filter = {}
+      if (title) filter.title = title
+
+      const cursorStream = await this.notesDataSource.listNotes({
+        filter,
         skip: 0,
         asStream: true,
-      }, request.user.id) 
+      }, request.user._id)
 
       reply.header('Content-Disposition', 'attachment; filename="note-list.csv"')
       reply.type('text/csv')
-      
+
       return cursorStream.pipe(
         csvStringify({
           quoted_string: true,
@@ -120,21 +128,20 @@ module.exports = async function fileRoutes(fastify) {
       try {
         for await (const part of parts) {
           if (part.file) {
-            const filename = part.filename
+            const filename = path.basename(part.filename)
             const filePath = path.join(uploadDir, filename)
 
             if (part.file.truncated) {
-              throw fastify.httpErrors.badRequest('File is too large')
+              throw this.httpErrors.badRequest('File is too large')
             }
 
-            // Securely stream the raw binary file to disk
             await pump(part.file, fs.createWriteStream(filePath))
           }
         }
         return { message: 'File uploaded successfully' }
       } catch (err) {
         request.log.error(err)
-        throw fastify.httpErrors.internalServerError('File upload failed')
+        throw this.httpErrors.internalServerError('File upload failed')
       }
     },
   })
