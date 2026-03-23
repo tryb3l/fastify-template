@@ -1,28 +1,40 @@
 'use strict'
 
-const { test } = require('tap')
+const test = require('node:test')
+const assert = require('node:assert')
 const { buildApp } = require('../helper')
+const { randomStringWithPrefix } = require('../utils/data-creator')
 
-test('default root route', async (t) => {
+test('GET / 200 - default root route', async (t) => {
+  // Arrange
   const app = await buildApp(t)
 
+  // Act
   const res = await app.inject({
     url: '/',
   })
-  t.same(JSON.parse(res.payload), { root: true })
+
+  // Assert
+  assert.strictEqual(res.statusCode, 200)
+  assert.deepStrictEqual(res.json(), { root: true })
 })
 
-test('non-existent route returns 404', async (t) => {
+test('GET random path 404 - non-existent route returns 404', async (t) => {
+  // Arrange
   const app = await buildApp(t)
+  const nonExistentRoute = randomStringWithPrefix('/', 'abcdefghijklmnopqrstuvwxyz0123456789', 30)
 
+  // Act
   const res = await app.inject({
-    url: '/non-existent',
+    url: nonExistentRoute,
   })
-  t.equal(res.statusCode, 404)
-  t.same(JSON.parse(res.payload), {
-    statusCode: 404,
-    error: 'Not Found',
-    message: 'The requested resource could not be found',
-    requestId: JSON.parse(res.payload).requestId,
-  })
+
+  // Assert
+  assert.strictEqual(res.statusCode, 404)
+
+  const payload = res.json()
+  assert.strictEqual(payload.statusCode, 404)
+  assert.strictEqual(payload.error, 'Not Found')
+  assert.strictEqual(payload.message, 'The requested resource could not be found')
+  assert.strictEqual(typeof payload.requestId, 'string')
 })
