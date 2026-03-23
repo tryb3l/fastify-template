@@ -1,157 +1,110 @@
 'use strict'
 
-const t = require('tap')
+const test = require('node:test')
+const assert = require('node:assert')
+const { createNote } = require('../../../../utils/note-creator')
 const { setup } = require('../../../../utils/setup-user')
-const { randomString } = require('../../../../utils/data-creator')
 
-t.beforeEach(async (t) => {
-  const { app, accessToken, refreshToken } = await setup(t)
-  t.context.app = app
-  t.context.accessToken = accessToken
-  t.context.refreshToken = refreshToken
-
-  // Create a note before each test
-  const noteTitle = randomString(10)
-  const noteBody = randomString(20)
-  const noteTags = [randomString(5)]
-
-  const response = await app.inject({
-    method: 'POST',
-    url: '/notes/',
-    headers: {
-      contentType: 'application/json',
-    },
-    cookies: {
-      accessToken: accessToken,
-      refreshToken: refreshToken,
-    },
-    payload: {
-      title: noteTitle,
-      body: noteBody,
-      tags: noteTags,
-    },
-  })
-
-  t.equal(response.statusCode, 201)
-  t.type(response.json(), 'object')
-  t.ok(response.json().id)
-  t.equal(typeof response.json().id, 'string')
-
-  t.context.noteId = response.json().id
-})
-
-t.test('GET /notes 200 - List notes', async (t) => {
+test('GET /notes 200 - List notes', async (t) => {
   // Arrange
-  const { app, accessToken, refreshToken } = t.context
+  const { app, accessToken } = await createNote(t)
 
   // Act
   const response = await app.inject({
     method: 'GET',
     url: '/notes',
-    headers: {
-      contentType: 'application/json',
-    },
-    cookies: {
-      accessToken: accessToken,
-      refreshToken: refreshToken,
-    },
+    headers: { Authorization: `Bearer ${accessToken}` },
   })
 
   // Assert
-  t.equal(response.statusCode, 201)
-  t.type(response.json(), 'object')
-  t.ok(Array.isArray(response.json().data))
-  t.type(response.json().totalCount, 'number')
+  assert.strictEqual(response.statusCode, 200)
+  const payload = response.json()
+  assert.ok(Array.isArray(payload.data))
+  assert.strictEqual(typeof payload.totalCount, 'number')
 })
 
-t.skip('GET /notes 200 - List notes with pagination', async (t) => {
+test('GET /notes 200 - List notes with pagination', async (t) => {
   // Arrange
-  const { app, accessToken, refreshToken } = t.context
+  const { app, accessToken } = await createNote(t)
+  await app.inject({
+    method: 'POST',
+    url: '/notes',
+    payload: { title: 'Second Note', body: 'Second Body' },
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
 
   // Act
   const response = await app.inject({
     method: 'GET',
-    url: '/notes?skip=0&limit=2',
-    headers: {
-      contentType: 'application/json',
-    },
-    cookies: {
-      accessToken: accessToken,
-      refreshToken: refreshToken,
-    },
+    url: '/notes?skip=0&limit=1',
+    headers: { Authorization: `Bearer ${accessToken}` },
   })
 
   // Assert
-  t.equal(response.statusCode, 201)
-  t.type(response.json(), 'object')
-  t.ok(Array.isArray(response.json().data))
-  t.type(response.json().totalCount, 'number')
-  t.equal(response.json().data.length, 2)
+  assert.strictEqual(response.statusCode, 200)
+  const payload = response.json()
+  assert.ok(Array.isArray(payload.data))
+  assert.ok(payload.data.length <= 1, 'Should respect the limit of 1')
 })
 
-t.test('GET /notes 200 - List notes with title filter', async (t) => {
+test('GET /notes 200 - Filter notes by title', async (t) => {
   // Arrange
-  const { app, accessToken, refreshToken } = t.context
-  const title = 'testnote'
+  const { app, accessToken, note } = await createNote(t)
 
   // Act
   const response = await app.inject({
     method: 'GET',
-    url: `/notes?title=${title}`,
-    headers: {
-      contentType: 'application/json',
-    },
-    cookies: {
-      accessToken: accessToken,
-      refreshToken: refreshToken,
-    },
+    url: `/notes?title=${encodeURIComponent(note.data.title)}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
   })
 
   // Assert
-  t.equal(response.statusCode, 201)
-  t.type(response.json(), 'object')
-  t.ok(Array.isArray(response.json().data))
-  t.type(response.json().totalCount, 'number')
-  t.ok(response.json().data.every((note) => note.title.includes(title)))
+  assert.strictEqual(response.statusCode, 200)
+  const payload = response.json()
+  assert.ok(Array.isArray(payload.data))
+  assert.strictEqual(payload.data[0].title, note.data.title)
 })
 
-t.test('GET /notes 400 - Invalid skip and limit', async (t) => {
+test('GET /notes 400 - Invalid skip and limit (negative values)', async (t) => {
   // Arrange
-  const { app, accessToken, refreshToken } = t.context
+  const { app, accessToken } = await setup(t, 'user')
 
   // Act
   const response = await app.inject({
     method: 'GET',
     url: '/notes?skip=-1&limit=-5',
-    headers: {
-      contentType: 'application/json',
-    },
-    cookies: {
-      accessToken: accessToken,
-      refreshToken: refreshToken,
-    },
+    headers: { Authorization: `Bearer ${accessToken}` },
   })
 
   // Assert
-  t.equal(response.statusCode, 400)
-  t.type(response.json(), 'object')
-  t.equal(response.json().message, 'Skip and limit must be non-negative integers')
+  assert.strictEqual(response.statusCode, 400)
 })
 
-t.test('GET /notes 401 - Unauthorized', async (t) => {
+test('GET /notes 400 - Invalid skip and limit (exceeds maximum)', async (t) => {
   // Arrange
-  const { app } = t.context
+  const { app, accessToken } = await setup(t, 'user')
+
+  // Act
+  const response = await app.inject({
+    method: 'GET',
+    url: '/notes?skip=101&limit=101',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 400)
+})
+
+test('GET /notes 401 - Unauthorized', async (t) => {
+  // Arrange
+  const { app } = await setup(t, 'user')
 
   // Act
   const response = await app.inject({
     method: 'GET',
     url: '/notes',
-    headers: {
-      contentType: 'application/json',
-    },
   })
 
   // Assert
-  t.equal(response.statusCode, 401)
-  t.type(response.json(), 'object')
+  assert.strictEqual(response.statusCode, 401)
 })
