@@ -1,23 +1,22 @@
 'use strict'
 
-const t = require('tap')
+const test = require('node:test')
+const assert = require('node:assert')
 const { setup } = require('../../../../utils/setup-user')
 const { randomString } = require('../../../../utils/data-creator')
 
-t.test('POST /notes - User can create a note', async (t) => {
+test('POST /notes 201 - User can create a note', async (t) => {
+  // Arrange
   const { app, accessToken } = await setup(t, 'user')
-
   const noteTitle = randomString(10)
   const noteBody = randomString(20)
   const noteTags = [randomString(5)]
 
+  // Act
   const response = await app.inject({
     method: 'POST',
-    url: '/notes/',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
+    url: '/notes',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
     payload: {
       title: noteTitle,
       body: noteBody,
@@ -25,197 +24,75 @@ t.test('POST /notes - User can create a note', async (t) => {
     },
   })
 
-  t.equal(response.statusCode, 201)
-  t.type(response.json(), 'object')
-  t.ok(response.json().data.id)
+  // Assert
+  assert.strictEqual(response.statusCode, 201)
+  const body = response.json()
+  assert.strictEqual(typeof body, 'object')
+  assert.ok(body.data.id)
+  assert.strictEqual(body.data.title, noteTitle)
 })
 
-t.skip('POST /notes 400 - Missing title', async (t) => {
+test('POST /notes 400 - Missing title', async (t) => {
   // Arrange
-  const { app, accessToken, refreshToken } = t.context
+  const { app, accessToken } = await setup(t, 'user')
 
   // Act
   const response = await app.inject({
     method: 'POST',
-    url: '/notes/',
-    headers: {
-      contentType: 'application/json',
-    },
-    cookies: {
-      accessToken: accessToken,
-      refreshToken: refreshToken,
-    },
+    url: '/notes',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
     payload: {
-      body: noteBody,
-      tags: noteTags,
+      body: 'Some body text',
+      tags: ['tag1']
+      // title is omitted
     },
   })
 
   // Assert
-  t.equal(response.statusCode, 400)
-  t.type(response.json(), 'object')
+  assert.strictEqual(response.statusCode, 400)
+
+  const responseBody = response.json()
+  assert.ok(responseBody.error || responseBody.message, 'Should return an error payload')
 })
 
-t.skip('POST /notes 400 - Missing body', async (t) => {
+test('POST /notes 400 - Missing body', async (t) => {
   // Arrange
-  const { app, accessToken, refreshToken } = t.context
+  const { app, accessToken } = await setup(t, 'user')
 
   // Act
   const response = await app.inject({
     method: 'POST',
-    url: '/notes/',
-    headers: {
-      contentType: 'application/json',
-    },
-    cookies: {
-      accessToken: accessToken,
-      refreshToken: refreshToken,
-    },
+    url: '/notes',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
     payload: {
-      title: noteTitle,
-      tags: noteTags,
+      title: 'Valid Title',
+      tags: ['tag1']
+      // body is omitted
     },
   })
 
   // Assert
-  t.equal(response.statusCode, 400)
-  t.type(response.json(), 'object')
+  assert.strictEqual(response.statusCode, 400)
+
+  const responseBody = response.json()
+  assert.ok(responseBody.error || responseBody.message, 'Should return an error payload')
 })
 
-t.skip('POST /notes 400 - Title too short', async (t) => {
+test('POST /notes 401 - Unauthorized', async (t) => {
   // Arrange
-  const { app, accessToken, refreshToken } = t.context
+  const { app } = await setup(t, 'user')
 
   // Act
   const response = await app.inject({
     method: 'POST',
-    url: '/notes/',
-    headers: {
-      contentType: 'application/json',
-    },
-    cookies: {
-      accessToken: accessToken,
-      refreshToken: refreshToken,
-    },
+    url: '/notes',
+    headers: { 'Content-Type': 'application/json' },
     payload: {
-      title: '',
-      body: noteBody,
-      tags: noteTags,
+      title: 'Unauthorized Note',
+      body: 'Should not exist',
     },
   })
 
   // Assert
-  t.equal(response.statusCode, 400)
-  t.type(response.json(), 'object')
-})
-
-t.skip('POST /notes 400 - Title too long', async (t) => {
-  // Arrange
-  const { app, accessToken, refreshToken } = t.context
-  const longTitle = randomString(101)
-
-  // Act
-  const response = await app.inject({
-    method: 'POST',
-    url: '/notes/',
-    headers: {
-      contentType: 'application/json',
-    },
-    cookies: {
-      accessToken: accessToken,
-      refreshToken: refreshToken,
-    },
-    payload: {
-      title: longTitle,
-      body: noteBody,
-      tags: noteTags,
-    },
-  })
-
-  // Assert
-  t.equal(response.statusCode, 400)
-  t.type(response.json(), 'object')
-})
-
-t.skip('POST /notes 400 - Body too short', async (t) => {
-  // Arrange
-  const { app, accessToken, refreshToken } = t.context
-
-  // Act
-  const response = await app.inject({
-    method: 'POST',
-    url: '/notes/',
-    headers: {
-      contentType: 'application/json',
-    },
-    cookies: {
-      accessToken: accessToken,
-      refreshToken: refreshToken,
-    },
-    payload: {
-      title: noteTitle,
-      body: '',
-      tags: noteTags,
-    },
-  })
-
-  // Assert
-  t.equal(response.statusCode, 400)
-  t.type(response.json(), 'object')
-})
-
-t.skip('POST /notes 400 - Body too long', async (t) => {
-  // Arrange
-  const { app, accessToken, refreshToken } = t.context
-  const longBody = randomString(10001)
-
-  // Act
-  const response = await app.inject({
-    method: 'POST',
-    url: '/notes/',
-    headers: {
-      contentType: 'application/json',
-    },
-    cookies: {
-      accessToken: accessToken,
-      refreshToken: refreshToken,
-    },
-    payload: {
-      title: noteTitle,
-      body: longBody,
-      tags: noteTags,
-    },
-  })
-
-  // Assert
-  t.equal(response.statusCode, 400)
-  t.type(response.json(), 'object')
-})
-
-t.skip('POST /notes 400 - Invalid tags', async (t) => {
-  // Arrange
-  const { app, accessToken, refreshToken } = t.context
-  const invalidTags = [randomString(11)]
-
-  // Act
-  const response = await app.inject({
-    method: 'POST',
-    url: '/notes/',
-    headers: {
-      contentType: 'application/json',
-    },
-    cookies: {
-      accessToken: accessToken,
-      refreshToken: refreshToken,
-    },
-    payload: {
-      title: noteTitle,
-      body: noteBody,
-      tags: invalidTags,
-    },
-  })
-
-  // Assert
-  t.equal(response.statusCode, 400)
-  t.type(response.json(), 'object')
+  assert.strictEqual(response.statusCode, 401)
 })
