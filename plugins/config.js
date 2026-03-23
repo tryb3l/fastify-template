@@ -6,8 +6,7 @@ const envSchema = require('../schemas/dotenv.json')
 
 module.exports = fp(
   async function registerPluginsAndConfig(fastify, opts) {
-    console.log("Registering 'application-config' plugin"); // Log at start
-
+    console.log("Registering 'application-config' plugin");
     if (fastify.hasDecorator('secrets')) {
       console.log("'application-config' already registered, skipping");
       return
@@ -26,6 +25,7 @@ module.exports = fp(
 
     console.log("Decorating Fastify instance with 'config'");
     fastify.decorate('config', {
+      NODE_ENV: fastify.secrets.NODE_ENV,
       jwt: {
         secret: fastify.secrets.JWT_SECRET,
         accessExpireIn: fastify.secrets.JWT_EXPIRE_IN || '1h',

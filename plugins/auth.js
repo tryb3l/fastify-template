@@ -110,11 +110,11 @@ module.exports = fp(async function (fastify) {
     fastify.log.info('Exiting revokeToken method')
   })
 
-fastify.decorate('verifyRefreshToken', async function (request, reply) {
+  fastify.decorate('verifyRefreshToken', async function (request, reply) {
     fastify.log.info('Entering verifyRefreshToken method')
     try {
       const token = request.cookies?.refreshToken || request.body?.refreshToken;
-      
+
       if (!token) {
         throw fastify.httpErrors.unauthorized('No refresh token provided');
       }
@@ -143,8 +143,7 @@ fastify.decorate('verifyRefreshToken', async function (request, reply) {
     }
   })
 
-  // Apply the hook to add userId to notesDataSource methods
-  fastify.decorate('addUserIdHook',   async function addUserIdHook(request, reply) {
+  fastify.decorate('addUserIdHook', async function addUserIdHook(request, reply) {
     if (request.user && request.user.id) {
       const methodsToDecorate = [
         'countNotes',
@@ -157,7 +156,6 @@ fastify.decorate('verifyRefreshToken', async function (request, reply) {
       ];
 
       methodsToDecorate.forEach(method => {
-        // Replace the original method with the new one that adds userId
         request.notesDataSource[method] = async function (...args) {
           return fastify.notesDataSource[method](...args, request.user.id);
         };

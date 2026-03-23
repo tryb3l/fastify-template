@@ -3,7 +3,7 @@
 const fp = require('fastify-plugin')
 
 module.exports = fp(async function errorHandlerPlugin(fastify, opts) {
-  
+
   fastify.addHook('onRequest', async (req) => {
     req.log.info({ req }, 'incoming request')
   })
@@ -19,7 +19,7 @@ module.exports = fp(async function errorHandlerPlugin(fastify, opts) {
 
     const errorResponse = {
       statusCode,
-      error: err.name || 'Error',
+      error: err.error || err.name || 'Error',
       message: statusCode < 500 ? err.message : 'An unexpected error occurred',
       requestId: req.id,
     }
