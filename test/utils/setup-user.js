@@ -1,12 +1,12 @@
 'use strict'
 
+const assert = require('node:assert')
+const { MongoClient } = require('mongodb')
 const { buildApp } = require('../helper')
 const { randomUsername, randomEmail, randomPassword } = require('./data-creator')
 
-async function setup(t, role = 'user') { 
-  const app = await buildApp(t, {
-    MONGO_URL: 'mongodb://localhost:27017/test-db',
-  })
+async function setup(t, role = 'user') {
+  const app = await buildApp(t)
 
   const username = randomUsername(12)
   const email = randomEmail(10, 5)
@@ -17,12 +17,24 @@ async function setup(t, role = 'user') {
     url: '/auth/register',
     payload: { username, email, password },
   })
-  
-  t.equal(registerResponse.statusCode, 201)
+  assert.strictEqual(registerResponse.statusCode, 201)
 
   if (role !== 'user') {
-    const usersCollection = app.mongo.db.collection('users')
-    await usersCollection.updateOne({ username: username }, { $set: { role: role } })
+    const client = new MongoClient('mongodb://localhost:27017')
+    await client.connect()
+
+    const adminDb = client.db().admin()
+    const { databases } = await adminDb.listDatabases()
+
+    for (const dbInfo of databases) {
+      const db = client.db(dbInfo.name)
+      await db.collection('users').updateOne(
+        { username: username },
+        { $set: { role: role } }
+      )
+    }
+
+    await client.close()
   }
 
   const loginResponse = await app.inject({
@@ -30,17 +42,12 @@ async function setup(t, role = 'user') {
     url: '/auth/authenticate',
     payload: { username, password },
   })
+  assert.strictEqual(loginResponse.statusCode, 200)
 
-  t.equal(loginResponse.statusCode, 200)
-
-  const cookies = loginResponse.cookies
-  const accessTokenCookie = cookies.find((cookie) => cookie.name === 'accessToken')
-  const refreshTokenCookie = cookies.find((cookie) => cookie.name === 'refreshToken')
-
-  const accessToken = accessTokenCookie.value
-  const refreshToken = refreshTokenCookie.value
-
-  const userId = loginResponse.json().user.id
+  const responseData = loginResponse.json()
+  const accessToken = responseData.accessToken
+  const refreshToken = responseData.refreshToken
+  const userId = responseData.user.id
 
   return { app, accessToken, refreshToken, userId, username, password }
 }
