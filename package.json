@@ -4,23 +4,21 @@
   "description": "Fastify boilerplate for my REST projects with MongoDB, Swagger, CORS and more",
   "main": "app.js",
   "engines": {
-    "node": ">=23"
+    "node": ">=25"
   },
   "directories": {
     "test": "test",
     "doc": "docs"
   },
   "scripts": {
+    "start": "fastify start -l info --options app.js",
+    "dev": "fastify start --watch --pretty-logs --debug --options app.js",
+    "dev:trace": "node --trace-warnings node_modules/.bin/fastify start --options app.js",
     "test": "node test/run-tests.js",
+    "test:nostop": "node test/run-tests.js --nostop",
+    "test:coverage": "node test/run-tests.js --coverage",
     "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
-    "test:nostop": "tap --before=test/before.js test/**/**.test.js",
-    "test:coverage": "tap --coverage-report=html --before=test/run-before.js test/**/**.test.js --after=test/run-after.js",
-    "start": "fastify start --options app.js",
-    "dev": "npm run start -- --watch --pretty-logs -debug",
-    "dev-debug": "node --trace-warnings node_modules/.bin/fastify start --options app.js",
-    "mongo:start": "docker run -d -p 27017:27017 --rm --name fastify-mongo mongo:8",
-    "mongo:stop": "docker container stop fastify-mongo"
+    "lint:fix": "eslint . --fix"
   },
   "keywords": [
     "fastify",
@@ -72,7 +70,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "dockerode": "^4.0.10",
-    "eslint": "10.0.3",
+    "eslint": "10.1.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.5",
     "form-data": "^4.0.5",
