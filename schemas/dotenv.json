@@ -5,9 +5,9 @@
   "required": [
     "MONGO_URL",
     "JWT_SECRET",
-    "COOKIE_SECRET"
+    "COOKIE_SECRET",
+    "FRONTEND_URL"
   ],
-  "additionalProperties": false,
   "properties": {
     "NODE_ENV": {
       "type": "string",
@@ -45,6 +45,18 @@
     "COOKIE_REFRESH_MAX_AGE": {
       "type": "integer",
       "default": 2592000
+    },
+    "FRONTEND_URL": {
+      "type": "string",
+      "default": "http://localhost:5173"
+    },
+    "ADMIN_EMAIL": {
+      "type": "string",
+      "default": "admin@notes.local"
+    },
+    "ADMIN_PASSWORD": {
+      "type": "string",
+      "default": "changeme123"
     }
   }
 }
