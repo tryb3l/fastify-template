@@ -41,5 +41,6 @@ module.exports = fp(async function underPressurePlugin(fastify, opts) {
     fastify.log.info('Successfully registered under-pressure plugin')
 }, {
     name: 'under-pressure',
-    dependencies: ['db-plugin']
+    dependencies: ['db-plugin'],
+    decorators: { fastify: ['mongo'] }
 })
