@@ -1,33 +1,29 @@
 {
   "$id": "schema:auth:register",
   "type": "object",
-  "additionalProperties": false,
+  "required": [
+    "username",
+    "email",
+    "password"
+  ],
   "properties": {
     "username": {
       "type": "string",
       "minLength": 3,
-      "maxLength": 32
+      "maxLength": 32,
+      "description": "Unique username"
+    },
+    "email": {
+      "type": "string",
+      "format": "email",
+      "description": "Valid email address"
     },
     "password": {
       "type": "string",
       "minLength": 8,
-      "maxLength": 64
-    },
-    "email": {
-      "type": "string",
-      "format": "email"
-    },
-    "role": {
-      "type": "string",
-      "enum": [
-        "user",
-        "admin"
-      ]
+      "maxLength": 64,
+      "description": "Strong password"
     }
   },
-  "required": [
-    "username",
-    "password",
-    "email"
-  ]
+  "additionalProperties": false
 }
