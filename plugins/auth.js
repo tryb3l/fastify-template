@@ -46,15 +46,13 @@ module.exports = fp(async function (fastify) {
 
       request.user = user
     } catch (err) {
-      request.log.error(
-        {
-          err,
-          headers: request.headers,
-          cookies: request.cookies,
-          stack: err.stack,
-        },
-        'Authentication failed'
-      )
+      request.log.error({ err }, 'Authentication failed')
+
+      if (err.code === 'FST_JWT_AUTHORIZATION_TOKEN_EXPIRED') {
+        reply.send(fastify.httpErrors.unauthorized('Token expired'))
+        return
+      }
+
       reply.send(fastify.httpErrors.unauthorized('Authentication required'))
     }
     fastify.log.info('Exiting authenticate method')
