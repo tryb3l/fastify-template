@@ -45,8 +45,8 @@ async function setup(t, role = 'user') {
   assert.strictEqual(loginResponse.statusCode, 200)
 
   const responseData = loginResponse.json()
-  const accessToken = responseData.accessToken
-  const refreshToken = responseData.refreshToken
+  const accessToken = responseData.access_token
+  const refreshToken = responseData.refresh_token
   const userId = responseData.user.id
 
   return { app, accessToken, refreshToken, userId, username, password }
