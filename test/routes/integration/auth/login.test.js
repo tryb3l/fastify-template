@@ -22,8 +22,8 @@ test('POST /auth/authenticate 200 - User can successfully login and receive toke
   // Assert
   assert.strictEqual(response.statusCode, 200)
   const body = response.json()
-  assert.ok(body.accessToken, 'Access token should be returned')
-  assert.ok(body.refreshToken, 'Refresh token should be returned')
+  assert.ok(body.access_token, 'Access token should be returned')
+  assert.ok(body.refresh_token, 'Refresh token should be returned')
   assert.strictEqual(body.user.username, username)
   assert.strictEqual(body.user.id, userId)
 })
