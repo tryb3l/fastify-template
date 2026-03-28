@@ -6,26 +6,32 @@ const envSchema = require('../schemas/dotenv.json')
 
 module.exports = fp(
   async function registerPluginsAndConfig(fastify, opts) {
-    console.log("Registering 'application-config' plugin");
+    fastify.log.info("Registering 'application-config' plugin");
+
     if (fastify.hasDecorator('secrets')) {
-      console.log("'application-config' already registered, skipping");
+      fastify.log.warn("'application-config' already registered, skipping");
       return
     }
 
-    console.log("Registering '@fastify/env'");
+    fastify.log.debug("Registering '@fastify/env'");
     await fastify.register(fastifyEnv, {
       confKey: 'secrets',
       data: opts.configData,
       schema: envSchema,
     })
-    console.log("'@fastify/env' registered successfully");
+    fastify.log.debug("'@fastify/env' registered successfully");
 
-    console.log("Setting log level to:", fastify.secrets.LOG_LEVEL);
     fastify.log.level = fastify.secrets.LOG_LEVEL
+    fastify.log.info(`Log level set to: ${fastify.log.level}`);
 
-    console.log("Decorating Fastify instance with 'config'");
     fastify.decorate('config', {
       NODE_ENV: fastify.secrets.NODE_ENV,
+      MONGO_URL: fastify.secrets.MONGO_URL,
+      FRONTEND_URL: fastify.secrets.FRONTEND_URL || 'http://localhost:5173',
+
+      ADMIN_EMAIL: fastify.secrets.ADMIN_EMAIL,
+      ADMIN_PASSWORD: fastify.secrets.ADMIN_PASSWORD,
+
       jwt: {
         secret: fastify.secrets.JWT_SECRET,
         accessExpireIn: fastify.secrets.JWT_EXPIRE_IN || '1h',
@@ -37,10 +43,8 @@ module.exports = fp(
         refreshMaxAge: fastify.secrets.COOKIE_REFRESH_MAX_AGE,
       },
     })
-    console.log("'config' decorator added successfully");
 
-    console.log("Finished registering 'application-config' plugin");
+    fastify.log.info("'config' decorator added successfully");
   },
-
   { name: 'application-config', dependencies: [] },
 )
