@@ -13,8 +13,8 @@ jobs:
 
     env:
       MONGO_URL: mongodb://127.0.0.1:27018/test
-      JWT_SECRET: secret-11111111
-      COOKIE_SECRET: test-cookie-secret
+      JWT_SECRET:  ${{ secrets.JWT_SECRET }}
+      COOKIE_SECRET: ${{ secrets.COOKIE_SECRET }}
       NODE_ENV: test
 
     steps:
