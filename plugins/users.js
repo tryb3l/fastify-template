@@ -24,11 +24,11 @@ async function usersPlugin(fastify) {
         throw error;
       }
     },
-    async readUser(username, email) {
+    async readUser(identifier) {
       fastify.log.info('Entering readUser method');
       try {
         const user = await users.findOne(
-          { $or: [{ username }, { email }] },
+          { $or: [{ username: identifier }, { email: identifier }] },
           {
             projection: {
               _id: 1,
@@ -36,6 +36,7 @@ async function usersPlugin(fastify) {
               email: 1,
               role: 1,
               salt: 1,
+              password: 1,
               hash: 1,
               createdAt: 1,
               modifiedAt: 1,
@@ -162,7 +163,7 @@ async function usersPlugin(fastify) {
         }
 
         await this.deleteRevokedTokens(id);
-        
+
         fastify.log.info('Exiting deleteUser method');
         return true;
       } catch (error) {
@@ -250,4 +251,7 @@ async function usersPlugin(fastify) {
 module.exports = fp(usersPlugin, {
   name: 'users-store',
   dependencies: ['db-plugin'],
+  decorators: {
+    fastify: ['mongo']
+  }
 });

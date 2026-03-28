@@ -1,6 +1,6 @@
 'use strict'
 
-const generateHash = require('../auth/generate-hash')
+const { generateHash, verifyPassword } = require('../auth/generate-hash')
 
 module.exports = async function authRoutes(fastify) {
 
@@ -8,7 +8,7 @@ module.exports = async function authRoutes(fastify) {
     schema: {
       tags: ['auth'],
       summary: 'Register a new user',
-      body: { $ref: 'schema:auth:register#' }, 
+      body: { $ref: 'schema:auth:register#' },
       response: {
         201: {
           type: 'object',
@@ -17,12 +17,19 @@ module.exports = async function authRoutes(fastify) {
       }
     },
     handler: async function registerHandler(request, reply) {
-      const existingUser = await fastify.usersDataSource.readUser(
-        request.body.username,
-        request.body.email,
-      )
-      
-      if (existingUser) {
+      let userExists = false;
+
+      if (request.body.username) {
+        const byUsername = await fastify.usersDataSource.readUser(request.body.username)
+        if (byUsername) userExists = true;
+      }
+
+      if (request.body.email && !userExists) {
+        const byEmail = await fastify.usersDataSource.readUser(request.body.email)
+        if (byEmail) userExists = true;
+      }
+
+      if (userExists) {
         throw fastify.httpErrors.conflict('User already registered')
       }
 
@@ -31,15 +38,16 @@ module.exports = async function authRoutes(fastify) {
       const newUserId = await fastify.usersDataSource.createUser({
         username: request.body.username,
         email: request.body.email,
-        salt,
-        hash,
+        salt: salt,
+        password: hash,
         role: 'user',
       })
 
-      request.log.info({ userId: newUserId }, 'User registered')
+      request.log.info({ userId: newUserId }, 'New user successfully registered');
+
       reply.code(201)
       return { registered: true }
-    },
+    }
   })
 
   fastify.post('/authenticate', {
@@ -51,8 +59,10 @@ module.exports = async function authRoutes(fastify) {
         200: {
           type: 'object',
           properties: {
-            accessToken: { type: 'string' },
-            refreshToken: { type: 'string' },
+            access_token: { type: 'string' },
+            refresh_token: { type: 'string' },
+            token_type: { type: 'string' },
+            expires_in: { type: 'integer' },
             user: {
               type: 'object',
               properties: {
@@ -66,13 +76,20 @@ module.exports = async function authRoutes(fastify) {
       }
     },
     handler: async function authenticateHandler(request, reply) {
-      const user = await fastify.usersDataSource.readUser(request.body.username)
+      const identifier = request.body.username || request.body.email
+
+      const user = await fastify.usersDataSource.readUser(identifier)
+
       if (!user) {
+        request.log.warn({ identifier }, "Login failed: User not found in DB")
         throw fastify.httpErrors.unauthorized('Invalid credentials')
       }
 
-      const { hash } = await generateHash(request.body.password, user.salt)
-      if (hash !== user.hash) {
+      const storedHash = user.password || user.hash
+      const isMatch = await verifyPassword(request.body.password, user.salt, storedHash)
+
+      if (!isMatch) {
+        request.log.warn("Login failed: Password mismatch")
         throw fastify.httpErrors.unauthorized('Invalid credentials')
       }
 
@@ -97,11 +114,13 @@ module.exports = async function authRoutes(fastify) {
         })
 
       return {
-        accessToken: accessToken,
-        refreshToken: refreshToken,
+        access_token: accessToken,
+        refresh_token: refreshToken,
+        token_type: 'Bearer',
+        expires_in: 3600,
         user: {
           id: user._id,
-          username: user.username,
+          username: user.username || user.email,
           role: user.role
         }
       }
