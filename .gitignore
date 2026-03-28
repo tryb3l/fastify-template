@@ -69,3 +69,9 @@ profile-*
 profile*
 *clinic*
 *flamegraph*
+
+# env
+.env
+
+# JB
+.idea
