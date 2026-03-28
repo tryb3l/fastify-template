@@ -167,4 +167,7 @@ module.exports = fp(async function (fastify) {
 }, {
   name: 'authentication-plugin',
   dependencies: ['application-config', 'cookie-plugin', 'users-store'],
+  decorators: {
+    fastify: ['config']
+  }
 })
