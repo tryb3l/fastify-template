@@ -1,6 +1,8 @@
 'use strict'
 
+require('dotenv').config()
 const packageJson = require('../package.json')
+
 const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node')
 const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions')
 const { Resource } = require('@opentelemetry/resources')
@@ -10,35 +12,42 @@ const { DnsInstrumentation } = require('@opentelemetry/instrumentation-dns')
 const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http')
 const { FastifyInstrumentation } = require('@opentelemetry/instrumentation-fastify')
 const { MongoDBInstrumentation } = require('@opentelemetry/instrumentation-mongodb')
-// [3]
 const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base')
 const { ZipkinExporter } = require('@opentelemetry/exporter-zipkin')
 
-const sdk = new NodeTracerProvider({
-  sampler: new ParentBasedSampler({
-    root: new TraceIdRatioBasedSampler(1),
-  }),
-  resource: new Resource({
-    // https://github.com/open-telemetry/opentelemetry-js/blob/main/packages/opentelemetry-semantic-conventions/src/resource/SemanticResourceAttributes.ts
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV,
-    [SemanticResourceAttributes.SERVICE_NAME]: packageJson.name,
-    [SemanticResourceAttributes.SERVICE_VERSION]: packageJson.version,
-  }),
-})
+// Read configuration from environment variables
+const ZIPKIN_URL = process.env.ZIPKIN_URL || 'http://localhost:9411/api/v2/spans'
+// Default to 100% locally, but 5% (0.05) in production
+const TRACE_RATIO = parseFloat(process.env.TRACE_RATIO) || (process.env.NODE_ENV === 'production' ? 0.05 : 1)
 
-registerInstrumentations({
-  tracerProvider: sdk,
-  instrumentations: [
-    new DnsInstrumentation(),
-    new HttpInstrumentation(),
-    new FastifyInstrumentation(),
-    new MongoDBInstrumentation(),
-  ],
-})
+if (process.env.ENABLE_TRACING === 'true') {
+  const sdk = new NodeTracerProvider({
+    sampler: new ParentBasedSampler({
+      root: new TraceIdRatioBasedSampler(TRACE_RATIO),
+    }),
+    resource: new Resource({
+      [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+      [SemanticResourceAttributes.SERVICE_NAME]: packageJson.name,
+      [SemanticResourceAttributes.SERVICE_VERSION]: packageJson.version,
+    }),
+  })
 
-const exporter = new ZipkinExporter({
-  url: 'http://localhost:9411/api/v2/spans',
-})
-sdk.addSpanProcessor(new BatchSpanProcessor(exporter))
-sdk.register({})
-console.log('OpenTelemetry SDK started')
+  registerInstrumentations({
+    tracerProvider: sdk,
+    instrumentations: [
+      new DnsInstrumentation(),
+      new HttpInstrumentation(),
+      new FastifyInstrumentation(),
+      new MongoDBInstrumentation(),
+    ],
+  })
+
+  const exporter = new ZipkinExporter({
+    url: ZIPKIN_URL,
+  })
+
+  sdk.addSpanProcessor(new BatchSpanProcessor(exporter))
+  sdk.register()
+
+  process.stdout.write(`[Telemetry] OpenTelemetry SDK started (Ratio: ${TRACE_RATIO})\n`)
+}
