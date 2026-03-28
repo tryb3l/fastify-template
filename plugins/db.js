@@ -5,25 +5,28 @@ const fastifyMongo = require('@fastify/mongodb')
 
 module.exports = fp(
   async function dbPlugin(fastify) {
-    console.log("Registering 'db-plugin' plugin")
+    fastify.log.info("Registering 'db-plugin' plugin")
+    fastify.log.debug(`Attempting to connect to MongoDB at: ${fastify.config.MONGO_URL}`)
+
     try {
       await fastify.register(fastifyMongo, {
-        serverSelectionTimeoutMS: 10000, // Increased timeout
+        serverSelectionTimeoutMS: 5000,
         forceClose: true,
-        url: fastify.secrets.MONGO_URL,
+        url: fastify.config.MONGO_URL,
         maxPoolSize: 20,
         minPoolSize: 10,
       })
-      console.log("'db-plugin' registered successfully")
+      fastify.log.info("'db-plugin' registered successfully")
     } catch (err) {
-      console.error("Error registering 'db-plugin':", err);
+      fastify.log.error({ err }, "Error registering 'db-plugin'");
       throw err;
     }
-
-    console.log("Finished registering 'db-plugin' plugin")
   },
   {
     name: 'db-plugin',
-    dependencies: ['application-config']
+    dependencies: ['application-config'],
+    decorators: {
+      fastify: ['config']
+    }
   },
 )
