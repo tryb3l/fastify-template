@@ -3,6 +3,9 @@
 const { execSync } = require('child_process')
 const path = require('node:path')
 const fs = require('node:fs')
+const args = process.argv.slice(2)
+const isCoverage = args.includes('--coverage')
+const isNoStop = args.includes('--nostop')
 
 function getTestFiles(dir, fileList = []) {
   const files = fs.readdirSync(dir)
@@ -26,14 +29,24 @@ async function run() {
 
     const testFiles = getTestFiles(__dirname)
 
-    execSync(`node --test ${testFiles.join(' ')}`, { stdio: 'inherit' })
+    let testCmd = 'node'
+    if (isCoverage) {
+      testCmd += ' --experimental-test-coverage'
+    }
+    testCmd += ` --test ${testFiles.join(' ')}`
+
+    execSync(testCmd, { stdio: 'inherit' })
 
   } catch (err) {
     console.error('\n❌ Tests failed!')
     process.exitCode = 1
   } finally {
-    console.log('\n🧹 Cleaning up (Stopping Docker)...')
-    execSync(`node "${path.join(__dirname, 'run-after.js')}"`, { stdio: 'inherit' })
+    if (isNoStop) {
+      console.log('\n⚠️ Skipping cleanup (--nostop). MongoDB Docker container remains running for debugging.')
+    } else {
+      console.log('\n🧹 Cleaning up (Stopping Docker)...')
+      execSync(`node "${path.join(__dirname, 'run-after.js')}"`, { stdio: 'inherit' })
+    }
   }
 }
 
