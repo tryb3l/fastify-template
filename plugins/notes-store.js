@@ -150,5 +150,8 @@ module.exports = fp(
   {
     dependencies: ['db-plugin'],
     name: 'notes-store',
+    decorators: {
+      fastify: ['mongo']
+    }
   },
 )

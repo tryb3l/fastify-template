@@ -22,5 +22,11 @@ module.exports = fp(
       throw err
     }
   },
-  { name: 'cookie-plugin', dependencies: ['application-config'] }
+  {
+    name: 'cookie-plugin',
+    dependencies: ['application-config'],
+    decorators: {
+      fastify: ['config']
+    }
+  }
 )
