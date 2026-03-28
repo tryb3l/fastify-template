@@ -53,5 +53,8 @@ module.exports = fp(async function rateLimitPlugin(fastify, opts) {
   fastify.log.info('Successfully registered rate-limit plugin')
 }, {
   name: 'rate-limit',
-  dependencies: ['application-config']
+  dependencies: ['application-config'],
+  decorators: {
+    fastify: ['config', 'jwt']
+  }
 })
