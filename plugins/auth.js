@@ -17,7 +17,7 @@ module.exports = fp(async function (fastify) {
         if (req.headers.authorization?.startsWith('Bearer ')) {
           return req.headers.authorization.substring(7)
         }
-        return req.cookies?.accessToken
+        return null;
       },
     },
     messages: {
@@ -27,8 +27,6 @@ module.exports = fp(async function (fastify) {
       authorizationTokenInvalid: (err) => `Authorization token is invalid: ${err.message}`,
     },
   }
-
-  fastify.log.info('JWT configuration:', jwtConfig)
 
   await fastify.register(fastifyJwt, jwtConfig)
 
@@ -49,11 +47,10 @@ module.exports = fp(async function (fastify) {
       request.log.error({ err }, 'Authentication failed')
 
       if (err.code === 'FST_JWT_AUTHORIZATION_TOKEN_EXPIRED') {
-        reply.send(fastify.httpErrors.unauthorized('Token expired'))
-        return
+        throw fastify.httpErrors.unauthorized('Token expired')
       }
 
-      reply.send(fastify.httpErrors.unauthorized('Authentication required'))
+      throw fastify.httpErrors.unauthorized('Authentication required')
     }
     fastify.log.info('Exiting authenticate method')
   })
@@ -96,22 +93,21 @@ module.exports = fp(async function (fastify) {
     return { accessToken, refreshToken }
   })
 
-  fastify.decorateRequest('revokeToken', async function (jti) {
+  fastify.decorateRequest('revokeToken', async function (jti, exp, userId) {
     fastify.log.info('Entering revokeToken method')
     try {
-      await fastify.usersDataSource.revokeToken(jti)
+      await fastify.usersDataSource.revokeToken(jti, exp, userId)
       fastify.log.info({ jti }, 'Token revoked successfully')
     } catch (error) {
       fastify.log.error({ error, jti }, 'Error revoking token')
       throw error
     }
-    fastify.log.info('Exiting revokeToken method')
   })
 
   fastify.decorate('verifyRefreshToken', async function (request, reply) {
     fastify.log.info('Entering verifyRefreshToken method')
     try {
-      const token = request.cookies?.refreshToken || request.body?.refreshToken;
+      const token = request.cookies?.refreshToken;
 
       if (!token) {
         throw fastify.httpErrors.unauthorized('No refresh token provided');
@@ -135,29 +131,10 @@ module.exports = fp(async function (fastify) {
 
       request.user = user
       request.refreshTokenId = decoded.jti
+      request.refreshTokenExp = decoded.exp
     } catch (err) {
       request.log.error({ err }, 'Verify refresh token failed')
       throw fastify.httpErrors.unauthorized('Invalid refresh token')
-    }
-  })
-
-  fastify.decorate('addUserIdHook', async function addUserIdHook(request, reply) {
-    if (request.user && request.user.id) {
-      const methodsToDecorate = [
-        'countNotes',
-        'listNotes',
-        'createNote',
-        'createNotes',
-        'readNote',
-        'updateNote',
-        'deleteNote',
-      ];
-
-      methodsToDecorate.forEach(method => {
-        request.notesDataSource[method] = async function (...args) {
-          return fastify.notesDataSource[method](...args, request.user.id);
-        };
-      });
     }
   })
 
