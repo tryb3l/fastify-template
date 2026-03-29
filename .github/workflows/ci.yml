@@ -28,7 +28,10 @@ jobs:
           check-latest: true
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
+
+      - name: Run Database Migrations
+        run: npx migrate-mongo up
 
       - name: Run tests
         run: node --test test/**/*.test.js
