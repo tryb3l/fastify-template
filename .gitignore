@@ -59,3 +59,6 @@ profile*
 
 # env
 .env
+
+# uploads
+uploads/
