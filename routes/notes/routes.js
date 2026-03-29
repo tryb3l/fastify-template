@@ -3,7 +3,7 @@
 module.exports = async function noteRoutes(fastify, opts) {
   const nodeEnv = opts?.configData?.NODE_ENV || fastify.config?.NODE_ENV || fastify.secrets?.NODE_ENV || process.env.NODE_ENV
   const notesRateLimit = {
-    max: nodeEnv === 'test' ? 5 : 100,
+    max: nodeEnv === 'test' ? 5 : 30,
     timeWindow: '1 minute',
   }
 
