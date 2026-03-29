@@ -23,7 +23,11 @@ test('POST /auth/authenticate 200 - User can successfully login and receive toke
   assert.strictEqual(response.statusCode, 200)
   const body = response.json()
   assert.ok(body.access_token, 'Access token should be returned')
-  assert.ok(body.refresh_token, 'Refresh token should be returned')
+  
+  const setCookie = response.headers['set-cookie']
+  const cookies = Array.isArray(setCookie) ? setCookie : [setCookie]
+  assert.ok(cookies.some(c => c && c.includes('refreshToken=')), 'Refresh token cookie should be set')
+
   assert.strictEqual(body.user.username, username)
   assert.strictEqual(body.user.id, userId)
 })

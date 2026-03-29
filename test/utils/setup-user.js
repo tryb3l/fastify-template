@@ -46,7 +46,10 @@ async function setup(t, role = 'user') {
 
   const responseData = loginResponse.json()
   const accessToken = responseData.access_token
-  const refreshToken = responseData.refresh_token
+  const setCookie = loginResponse.headers['set-cookie'] || []
+  const cookies = Array.isArray(setCookie) ? setCookie : [setCookie]
+  const refreshCookieStr = cookies.find(c => c && c.startsWith('refreshToken=')) || ''
+  const refreshToken = refreshCookieStr.split(';')[0].split('=')[1]
   const userId = responseData.user.id
 
   return { app, accessToken, refreshToken, userId, username, password }
