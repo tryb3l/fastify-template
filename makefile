@@ -9,6 +9,8 @@ dev:
 	docker run -d -p 27017:27017 --rm --name fastify-mongo mongo:8
 	@echo "Waiting for MongoDB to initialize..."
 	sleep 3
+	@echo "Running local database migrations..."
+	npm run migrate
 	@echo "Starting Fastify in dev mode..."
 	npm run dev
 
@@ -24,6 +26,10 @@ test:
 .PHONY: test-cov
 test-cov:
 	npm run test:coverage
+
+.PHONY: migrate
+migrate:
+	npm run migrate
 
 .PHONY: lint
 lint:
