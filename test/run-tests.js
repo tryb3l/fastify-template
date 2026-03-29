@@ -24,6 +24,7 @@ async function run() {
   try {
     console.log('⏳ Running global setup (Starting Docker)...')
     execSync(`node "${path.join(__dirname, 'run-before.js')}"`, { stdio: 'inherit' })
+    execSync('npx migrate-mongo up', { stdio: 'inherit', env: { ...process.env, MONGO_URL: 'mongodb://localhost:27017/test' } })
 
     console.log('\n🧪 Starting Node.js Native Tests...\n')
 

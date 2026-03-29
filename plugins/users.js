@@ -8,18 +8,6 @@ async function usersPlugin(fastify) {
   const users = fastify.mongo.db.collection('users');
   const revokedTokens = fastify.mongo.db.collection('revokedTokens');
 
-  try {
-    await revokedTokens.createIndex(
-      { "expiresAt": 1 },
-      { expireAfterSeconds: 0 }
-    );
-    await users.createIndex({ username: 1 }, { unique: true });
-    await users.createIndex({ email: 1 }, { unique: true });
-    fastify.log.info('Indexes created successfully');
-  } catch (err) {
-    fastify.log.error({ err }, 'Failed to create TTL index');
-  }
-
   const usersDataSource = {
     async createUser(userData) {
       fastify.log.info('Entering createUser method');
@@ -144,8 +132,8 @@ async function usersPlugin(fastify) {
         fastify.log.info('Exiting readUserById method');
         return user;
       } catch (error) {
-        fastify.log.error({ error, id }, 'Failed to read user by ID');
-        return null;
+        fastify.log.error({ error, id }, 'Failed to read user by ID due to Database availability anomaly');
+        throw error;
       }
     },
     async updateUser(id, newUser) {
