@@ -14,7 +14,7 @@ module.exports = {
         url: request.raw.url,
         routeUrl: request.routeOptions?.url ?? request.routePath,
         version: request.headers?.['accept-version'],
-        user: request.user?.id,
+        user: request.user?._id || request.user?.id,
         headers: request.headers,
         body: shouldLogBody ? request.body : undefined,
         hostname: request.hostname,

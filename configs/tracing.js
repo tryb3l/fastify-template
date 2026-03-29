@@ -1,6 +1,6 @@
 'use strict'
 
-require('dotenv').config()
+try { process.loadEnvFile() } catch { /* .env may not exist in CI/Docker */ }
 const packageJson = require('../package.json')
 
 const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node')
