@@ -1,6 +1,6 @@
 'use strict'
 
-const { generateHash, verifyPassword } = require('../auth/generate-hash')
+const { validatePassword, hashPassword } = require('../auth/generate-hash')
 
 module.exports = async function authRoutes(fastify) {
 
@@ -16,6 +16,7 @@ module.exports = async function authRoutes(fastify) {
         }
       }
     },
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
     handler: async function registerHandler(request, reply) {
       let userExists = false;
 
@@ -33,13 +34,12 @@ module.exports = async function authRoutes(fastify) {
         throw fastify.httpErrors.conflict('User already registered')
       }
 
-      const { hash, salt } = await generateHash(request.body.password)
+      const hash = await hashPassword(request.body.password)
 
       const newUserId = await fastify.usersDataSource.createUser({
         username: request.body.username,
         email: request.body.email,
-        salt: salt,
-        password: hash,
+        hash: hash,
         role: 'user',
       })
 
@@ -60,7 +60,6 @@ module.exports = async function authRoutes(fastify) {
           type: 'object',
           properties: {
             access_token: { type: 'string' },
-            refresh_token: { type: 'string' },
             token_type: { type: 'string' },
             expires_in: { type: 'integer' },
             user: {
@@ -75,6 +74,7 @@ module.exports = async function authRoutes(fastify) {
         }
       }
     },
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
     handler: async function authenticateHandler(request, reply) {
       const identifier = request.body.username || request.body.email
 
@@ -86,7 +86,7 @@ module.exports = async function authRoutes(fastify) {
       }
 
       const storedHash = user.password || user.hash
-      const isMatch = await verifyPassword(request.body.password, user.salt, storedHash)
+      const isMatch = await validatePassword(request.body.password, storedHash)
 
       if (!isMatch) {
         request.log.warn("Login failed: Password mismatch")
@@ -104,18 +104,14 @@ module.exports = async function authRoutes(fastify) {
       }
 
       reply
-        .setCookie('accessToken', accessToken, {
-          ...cookieOptions,
-          maxAge: fastify.config.cookie.accessMaxAge
-        })
         .setCookie('refreshToken', refreshToken, {
           ...cookieOptions,
+          path: '/auth',
           maxAge: fastify.config.cookie.refreshMaxAge
         })
 
       return {
         access_token: accessToken,
-        refresh_token: refreshToken,
         token_type: 'Bearer',
         expires_in: 3600,
         user: {
@@ -129,13 +125,15 @@ module.exports = async function authRoutes(fastify) {
 
   fastify.post('/refresh', {
     onRequest: fastify.verifyRefreshToken,
+    preValidation: fastify.csrfProtection,
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
     schema: {
       tags: ['auth'],
       summary: 'Refresh access token',
       description: 'Uses the httpOnly refresh cookie to generate a new access token.'
     },
     handler: async function refreshHandler(request, reply) {
-      await fastify.revokeToken(request.refreshTokenId)
+      await request.revokeToken(request.refreshTokenId, request.refreshTokenExp, request.user._id)
       const { accessToken, refreshToken } = await request.generateTokens(request.user)
 
       const cookieOptions = {
@@ -147,18 +145,14 @@ module.exports = async function authRoutes(fastify) {
       };
 
       reply
-        .setCookie('accessToken', accessToken, {
-          ...cookieOptions,
-          maxAge: fastify.config.cookie.accessMaxAge
-        })
         .setCookie('refreshToken', refreshToken, {
           ...cookieOptions,
+          path: '/auth',
           maxAge: fastify.config.cookie.refreshMaxAge
         })
 
       return {
         accessToken,
-        refreshToken,
         status: 'token_refreshed'
       }
     }
@@ -166,18 +160,33 @@ module.exports = async function authRoutes(fastify) {
 
   fastify.post('/logout', {
     onRequest: fastify.verifyRefreshToken,
+    preValidation: fastify.csrfProtection,
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
     schema: {
       tags: ['auth'],
       summary: 'Logout the current user',
     },
     handler: async function logoutHandler(request, reply) {
-      await fastify.revokeToken(request.refreshTokenId);
+      await request.revokeToken(
+        request.refreshTokenId,
+        request.refreshTokenExp,
+        request.user._id
+      );
 
       reply
-        .clearCookie('accessToken', { path: '/' })
-        .clearCookie('refreshToken', { path: '/' });
+        .clearCookie('refreshToken', { path: '/auth' });
 
       reply.code(204).send()
     },
+  })
+
+  fastify.get('/csrf', {
+    schema: {
+      tags: ['auth'],
+      summary: 'Get CSRF token',
+    },
+    handler: async function csrfHandler(request, reply) {
+      return { csrfToken: await reply.generateCsrf() }
+    }
   })
 }
