@@ -1,20 +1,18 @@
-const { globals } = require('globals')
-const { configs } = require('@eslint/js')
+const js = require('@eslint/js')
+const globals = require('globals')
+const prettierRecommended = require('eslint-plugin-prettier/recommended')
 
-module.exports = {
-  env: {
-    node: true,
-    es2021: true,
+module.exports = [
+  js.configs.recommended,
+  {
+    files: ['**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2021,
+      sourceType: 'commonjs',
+      globals: {
+        ...globals.node,
+      },
+    },
   },
-  extends: ['eslint:recommended', 'plugin:prettier/recommended'],
-  parserOptions: {
-    ecmaVersion: 12,
-    sourceType: 'module',
-  },
-  rules: {
-    // Add your custom rules here
-  },
-  globals: {
-    ...globals.node,
-  },
-}
+  prettierRecommended,
+]
