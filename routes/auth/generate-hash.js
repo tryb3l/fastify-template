@@ -1,30 +1,29 @@
 'use strict'
 
-const crypto = require('node:crypto')
-const util = require('node:util')
+const argon2 = require('argon2')
 
-const pbkdf2 = util.promisify(crypto.pbkdf2)
-
-async function generateHash(password, salt) {
-  if (!salt) {
-    salt = crypto.randomBytes(16).toString('hex')
+const hashPassword = async (password) => {
+  try {
+    return await argon2.hash(password, {
+      type: argon2.argon2id,
+      memoryCost: 65536,
+      timeCost: 3,
+      parallelism: 4
+    });
+  } catch (err) {
+    throw new Error('Error hashing password: ' + err.message);
   }
-  const hash = (await pbkdf2(password, salt, 1000, 64, 'sha256')).toString('hex')
-  return { salt, hash }
-}
+};
 
-async function verifyPassword(submittedPassword, storedSalt, storedHash) {
-  const { hash: computedHash } = await generateHash(submittedPassword, storedSalt)
-
-  const computedBuffer = Buffer.from(computedHash, 'hex')
-  const storedBuffer = Buffer.from(storedHash, 'hex')
-
-  if (computedBuffer.length !== storedBuffer.length) return false
-
-  return crypto.timingSafeEqual(computedBuffer, storedBuffer)
-}
+const validatePassword = async (password, hash) => {
+  try {
+    return await argon2.verify(hash, password);
+  } catch (err) {
+    return false;
+  }
+};
 
 module.exports = {
-  generateHash,
-  verifyPassword
+  hashPassword,
+  validatePassword
 }
