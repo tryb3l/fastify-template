@@ -8,6 +8,18 @@ async function usersPlugin(fastify) {
   const users = fastify.mongo.db.collection('users');
   const revokedTokens = fastify.mongo.db.collection('revokedTokens');
 
+  try {
+    await revokedTokens.createIndex(
+      { "expiresAt": 1 },
+      { expireAfterSeconds: 0 }
+    );
+    await users.createIndex({ username: 1 }, { unique: true });
+    await users.createIndex({ email: 1 }, { unique: true });
+    fastify.log.info('Indexes created successfully');
+  } catch (err) {
+    fastify.log.error({ err }, 'Failed to create TTL index');
+  }
+
   const usersDataSource = {
     async createUser(userData) {
       fastify.log.info('Entering createUser method');
@@ -20,6 +32,9 @@ async function usersPlugin(fastify) {
         fastify.log.info('Exiting createUser method');
         return result.insertedId;
       } catch (error) {
+        if (error.code === 11000) {
+          throw fastify.httpErrors.conflict('User already registered');
+        }
         fastify.log.error({ error }, 'Error creating user');
         throw error;
       }
@@ -28,15 +43,13 @@ async function usersPlugin(fastify) {
       fastify.log.info('Entering readUser method');
       try {
         const user = await users.findOne(
-          { $or: [{ username: identifier }, { email: identifier }] },
+          { $or: [{ username: identifier }, { email: identifier }], deleted: { $ne: true } },
           {
             projection: {
               _id: 1,
               username: 1,
               email: 1,
               role: 1,
-              salt: 1,
-              password: 1,
               hash: 1,
               createdAt: 1,
               modifiedAt: 1,
@@ -53,8 +66,9 @@ async function usersPlugin(fastify) {
     async listUsers({ filter = {}, skip = 0, limit = 10 } = {}) {
       fastify.log.info('Entering listUsers method');
       try {
+        const queryFilter = { ...filter, deleted: { $ne: true } };
         const usersList = await users
-          .find(filter, {
+          .find(queryFilter, {
             projection: {
               _id: 1,
               username: 1,
@@ -79,7 +93,8 @@ async function usersPlugin(fastify) {
     async countUsers({ filter = {} } = {}) {
       fastify.log.info('Entering countUsers method');
       try {
-        const count = await users.countDocuments(filter);
+        const queryFilter = { ...filter, deleted: { $ne: true } };
+        const count = await users.countDocuments(queryFilter);
         fastify.log.info('Exiting countUsers method');
         return count;
       } catch (error) {
@@ -91,7 +106,7 @@ async function usersPlugin(fastify) {
       fastify.log.info('Entering readUserDetails method');
       try {
         const user = await users.findOne(
-          { _id: id },
+          { _id: id, deleted: { $ne: true } },
           {
             projection: {
               _id: 1,
@@ -116,7 +131,7 @@ async function usersPlugin(fastify) {
       fastify.log.info('Entering readUserById method');
       try {
         const user = await users.findOne(
-          { _id: id },
+          { _id: id, deleted: { $ne: true } },
           {
             projection: {
               _id: 1,
@@ -137,7 +152,7 @@ async function usersPlugin(fastify) {
       fastify.log.info('Entering updateUser method');
       try {
         const result = await users.updateOne(
-          { _id: id },
+          { _id: id, deleted: { $ne: true } },
           {
             $set: {
               ...newUser,
@@ -155,7 +170,7 @@ async function usersPlugin(fastify) {
     async deleteUser(id) {
       fastify.log.info('Entering deleteUser method');
       try {
-        const res = await users.updateOne({ _id: id }, { $set: { deleted: true, deletedAt: new Date() } });
+        const res = await users.updateOne({ _id: id, deleted: { $ne: true } }, { $set: { deleted: true, deletedAt: new Date() } });
 
         if (res.modifiedCount === 0) {
           fastify.log.info({ userId: id }, "User for delete does not exist or user can't be deleted");
@@ -185,7 +200,7 @@ async function usersPlugin(fastify) {
     async setUserRoleById(userId, role) {
       fastify.log.info('Entering setUserRoleById method');
       try {
-        await users.updateOne({ _id: userId }, { $set: { role } });
+        await users.updateOne({ _id: userId, deleted: { $ne: true } }, { $set: { role } });
         fastify.log.info({ role, userId }, 'User set new role');
         fastify.log.info('Exiting setUserRoleById method');
         return true;
@@ -197,7 +212,7 @@ async function usersPlugin(fastify) {
     async getUsersWithRole(role) {
       fastify.log.info('Entering getUsersWithRole method');
       try {
-        const usersList = await users.find({ role: role }, {}).toArray();
+        const usersList = await users.find({ role: role, deleted: { $ne: true } }, {}).toArray();
         fastify.log.info('Exiting getUsersWithRole method');
         return usersList;
       } catch (error) {
@@ -208,25 +223,31 @@ async function usersPlugin(fastify) {
     async checkIfRevoked(jti) {
       fastify.log.info('Entering checkIfRevoked method');
       try {
-        const token = await revokedTokens.findOne({ _id: jti, deleted: false });
+        const token = await revokedTokens.findOne({ _id: jti }, { projection: { _id: 1 } });
         fastify.log.info('Exiting checkIfRevoked method');
-        return !!token;
+        return token !== null;
       } catch (error) {
         fastify.log.error({ error, jti }, 'Database check revoke failure');
         throw error;
       }
     },
-    async revokeToken(jti) {
+    async revokeToken(jti, exp, userId) {
       fastify.log.info('Entering revokeToken method');
       try {
-        await revokedTokens.updateOne(
-          { _id: jti },
-          { $set: { deleted: true, updatedAt: new Date() } },
-          { upsert: true }
-        );
-        fastify.log.info({ jti }, 'Token revoked/disabled status on DB');
-        fastify.log.info('Exiting revokeToken method');
+        const expirationDate = new Date(exp * 1000);
+
+        await revokedTokens.insertOne({
+          _id: jti,
+          userId: userId,
+          expiresAt: expirationDate
+        });
+
+        fastify.log.info({ jti }, 'Token added to TTL blocklist');
       } catch (error) {
+        if (error.code === 11000) {
+          fastify.log.info({ jti }, 'Token was already revoked');
+          return;
+        }
         fastify.log.error({ error, jti }, 'Database failure on token revoke');
         throw error;
       }
