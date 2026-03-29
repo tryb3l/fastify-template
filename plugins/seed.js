@@ -1,7 +1,7 @@
 'use strict'
 
 const fp = require('fastify-plugin')
-const { generateHash } = require('../routes/auth/generate-hash')
+const { hashPassword } = require('../routes/auth/generate-hash')
 
 module.exports = fp(async function seedPlugin(fastify) {
     fastify.log.info("Checking database for initial seed data...")
@@ -11,12 +11,11 @@ module.exports = fp(async function seedPlugin(fastify) {
 
     if (!adminExists) {
         fastify.log.info("No admin user found. Seeding default admin account...")
-        const { salt, hash } = await generateHash(fastify.config.ADMIN_PASSWORD)
+        const hash = await hashPassword(fastify.config.ADMIN_PASSWORD)
 
         await usersCollection.insertOne({
             email: fastify.config.ADMIN_EMAIL,
-            password: hash,
-            salt: salt,
+            hash: hash,
             role: 'admin',
             createdAt: new Date(),
             updatedAt: new Date()
