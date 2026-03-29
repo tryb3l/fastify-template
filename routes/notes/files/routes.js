@@ -8,6 +8,20 @@ const fastifyMultipart = require('@fastify/multipart')
 const path = require('node:path')
 const { parse: csvParse } = require('csv-parse')
 const { stringify: csvStringify } = require('csv-stringify')
+const { randomUUID } = require('node:crypto')
+
+const ALLOWED_MIME_TYPES = {
+  'image/png': '.png',
+  'image/jpeg': ['.jpg', '.jpeg'],
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+  'application/pdf': '.pdf',
+  'text/csv': '.csv',
+  'text/plain': '.txt',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+  'application/vnd.ms-excel': '.xls',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx'
+}
 
 module.exports = async function fileRoutes(fastify) {
   await fastify.register(fastifyMultipart, {
@@ -119,26 +133,39 @@ module.exports = async function fileRoutes(fastify) {
     },
     handler: async function uploadFile(request, reply) {
       const parts = request.parts()
+      const { mkdir } = require('node:fs/promises')
       const uploadDir = './uploads'
 
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true })
-      }
+      await mkdir(uploadDir, { recursive: true })
+
+      const uploadedFiles = []
 
       try {
         for await (const part of parts) {
           if (part.file) {
-            const filename = path.basename(part.filename)
-            const filePath = path.join(uploadDir, filename)
-
             if (part.file.truncated) {
               throw this.httpErrors.badRequest('File is too large')
             }
 
+            const ext = path.extname(part.filename).toLowerCase()
+            const allowedExts = ALLOWED_MIME_TYPES[part.mimetype]
+
+            const isValid = allowedExts && (Array.isArray(allowedExts) ? allowedExts.includes(ext) : allowedExts === ext)
+
+            if (!isValid) {
+              throw this.httpErrors.unsupportedMediaType(`File type not allowed or extension mismatch: ${part.filename}`)
+            }
+
+            const safeFilename = randomUUID() + ext
+            const filePath = path.join(uploadDir, safeFilename)
+
             await pump(part.file, fs.createWriteStream(filePath))
+            uploadedFiles.push(safeFilename)
           }
         }
-        return { message: 'File uploaded successfully' }
+        
+        reply.code(201)
+        return { message: 'Files uploaded successfully', files: uploadedFiles }
       } catch (err) {
         request.log.error(err)
         throw this.httpErrors.internalServerError('File upload failed')
