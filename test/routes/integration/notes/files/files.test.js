@@ -55,15 +55,14 @@ test('GET /files/export 200 - Successfully exports notes as CSV stream', async (
   assert.ok(csvOutput.includes(note.data.title), 'Exported CSV should contain the created note title')
 })
 
-test('POST /files/upload 200 - Successfully saves raw file to disk', async (t) => {
+test('POST /files/upload 201 - Successfully saves raw file to disk', async (t) => {
   // Arrange
   const { app, accessToken } = await setup(t, 'user')
   const fileName = 'test-upload-file.txt'
   const fileContent = 'Hello, this is a raw file upload test!'
-  const expectedPath = path.join(process.cwd(), 'uploads', fileName)
 
   const form = new FormData()
-  form.append('file', Buffer.from(fileContent), fileName)
+  form.append('file', Buffer.from(fileContent), { filename: fileName, contentType: 'text/plain' })
 
   // Act
   const response = await app.inject({
@@ -77,14 +76,17 @@ test('POST /files/upload 200 - Successfully saves raw file to disk', async (t) =
   })
 
   // Assert
-  assert.strictEqual(response.statusCode, 200)
-  assert.strictEqual(response.json().message, 'File uploaded successfully')
+  assert.strictEqual(response.statusCode, 201)
+  const body = response.json()
+  assert.strictEqual(body.message, 'Files uploaded successfully')
+  assert.strictEqual(body.files.length, 1)
 
-  const fileExists = await fs.access(expectedPath).then(() => true).catch(() => false)
+  const serverPath = path.join(process.cwd(), 'uploads', body.files[0])
+  const fileExists = await fs.access(serverPath).then(() => true).catch(() => false)
   assert.strictEqual(fileExists, true, 'File should exist in the uploads directory')
 
   // Cleanup
-  if (fileExists) await fs.unlink(expectedPath)
+  if (fileExists) await fs.unlink(serverPath)
 })
 
 test('POST /files/import 400 - Fails if no file is provided', async (t) => {
