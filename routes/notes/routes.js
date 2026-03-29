@@ -118,6 +118,17 @@ module.exports = async function noteRoutes(fastify, opts) {
       const updatedNote = await fastify.notesDataSource.updateNote(id, updateData, userId)
       if (!updatedNote) throw fastify.httpErrors.notFound('Note not found')
 
+      if (fastify.eventBus) {
+        const sanitizedEventDTO = {
+          id: updatedNote._id,
+          title: updatedNote.title,
+          body: updatedNote.body,
+          tags: updatedNote.tags,
+          modifiedAt: updatedNote.modifiedAt
+        }
+        fastify.eventBus.emit(`note_updated:${id}`, { type: 'NOTE_UPDATED', payload: sanitizedEventDTO })
+      }
+
       await fastify.cacheDelete(`note:${id}:${userId}`)
 
       return { data: updatedNote }

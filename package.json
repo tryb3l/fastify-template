@@ -18,7 +18,11 @@
     "test:nostop": "node test/run-tests.js --nostop",
     "test:coverage": "node test/run-tests.js --coverage",
     "lint": "eslint .",
-    "lint:fix": "eslint . --fix"
+    "lint:fix": "eslint . --fix",
+    "migrate": "migrate-mongo up",
+    "migrate:down": "migrate-mongo down",
+    "migrate:status": "migrate-mongo status",
+    "migrate:create": "migrate-mongo create"
   },
   "keywords": [
     "fastify",
@@ -67,6 +71,7 @@
     "fastify-plugin": "^5.1.0",
     "fastify-secrets-env": "^3.0.0",
     "fluent-json-schema": "^6.0.0",
+    "migrate-mongo": "^14.0.7",
     "split2": "^4.2.0"
   },
   "devDependencies": {
