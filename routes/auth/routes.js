@@ -61,7 +61,6 @@ module.exports = async function authRoutes(fastify) {
           properties: {
             access_token: { type: 'string' },
             token_type: { type: 'string' },
-            expires_in: { type: 'integer' },
             user: {
               type: 'object',
               properties: {
@@ -113,7 +112,6 @@ module.exports = async function authRoutes(fastify) {
       return {
         access_token: accessToken,
         token_type: 'Bearer',
-        expires_in: 3600,
         user: {
           id: user._id,
           username: user.username || user.email,
@@ -130,7 +128,16 @@ module.exports = async function authRoutes(fastify) {
     schema: {
       tags: ['auth'],
       summary: 'Refresh access token',
-      description: 'Uses the httpOnly refresh cookie to generate a new access token.'
+      description: 'Uses the httpOnly refresh cookie to generate a new access token.',
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            access_token: { type: 'string' },
+            token_type: { type: 'string' }
+          }
+        }
+      }
     },
     handler: async function refreshHandler(request, reply) {
       await request.revokeToken(request.refreshTokenId, request.refreshTokenExp, request.user._id)
@@ -152,8 +159,8 @@ module.exports = async function authRoutes(fastify) {
         })
 
       return {
-        accessToken,
-        status: 'token_refreshed'
+        access_token: accessToken,
+        token_type: 'Bearer'
       }
     }
   })
