@@ -20,10 +20,7 @@ async function createNote(t, noteData = {}) {
     url: '/notes',
     headers: {
       'Content-Type': 'application/json',
-    },
-    cookies: {
-      accessToken: accessToken,
-      refreshToken: refreshToken,
+      'Authorization': `Bearer ${accessToken}`,
     },
     payload: payload,
   })
