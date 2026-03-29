@@ -12,8 +12,7 @@ module.exports = fp(async function corsPlugin(fastify) {
     origin: allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    exposedHeaders: ['Set-Cookie'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'csrf-token', 'x-csrf-token', 'xsrf-token'],
   })
 
   fastify.log.info('Successfully registered cors plugin')
