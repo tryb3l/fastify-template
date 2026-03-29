@@ -14,6 +14,7 @@ module.exports = fp(async function seedPlugin(fastify) {
         const hash = await hashPassword(fastify.config.ADMIN_PASSWORD)
 
         await usersCollection.insertOne({
+            username: 'admin',
             email: fastify.config.ADMIN_EMAIL,
             hash: hash,
             role: 'admin',
