@@ -23,10 +23,16 @@ test('POST /auth/authenticate 200 - User can successfully login and receive toke
   assert.strictEqual(response.statusCode, 200)
   const body = response.json()
   assert.ok(body.access_token, 'Access token should be returned')
+  assert.strictEqual(body.refresh_token, undefined, 'Refresh token should not be in body payload')
   
   const setCookie = response.headers['set-cookie']
   const cookies = Array.isArray(setCookie) ? setCookie : [setCookie]
-  assert.ok(cookies.some(c => c && c.includes('refreshToken=')), 'Refresh token cookie should be set')
+  
+  const refreshCookie = cookies.find(c => c && c.startsWith('refreshToken='))
+  assert.ok(refreshCookie, 'Refresh token cookie should be set')
+  assert.ok(refreshCookie.includes('Path=/auth'), 'Refresh token cookie should be bound to /auth path')
+  assert.ok(refreshCookie.includes('HttpOnly'), 'Refresh token cookie must be HttpOnly')
+  assert.ok(refreshCookie.includes('SameSite=Lax'), 'Refresh token cookie must be SameSite=Lax')
 
   assert.strictEqual(body.user.username, username)
   assert.strictEqual(body.user.id, userId)
