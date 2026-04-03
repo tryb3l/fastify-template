@@ -67,7 +67,7 @@
     "fast-json-stringify": "^6.3.0",
     "fastify": "5.8.4",
     "fastify-cli": "^8.0.0",
-    "fastify-metrics": "^12.1.0",
+    "fastify-metrics": "^13.1.0",
     "fastify-plugin": "^5.1.0",
     "fastify-secrets-env": "^3.0.0",
     "fluent-json-schema": "^6.0.0",
