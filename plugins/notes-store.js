@@ -49,6 +49,7 @@ module.exports = fp(
           title,
           body,
           tags,
+          attachments: [],
           id: _id,
           createdAt: now,
           modifiedAt: now,
@@ -67,6 +68,7 @@ module.exports = fp(
             _id,
             userId,
             ...rawNote,
+            attachments: rawNote.attachments || [],
             id: _id,
             createdAt: now,
             modifiedAt: now,
@@ -89,6 +91,7 @@ module.exports = fp(
                 title: 1,
                 body: 1,
                 tags: 1,
+                attachments: 1,
                 createdAt: 1,
                 modifiedAt: 1,
                 ...projection,
@@ -141,6 +144,25 @@ module.exports = fp(
           throw fastify.httpErrors.notFound('Note not found')
         }
         fastify.log.info('Exiting deleteNote method')
+      },
+
+      async addAttachments(id, attachments, userId) {
+        const result = await notes.findOneAndUpdate(
+          { id, userId },
+          {
+            $push: { attachments: { $each: attachments } },
+            $set: { modifiedAt: new Date() },
+          },
+          { returnDocument: 'after' },
+        )
+
+        const updatedNote = result?.value ?? result
+
+        if (!updatedNote) {
+          throw fastify.httpErrors.notFound('Note not found')
+        }
+
+        return updatedNote
       },
     }
 

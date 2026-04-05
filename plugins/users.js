@@ -39,6 +39,7 @@ async function usersPlugin(fastify) {
               email: 1,
               role: 1,
               hash: 1,
+              deleted: 1,
               createdAt: 1,
               modifiedAt: 1,
             },
