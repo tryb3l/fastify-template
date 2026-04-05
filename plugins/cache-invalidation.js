@@ -10,7 +10,7 @@ module.exports = fp(async function cacheInvalidationPlugin(fastify) {
             return
         }
 
-        if (request.method !== 'PUT' && request.method !== 'DELETE') {
+        if (request.method !== 'PUT' && request.method !== 'DELETE' && request.method !== 'POST') {
             return
         }
 
@@ -19,7 +19,7 @@ module.exports = fp(async function cacheInvalidationPlugin(fastify) {
             return
         }
 
-        const noteId = request.params?.id
+        const noteId = request.params?.id || request.query?.noteId
         const userId = request.user?._id || request.user?.id
 
         if (!noteId || !userId) {
