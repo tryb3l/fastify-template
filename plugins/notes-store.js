@@ -10,24 +10,27 @@ module.exports = fp(
     const notes = fastify.mongo.db.collection('notes')
 
     const notesDataSource = {
+      _buildFilter(rawFilter = {}, userId) {
+        const finalFilter = { userId }
+        if (rawFilter.title) {
+          finalFilter.title = new RegExp(rawFilter.title, 'i')
+        }
+        return finalFilter
+      },
+
       async countNotes(filter = {}, userId) {
         fastify.log.info('Entering countNotes method')
-        filter.userId = userId
-        const totalCount = await notes.countDocuments(filter)
+        const finalFilter = this._buildFilter(filter, userId)
+        const totalCount = await notes.countDocuments(finalFilter)
         fastify.log.info('Exiting countNotes method')
         return totalCount
       },
 
       async listNotes({ filter = {}, projection = {}, skip = 0, limit = 50, asStream = false } = {}, userId) {
         fastify.log.info('Entering listNotes method')
-        filter.userId = userId;
-
-        if (filter.title) {
-          filter.title = new RegExp(filter.title, 'i')
-        } else {
-          delete filter.title
-        }
-        const cursor = await notes.find(filter, {
+        const finalFilter = this._buildFilter(filter, userId)
+        
+        const cursor = await notes.find(finalFilter, {
           projection: { ...projection, _id: 0 },
           limit,
           skip,
