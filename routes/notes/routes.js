@@ -118,9 +118,19 @@ module.exports = async function noteRoutes(fastify, opts) {
       const updatedNote = await fastify.notesDataSource.updateNote(id, updateData, userId)
       if (!updatedNote) throw fastify.httpErrors.notFound('Note not found')
 
+      if (fastify.auditLog) {
+        await fastify.auditLog({
+          request,
+          action: 'note_updated',
+          userId,
+          resourceType: 'note',
+          resourceId: id
+        })
+      }
+
       if (fastify.eventBus) {
         const sanitizedEventDTO = {
-          id: updatedNote._id,
+          id: updatedNote.id,
           title: updatedNote.title,
           body: updatedNote.body,
           tags: updatedNote.tags,
@@ -128,8 +138,6 @@ module.exports = async function noteRoutes(fastify, opts) {
         }
         fastify.eventBus.emit(`note_updated:${id}`, { type: 'NOTE_UPDATED', payload: sanitizedEventDTO })
       }
-
-      await fastify.cacheDelete(`note:${id}:${userId}`)
 
       return { data: updatedNote }
     },
@@ -151,7 +159,16 @@ module.exports = async function noteRoutes(fastify, opts) {
       const userId = request.user._id || request.user.id
 
       await fastify.notesDataSource.deleteNote(id, userId)
-      await fastify.cacheDelete(`note:${id}:${userId}`)
+
+      if (fastify.auditLog) {
+        await fastify.auditLog({
+          request,
+          action: 'note_deleted',
+          userId,
+          resourceType: 'note',
+          resourceId: id
+        })
+      }
 
       reply.code(204).send()
     },
