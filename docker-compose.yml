@@ -3,6 +3,7 @@ services:
     image: mongo:8
     container_name: DB
     restart: unless-stopped
+    command: ["mongod", "--wiredTigerCacheSizeGB", "1.0"]
     volumes:
       - mongo_data:/data/db
     healthcheck:
