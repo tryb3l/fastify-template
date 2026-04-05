@@ -27,8 +27,19 @@ function randomEmail(usernameLength = 5, domainLength = 5) {
 }
 
 function randomPassword(length = 12) {
-  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*'
-  return fastGenerate(length, chars)
+  const lower = 'abcdefghijklmnopqrstuvwxyz'
+  const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+  const digits = '0123456789'
+  const special = '!@#$%^&*'
+  const all = lower + upper + digits + special
+  
+  let result = fastGenerate(1, lower)
+  result += fastGenerate(1, upper)
+  result += fastGenerate(1, digits)
+  result += fastGenerate(1, special)
+  result += fastGenerate(length - 4, all)
+  
+  return result
 }
 
 function randomString(
