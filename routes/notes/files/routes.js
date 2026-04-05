@@ -130,13 +130,47 @@ module.exports = async function fileRoutes(fastify) {
       tags: ['files'],
       summary: 'Upload a raw file',
       consumes: ['multipart/form-data'],
+      querystring: {
+        type: 'object',
+        required: ['noteId'],
+        additionalProperties: false,
+        properties: {
+          noteId: { type: 'string', format: 'uuid' },
+        },
+      },
+      response: {
+        201: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            message: { type: 'string' },
+            files: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                  fileId: { type: 'string', format: 'uuid' },
+                  originalFilename: { type: 'string' },
+                  mimeType: { type: 'string' },
+                  size: { type: 'integer', minimum: 0 },
+                  uploadedAt: { type: 'string', format: 'date-time' },
+                },
+              },
+            },
+          },
+        },
+      },
     },
     handler: async function uploadFile(request, reply) {
+      const { noteId } = request.query
+      const userId = request.user._id || request.user.id
       const parts = request.parts()
       const { mkdir } = require('node:fs/promises')
       const uploadDir = './uploads'
 
       await mkdir(uploadDir, { recursive: true })
+      await this.notesDataSource.readNote(noteId, userId)
 
       const uploadedFiles = []
 
@@ -158,12 +192,26 @@ module.exports = async function fileRoutes(fastify) {
 
             const safeFilename = randomUUID() + ext
             const filePath = path.join(uploadDir, safeFilename)
+            const fileId = safeFilename.slice(0, safeFilename.lastIndexOf('.'))
+            const uploadedAt = new Date().toISOString()
 
             await pump(part.file, fs.createWriteStream(filePath))
-            uploadedFiles.push(safeFilename)
+            uploadedFiles.push({
+              fileId,
+              originalFilename: part.filename,
+              mimeType: part.mimetype,
+              size: Number(part.file.bytesRead || 0),
+              uploadedAt,
+            })
           }
         }
-        
+
+        if (uploadedFiles.length === 0) {
+          throw this.httpErrors.badRequest('No files uploaded')
+        }
+
+        await this.notesDataSource.addAttachments(noteId, uploadedFiles, userId)
+
         reply.code(201)
         return { message: 'Files uploaded successfully', files: uploadedFiles }
       } catch (err) {

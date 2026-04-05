@@ -40,12 +40,12 @@ module.exports = async function userRoutes(fastify, options) {
     handler: async function listUsers(request, reply) {
       const { skip, limit, username } = request.query
       const filter = username ? { username } : {}
-      
+
       const users = await fastify.usersDataSource.listUsers({ filter, skip, limit })
       const totalCount = await fastify.usersDataSource.countUsers({ filter })
-      
+
       return { data: users, totalCount }
-    } 
+    }
   })
 
   fastify.route({
@@ -105,6 +105,17 @@ module.exports = async function userRoutes(fastify, options) {
       if (!res) {
         throw fastify.httpErrors.notFound('User not found or already deleted')
       }
+
+      if (fastify.auditLog) {
+        await fastify.auditLog({
+          request,
+          action: 'user_soft_deleted',
+          userId: request.user._id || request.user.id,
+          resourceType: 'user',
+          resourceId: request.params.id
+        })
+      }
+
       reply.code(204).send()
     },
   })
