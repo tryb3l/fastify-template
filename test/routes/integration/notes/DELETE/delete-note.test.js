@@ -1,0 +1,46 @@
+'use strict'
+
+const test = require('node:test')
+const assert = require('node:assert')
+const { createNote } = require('../../../../utils/note-creator')
+const { setup } = require('../../../../utils/setup-user')
+
+test('DELETE /notes/:id 204 - Deletes the note', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+
+  // Act
+  const response = await app.inject({
+    method: 'DELETE',
+    url: `/notes/${note.data.id}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 204)
+
+  
+  const verify = await app.inject({
+    method: 'GET',
+    url: `/notes/${note.data.id}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  assert.strictEqual(verify.statusCode, 404)
+})
+
+test('DELETE /notes/:id 404 - Returns 404 if not found', async (t) => {
+  // Arrange
+  const { app, accessToken } = await setup(t, 'user')
+  const fakeId = '00000000-0000-0000-0000-000000000000'
+
+  // Act
+  const response = await app.inject({
+    method: 'DELETE',
+    url: `/notes/${fakeId}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 404)
+})

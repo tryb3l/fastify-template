@@ -111,3 +111,88 @@ test('POST /files/import 400 - Fails if no file is provided', async (t) => {
   // Assert
   assert.strictEqual(response.statusCode, 400)
 })
+
+test('POST /files/upload 415 - Fails on unallowed extensions', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+  const form = new FormData()
+  form.append('file', Buffer.from('console.log("hello")'), { filename: 'script.js', contentType: 'application/javascript' })
+
+  // Act
+  const response = await app.inject({
+    method: 'POST',
+    url: `${ROUTE_PREFIX}/upload?noteId=${note.data.id}`,
+    headers: { ...form.getHeaders(), Authorization: `Bearer ${accessToken}` },
+    payload: form,
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 415)
+})
+
+test('GET /files/:fileId 200 - Successfully streams binary content', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+  const form = new FormData()
+  form.append('file', Buffer.from('download-me'), { filename: 'download.txt', contentType: 'text/plain' })
+
+  // Act
+  const uploadRes = await app.inject({
+    method: 'POST',
+    url: `${ROUTE_PREFIX}/upload?noteId=${note.data.id}`,
+    headers: { ...form.getHeaders(), Authorization: `Bearer ${accessToken}` },
+    payload: form,
+  })
+
+  // Assert
+  assert.strictEqual(uploadRes.statusCode, 201)
+  const fileId = uploadRes.json().files[0].fileId
+
+  // Act
+  const downloadRes = await app.inject({
+    method: 'GET',
+    url: `${ROUTE_PREFIX}/${fileId}?noteId=${note.data.id}`,
+    headers: { Authorization: `Bearer ${accessToken}` }
+  })
+
+  assert.strictEqual(downloadRes.statusCode, 200)
+  assert.strictEqual(downloadRes.body, 'download-me')
+
+  // Cleanup
+  await fs.unlink(path.join(process.cwd(), 'uploads', `${fileId}.txt`))
+})
+
+test('POST /files/upload 400 - Fails when file exceeds 10MB size limit', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+  const form = new FormData()
+  // 10MB + 1 byte to exceed the multipart fileSize limit
+  form.append('file', Buffer.alloc(10_000_001), { filename: 'oversized.txt', contentType: 'text/plain' })
+
+  // Act
+  const response = await app.inject({
+    method: 'POST',
+    url: `${ROUTE_PREFIX}/upload?noteId=${note.data.id}`,
+    headers: { ...form.getHeaders(), Authorization: `Bearer ${accessToken}` },
+    payload: form,
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 400)
+})
+
+test('GET /files/:fileId 404 - Fails when fileId is not attached to the note', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+  const nonExistentFileId = '00000000-0000-4000-a000-000000000000'
+
+  // Act
+  const response = await app.inject({
+    method: 'GET',
+    url: `${ROUTE_PREFIX}/${nonExistentFileId}?noteId=${note.data.id}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 404)
+})
