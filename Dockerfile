@@ -18,6 +18,7 @@ RUN apk update && apk add --no-cache dumb-init
 ENV HOME=/home/app
 ENV APP_HOME=$HOME/node/
 ENV NODE_ENV=production
+ENV NODE_OPTIONS="--max-heap-size=1024"
 
 RUN addgroup -S node && adduser -S node -G node
 
