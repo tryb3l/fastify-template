@@ -103,3 +103,27 @@ test('POST /auth/register 400 - failed signup, missing required field (password)
   assert.strictEqual(response.statusCode, 400)
   assert.ok(response.json().message)
 })
+
+test('POST /auth/register 400 - failed signup, weak password policy violation', async (t) => {
+  // Arrange
+  const app = await buildApp(t, {
+    MONGO_URL: 'mongodb://localhost:27017/login-test-db',
+  })
+
+  const payload = {
+    username: randomUsername(),
+    email: randomEmail(),
+    password: 'weakpass',
+  }
+
+  // Act
+  const response = await app.inject({
+    method: 'POST',
+    url: '/auth/register',
+    payload,
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 400)
+  assert.ok(response.json().message)
+})
