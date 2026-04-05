@@ -74,8 +74,47 @@ module.exports = async function userRoutes(fastify, options) {
 
   fastify.route({
     method: 'PUT',
+    url: '/me',
+    schema: {
+      tags: ['users'],
+      summary: 'Update own profile',
+      body: { $ref: 'schema:user:update:body#' },
+      response: {
+        200: {
+          type: 'object',
+          properties: { data: { $ref: 'schema:user#' } },
+        },
+      },
+    },
+    handler: async function updateSelf(request, reply) {
+      const id = request.user._id
+      const res = await fastify.usersDataSource.updateUser(id, request.body)
+      if (res.modifiedCount === 0) {
+        throw fastify.httpErrors.notFound('User not found or no changes made')
+      }
+      const updated = await fastify.usersDataSource.readUserDetails(id)
+      return { data: updated }
+    },
+  })
+
+  fastify.route({
+    method: 'DELETE',
+    url: '/me',
+    schema: {
+      tags: ['users'],
+      summary: 'Soft delete own account',
+    },
+    handler: async function deleteSelf(request, reply) {
+      const id = request.user._id
+      const ok = await fastify.usersDataSource.deleteUser(id)
+      if (!ok) throw fastify.httpErrors.notFound('User not found or already deleted')
+      reply.code(204).send()
+    },
+  })
+
+  fastify.route({
+    method: 'PUT',
     url: '/:id',
-    preHandler: fastify.authorize(['admin']),
     schema: {
       tags: ['users'],
       summary: 'Update user by id (Admin)',

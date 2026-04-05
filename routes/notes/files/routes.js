@@ -1,6 +1,7 @@
 'use strict'
 
 const fs = require('node:fs')
+const { mkdir, unlink } = require('node:fs/promises')
 const { promisify } = require('node:util')
 const { pipeline } = require('node:stream')
 const pump = promisify(pipeline)
@@ -166,7 +167,6 @@ module.exports = async function fileRoutes(fastify) {
       const { noteId } = request.query
       const userId = request.user._id || request.user.id
       const parts = request.parts()
-      const { mkdir } = require('node:fs/promises')
       const uploadDir = './uploads'
 
       await mkdir(uploadDir, { recursive: true })
@@ -177,10 +177,6 @@ module.exports = async function fileRoutes(fastify) {
       try {
         for await (const part of parts) {
           if (part.file) {
-            if (part.file.truncated) {
-              throw this.httpErrors.badRequest('File is too large')
-            }
-
             const ext = path.extname(part.filename).toLowerCase()
             const allowedExts = ALLOWED_MIME_TYPES[part.mimetype]
 
@@ -196,13 +192,20 @@ module.exports = async function fileRoutes(fastify) {
             const uploadedAt = new Date().toISOString()
 
             await pump(part.file, fs.createWriteStream(filePath))
+
+            // Push before truncated check so the catch cleanup loop removes this file
             uploadedFiles.push({
               fileId,
               originalFilename: part.filename,
               mimeType: part.mimetype,
               size: Number(part.file.bytesRead || 0),
               uploadedAt,
+              _filePath: filePath
             })
+
+            if (part.file.truncated) {
+              throw this.httpErrors.badRequest('File is too large')
+            }
           }
         }
 
@@ -210,14 +213,81 @@ module.exports = async function fileRoutes(fastify) {
           throw this.httpErrors.badRequest('No files uploaded')
         }
 
-        await this.notesDataSource.addAttachments(noteId, uploadedFiles, userId)
+        // Clean internal field before saving to DB
+        const dbFiles = uploadedFiles.map(({ _filePath, ...rest }) => rest)
+        await this.notesDataSource.addAttachments(noteId, dbFiles, userId)
 
         reply.code(201)
-        return { message: 'Files uploaded successfully', files: uploadedFiles }
+        return { message: 'Files uploaded successfully', files: dbFiles }
       } catch (err) {
         request.log.error(err)
+        
+        for (const file of uploadedFiles) {
+          if (file._filePath) {
+            try { await unlink(file._filePath) } catch (e) { /* ignore cleanup errors */ }
+          }
+        }
+
+        if (err.statusCode) {
+          throw err
+        }
         throw this.httpErrors.internalServerError('File upload failed')
       }
+    },
+  })
+
+  fastify.route({
+    method: 'GET',
+    url: '/:fileId',
+    schema: {
+      tags: ['files'],
+      summary: 'Download an attachment',
+      params: {
+        type: 'object',
+        required: ['fileId'],
+        properties: {
+          fileId: { type: 'string', format: 'uuid' },
+        },
+      },
+      querystring: {
+        type: 'object',
+        required: ['noteId'],
+        properties: {
+          noteId: { type: 'string', format: 'uuid' },
+        },
+      },
+      response: {
+        200: {
+          type: 'object', // Streaming binary content
+        },
+      },
+    },
+    handler: async function downloadFile(request, reply) {
+      const { fileId } = request.params
+      const { noteId } = request.query
+      const userId = request.user._id || request.user.id
+
+      const note = await this.notesDataSource.readNote(noteId, userId)
+      if (!note) throw this.httpErrors.notFound('Note not found')
+
+      const attachment = (note.attachments || []).find((att) => att.fileId === fileId)
+      if (!attachment) throw this.httpErrors.notFound('Attachment not found on this note')
+
+      const ext = path.extname(attachment.originalFilename).toLowerCase()
+      const filePath = path.join('./uploads', fileId + ext)
+      
+      try {
+        await fs.promises.access(filePath, fs.constants.R_OK)
+      } catch {
+        throw this.httpErrors.notFound('File not found on disk')
+      }
+
+      const stream = fs.createReadStream(filePath)
+
+      reply.header('Content-Disposition', `attachment; filename="${attachment.originalFilename}"`)
+      reply.type(attachment.mimeType)
+
+      return reply.send(stream)
     },
   })
 }

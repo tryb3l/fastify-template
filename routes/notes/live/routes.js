@@ -27,8 +27,24 @@ module.exports = async function liveNotesRoutes(fastify) {
 
     fastify.eventBus.on(`note_updated:${noteId}`, eventHandler);
 
-    connection.socket.on('message', message => {
+    let lastValidation = Date.now()
+
+    connection.socket.on('message', async message => {
       if (message.toString() === 'ping') {
+        const now = Date.now()
+        // Rate-limit database authorization checks to once per 60 seconds per socket
+        if (now - lastValidation > 60000) {
+          try {
+            const userId = req.user._id || req.user.id
+            const user = await fastify.usersDataSource.readUserById(userId)
+            if (!user || user.deleted) {
+              connection.socket.close(1008, 'Session Revoked')
+              return
+            }
+            lastValidation = now
+          } catch (e) { /* transient database error, permit continuation until next interval */ }
+        }
+        
         connection.socket.send('pong');
       }
     });
