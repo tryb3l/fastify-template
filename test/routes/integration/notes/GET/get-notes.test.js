@@ -20,7 +20,8 @@ test('GET /notes 200 - List notes', async (t) => {
   assert.strictEqual(response.statusCode, 200)
   const payload = response.json()
   assert.ok(Array.isArray(payload.data))
-  assert.strictEqual(typeof payload.totalCount, 'number')
+  assert.strictEqual(payload.data.length, 1)
+  assert.strictEqual(payload.totalCount, 1)
 })
 
 test('GET /notes 200 - List notes with pagination', async (t) => {
@@ -44,7 +45,8 @@ test('GET /notes 200 - List notes with pagination', async (t) => {
   assert.strictEqual(response.statusCode, 200)
   const payload = response.json()
   assert.ok(Array.isArray(payload.data))
-  assert.ok(payload.data.length <= 1, 'Should respect the limit of 1')
+  assert.strictEqual(payload.data.length, 1, 'Should respect the limit of 1')
+  assert.strictEqual(payload.totalCount, 2, 'Should return total amount of records despite limit')
 })
 
 test('GET /notes 200 - Filter notes by title', async (t) => {
@@ -63,6 +65,7 @@ test('GET /notes 200 - Filter notes by title', async (t) => {
   const payload = response.json()
   assert.ok(Array.isArray(payload.data))
   assert.strictEqual(payload.data[0].title, note.data.title)
+  assert.strictEqual(payload.totalCount, 1)
 })
 
 test('GET /notes 400 - Invalid skip and limit (negative values)', async (t) => {
