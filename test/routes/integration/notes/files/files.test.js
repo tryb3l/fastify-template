@@ -57,7 +57,7 @@ test('GET /files/export 200 - Successfully exports notes as CSV stream', async (
 
 test('POST /files/upload 201 - Successfully saves raw file to disk', async (t) => {
   // Arrange
-  const { app, accessToken } = await setup(t, 'user')
+  const { app, accessToken, note } = await createNote(t)
   const fileName = 'test-upload-file.txt'
   const fileContent = 'Hello, this is a raw file upload test!'
 
@@ -67,7 +67,7 @@ test('POST /files/upload 201 - Successfully saves raw file to disk', async (t) =
   // Act
   const response = await app.inject({
     method: 'POST',
-    url: `${ROUTE_PREFIX}/upload`,
+    url: `${ROUTE_PREFIX}/upload?noteId=${note.data.id}`,
     headers: {
       ...form.getHeaders(),
       Authorization: `Bearer ${accessToken}`,
@@ -80,8 +80,11 @@ test('POST /files/upload 201 - Successfully saves raw file to disk', async (t) =
   const body = response.json()
   assert.strictEqual(body.message, 'Files uploaded successfully')
   assert.strictEqual(body.files.length, 1)
+  assert.ok(body.files[0].fileId)
+  assert.strictEqual(body.files[0].originalFilename, fileName)
+  assert.strictEqual(body.files[0].mimeType, 'text/plain')
 
-  const serverPath = path.join(process.cwd(), 'uploads', body.files[0])
+  const serverPath = path.join(process.cwd(), 'uploads', `${body.files[0].fileId}.txt`)
   const fileExists = await fs.access(serverPath).then(() => true).catch(() => false)
   assert.strictEqual(fileExists, true, 'File should exist in the uploads directory')
 

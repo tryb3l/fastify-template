@@ -3,14 +3,75 @@
   "$id": "schema:note",
   "additionalProperties": false,
   "properties": {
-    "id": { "type": "string", "format": "uuid" },
-    "title": { "type": "string", "minLength": 1, "maxLength": 100 },
-    "body": { "type": "string", "minLength": 1, "maxLength": 10000 },
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "body": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 10000
+    },
     "tags": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1, "maxLength": 10 }
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 10
+      },
+      "maxItems": 50
     },
-    "createdAt": { "type": "string", "format": "date-time" },
-    "modifiedAt": { "type": "string", "format": "date-time" }
+    "attachments": {
+      "type": "array",
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "fileId",
+          "originalFilename",
+          "mimeType",
+          "size",
+          "uploadedAt"
+        ],
+        "properties": {
+          "fileId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "originalFilename": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "mimeType": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 127
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "uploadedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "modifiedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
   }
 }
