@@ -61,6 +61,7 @@ module.exports = async function authRoutes(fastify) {
           properties: {
             access_token: { type: 'string' },
             token_type: { type: 'string' },
+            expires_in: { type: 'integer' },
             user: {
               type: 'object',
               properties: {
@@ -152,9 +153,13 @@ module.exports = async function authRoutes(fastify) {
           maxAge: fastify.config.cookie.refreshMaxAge
         })
 
+      const decodedAccess = fastify.jwt.decode(accessToken)
+      const expiresIn = decodedAccess.exp - Math.floor(Date.now() / 1000)
+
       return {
         access_token: accessToken,
         token_type: 'Bearer',
+        expires_in: expiresIn,
         user: {
           id: user._id,
           username: user.username || user.email,
@@ -177,7 +182,16 @@ module.exports = async function authRoutes(fastify) {
           type: 'object',
           properties: {
             access_token: { type: 'string' },
-            token_type: { type: 'string' }
+            token_type: { type: 'string' },
+            expires_in: { type: 'integer' },
+            user: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                username: { type: 'string' },
+                role: { type: 'string' }
+              }
+            }
           }
         }
       }
@@ -201,9 +215,18 @@ module.exports = async function authRoutes(fastify) {
           maxAge: fastify.config.cookie.refreshMaxAge
         })
 
+      const decodedAccess = fastify.jwt.decode(accessToken)
+      const expiresIn = decodedAccess.exp - Math.floor(Date.now() / 1000)
+
       return {
         access_token: accessToken,
-        token_type: 'Bearer'
+        token_type: 'Bearer',
+        expires_in: expiresIn,
+        user: {
+          id: request.user._id,
+          username: request.user.username || request.user.email,
+          role: request.user.role
+        }
       }
     }
   })

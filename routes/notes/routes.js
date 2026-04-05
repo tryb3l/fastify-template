@@ -24,7 +24,7 @@ module.exports = async function noteRoutes(fastify, opts) {
     handler: async function listNotesHandler(request, reply) {
       const { skip, limit, title } = request.query
       const notes = await fastify.notesDataSource.listNotes({ filter: { title }, skip, limit }, request.user._id)
-      const totalCount = await fastify.notesDataSource.countNotes({ filter: { title } }, request.user._id)
+      const totalCount = await fastify.notesDataSource.countNotes({ title }, request.user._id)
       return { data: notes, totalCount }
     },
   })
