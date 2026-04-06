@@ -19,11 +19,7 @@
       "description": "Valid email address"
     },
     "password": {
-      "type": "string",
-      "minLength": 8,
-      "maxLength": 64,
-      "pattern": "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9]).{8,64}$",
-      "description": "At least one lowercase, uppercase, digit and special character"
+      "$ref": "schema:auth:password-policy"
     }
   },
   "additionalProperties": false

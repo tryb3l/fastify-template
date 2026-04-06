@@ -52,7 +52,7 @@ async function setup(t, role = 'user') {
   const refreshToken = refreshCookieStr.split(';')[0].split('=')[1]
   const userId = responseData.user.id
 
-  return { app, accessToken, refreshToken, userId, username, password }
+  return { app, accessToken, refreshToken, userId, username, email, password }
 }
 
 module.exports = { setup }
