@@ -78,7 +78,7 @@ module.exports = async function authRoutes(fastify) {
     handler: async function authenticateHandler(request, reply) {
       const identifier = request.body.username || request.body.email
 
-      const user = await fastify.usersDataSource.readUser(identifier)
+      const user = await fastify.usersDataSource.readUserWithHash(identifier)
 
       if (!user) {
         request.log.warn({ identifier }, "Login failed: User not found in DB")
@@ -260,6 +260,77 @@ module.exports = async function authRoutes(fastify) {
     },
     handler: async function csrfHandler(request, reply) {
       return { csrfToken: await reply.generateCsrf() }
+    }
+  })
+
+  fastify.post('/reset-password/request', {
+    config: { rateLimit: { max: 3, timeWindow: '1 hour' } },
+    schema: {
+      tags: ['auth'],
+      summary: 'Request a password reset',
+      body: { $ref: 'schema:auth:reset-request#' },
+      response: {
+        200: {
+          type: 'object',
+          properties: { message: { type: 'string' } }
+        }
+      }
+    },
+    handler: async function resetRequestHandler(request, reply) {
+      await fastify.passwordResetService.requestReset(request.body.email)
+      return { message: 'If an account exists for that email, a password reset link has been sent.' }
+    }
+  })
+
+  fastify.post('/reset-password/validate', {
+    config: { rateLimit: { max: 10, timeWindow: '1 hour' } },
+    schema: {
+      tags: ['auth'],
+      summary: 'Validate a password reset token before showing the reset form',
+      body: { $ref: 'schema:auth:reset-validate#' },
+      response: {
+        200: {
+          type: 'object',
+          properties: { valid: { type: 'boolean' } }
+        }
+      }
+    },
+    handler: async function resetValidateHandler(request, reply) {
+      const isValid = await fastify.passwordResetService.validateToken(
+        request.body.resetId,
+        request.body.secret
+      )
+      if (!isValid) {
+        throw fastify.httpErrors.unauthorized('Invalid or expired reset token')
+      }
+      return { valid: true }
+    }
+  })
+
+  fastify.post('/reset-password/confirm', {
+    config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
+    schema: {
+      tags: ['auth'],
+      summary: 'Execute the password reset and invalidate current sessions',
+      body: { $ref: 'schema:auth:reset-confirm#' },
+      response: {
+        200: {
+          type: 'object',
+          properties: { message: { type: 'string' } }
+        }
+      }
+    },
+    handler: async function resetConfirmHandler(request, reply) {
+      const success = await fastify.passwordResetService.executeReset(
+        request.body.resetId,
+        request.body.secret,
+        request.body.newPassword
+      )
+
+      if (!success) {
+        throw fastify.httpErrors.unauthorized('Invalid or expired reset token')
+      }
+      return { message: 'Password has been successfully reset. You may now log in.' }
     }
   })
 }

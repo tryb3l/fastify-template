@@ -1,0 +1,19 @@
+{
+  "$id": "schema:auth:reset-confirm",
+  "type": "object",
+  "required": ["resetId", "secret", "newPassword"],
+  "properties": {
+    "resetId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "secret": {
+      "type": "string",
+      "minLength": 32
+    },
+    "newPassword": {
+      "$ref": "schema:auth:password-policy"
+    }
+  },
+  "additionalProperties": false
+}
