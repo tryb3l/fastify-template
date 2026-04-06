@@ -2,11 +2,12 @@
 
 const assert = require('node:assert')
 const { MongoClient } = require('mongodb')
-const { buildApp } = require('../helper')
+const { buildApp, getTestMongoUrl } = require('../helper')
 const { randomUsername, randomEmail, randomPassword } = require('./data-creator')
 
-async function setup(t, role = 'user') {
-  const app = await buildApp(t)
+async function setup(t, role = 'user', env = {}) {
+  const app = await buildApp(t, env)
+  const mongoUrl = getTestMongoUrl(env)
 
   const username = randomUsername(12)
   const email = randomEmail(10, 5)
@@ -20,7 +21,7 @@ async function setup(t, role = 'user') {
   assert.strictEqual(registerResponse.statusCode, 201)
 
   if (role !== 'user') {
-    const client = new MongoClient('mongodb://localhost:27017')
+    const client = new MongoClient(mongoUrl.replace(/\/test$/, ''))
     await client.connect()
 
     const adminDb = client.db().admin()
@@ -52,7 +53,7 @@ async function setup(t, role = 'user') {
   const refreshToken = refreshCookieStr.split(';')[0].split('=')[1]
   const userId = responseData.user.id
 
-  return { app, accessToken, refreshToken, userId, username, email, password }
+  return { app, accessToken, refreshToken, userId, username, email, password, mongoUrl }
 }
 
 module.exports = { setup }
