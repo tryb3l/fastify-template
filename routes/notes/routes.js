@@ -1,32 +1,30 @@
 'use strict'
-const { handleReadNoteError, createNotFoundError } = require('../../utils/error')
 
-module.exports = async function noteRoutes(fastify) {
-  fastify.addHook('onRequest', fastify.authenticate)
+module.exports = async function noteRoutes(fastify, opts) {
+  const nodeEnv = opts?.configData?.NODE_ENV || fastify.config?.NODE_ENV || fastify.secrets?.NODE_ENV || process.env.NODE_ENV
+  const notesRateLimit = {
+    max: nodeEnv === 'test' ? 5 : 30,
+    timeWindow: '1 minute',
+  }
 
   fastify.route({
     method: 'GET',
     url: '/',
+    config: {
+      rateLimit: notesRateLimit,
+    },
     schema: {
       tags: ['notes'],
       summary: 'List notes',
-      queryString: fastify.getSchema('schema:note:list:query'),
+      querystring: { $ref: 'schema:note:list:query#' },
       response: {
-        200: fastify.getSchema('schema:note:list:response'),
+        200: { $ref: 'schema:note:list:response#' },
       },
     },
     handler: async function listNotesHandler(request, reply) {
       const { skip, limit, title } = request.query
-      if (skip < 0 || limit < 0) {
-        return reply.status(400).send({ message: 'Skip and limit must be non-negative integers' })
-      }
-      const notes = await request.notesDataSource.listNotes({
-        filter: { title },
-        skip,
-        limit,
-      })
-      const totalCount = await request.notesDataSource.countNotes()
-      reply.code(201)
+      const notes = await fastify.notesDataSource.listNotes({ filter: { title }, skip, limit }, request.user._id)
+      const totalCount = await fastify.notesDataSource.countNotes({ title }, request.user._id)
       return { data: notes, totalCount }
     },
   })
@@ -34,106 +32,147 @@ module.exports = async function noteRoutes(fastify) {
   fastify.route({
     method: 'POST',
     url: '/',
+    config: {
+      rateLimit: notesRateLimit,
+    },
     schema: {
       tags: ['notes'],
       summary: 'Create a note',
-      body: fastify.getSchema('schema:note:create:body'),
+      body: { $ref: 'schema:note:create:body#' },
       response: {
-        201: fastify.getSchema('schema:note:create:response'),
+        201: {
+          type: 'object',
+          properties: { data: { $ref: 'schema:note#' } }
+        },
       },
     },
     handler: async function createNoteHandler(request, reply) {
-      const insertedId = await request.notesDataSource.createNote(request.body)
-      try {
-        reply.code(201)
-      } catch (error) {
-        console.error('Error creating note:', error)
-        reply.code(500)
-        return { error: 'Internal Server Error' }
-      }
-      return { id: insertedId }
+      const { title, body, tags } = request.body
+      const note = await fastify.notesDataSource.createNote({ title, body, tags }, request.user._id)
+      reply.code(201)
+      return { data: note }
     },
   })
 
   fastify.route({
     method: 'GET',
     url: '/:id',
+    config: {
+      rateLimit: notesRateLimit,
+    },
     schema: {
       tags: ['notes'],
       summary: 'Read a note by id',
-      params: fastify.getSchema('schema:note:read:params'),
+      params: { $ref: 'schema:note:read:params#' },
       response: {
-        200: { $ref: 'schema:note' },
-        404: {
+        200: {
           type: 'object',
-          properties: {
-            statusCode: { type: 'integer' },
-            error: { type: 'string' },
-            message: { type: 'string' },
-            requestId: { type: 'string' },
-          },
-        },
-        401: {
-          type: 'object',
-          properties: {
-            statusCode: { type: 'integer' },
-            error: { type: 'string' },
-            message: { type: 'string' },
-            requestId: { type: 'string' },
-          },
-        },
+          properties: { data: { $ref: 'schema:note#' } }
+        }
       },
     },
     handler: async function readNoteHandler(request, reply) {
-      try {
-        const { id } = request.params
-        const note = await request.notesDataSource.readNote(id)
-        if (!note) {
-          throw createNotFoundError('Note not found')
-        }
-        await reply.send({ data: note })
-      } catch (error) {
-        await handleReadNoteError(error, request, reply)
+      const { id } = request.params
+      const userId = request.user._id || request.user.id
+      const cacheKey = `note:${id}:${userId}`
+
+      const cached = await fastify.cacheGet(cacheKey)
+      if (cached && cached.item) {
+        request.log.info('Cache HIT - Serving from RAM')
+        return { data: cached.item }
       }
+
+      request.log.info('Cache MISS - Fetching from MongoDB')
+      const note = await fastify.notesDataSource.readNote(id, userId)
+      if (!note) throw fastify.httpErrors.notFound('Note not found')
+
+      await fastify.cacheSet(cacheKey, note, 300000)
+
+      return { data: note }
     },
   })
 
   fastify.route({
     method: 'PUT',
     url: '/:id',
+    config: {
+      rateLimit: notesRateLimit,
+    },
     schema: {
       tags: ['notes'],
       summary: 'Update a note by id',
-      params: fastify.getSchema('schema:note:read:params'),
-      body: fastify.getSchema('schema:note:update:body'),
+      params: { $ref: 'schema:note:read:params#' },
+      body: { $ref: 'schema:note:update:body#' },
+      response: {
+        200: {
+          type: 'object',
+          properties: { data: { $ref: 'schema:note#' } }
+        }
+      },
     },
     handler: async function updateNoteHandler(request, reply) {
       const { id } = request.params
-      const res = await request.notesDataSource.updateNote(id, request.body)
-      if (res.modifiedCount === 0) {
-        reply.code(404)
-        return { error: 'Record is not found' }
+      const userId = request.user._id || request.user.id
+      const updateData = request.body
+
+      const updatedNote = await fastify.notesDataSource.updateNote(id, updateData, userId)
+      if (!updatedNote) throw fastify.httpErrors.notFound('Note not found')
+
+      if (fastify.auditLog) {
+        await fastify.auditLog({
+          request,
+          action: 'note_updated',
+          userId,
+          resourceType: 'note',
+          resourceId: id
+        })
       }
-      reply.code(204)
+
+      if (fastify.eventBus) {
+        const sanitizedEventDTO = {
+          id: updatedNote.id,
+          title: updatedNote.title,
+          body: updatedNote.body,
+          tags: updatedNote.tags,
+          modifiedAt: updatedNote.modifiedAt
+        }
+        fastify.eventBus.emit(`note_updated:${id}`, { type: 'NOTE_UPDATED', payload: sanitizedEventDTO })
+      }
+
+      return { data: updatedNote }
     },
   })
 
   fastify.route({
     method: 'DELETE',
     url: '/:id',
+    config: {
+      rateLimit: notesRateLimit,
+    },
     schema: {
       tags: ['notes'],
       summary: 'Delete a note by id',
-      params: fastify.getSchema('schema:note:read:params'),
+      params: { $ref: 'schema:note:read:params#' },
     },
     handler: async function deleteNoteHandler(request, reply) {
       const { id } = request.params
-      const res = await request.notesDataSource.deleteNote(id)
-      if (res.deletedCount === 0) {
-        reply.code(404)
-        return { error: 'Record is not found' }
+      const userId = request.user._id || request.user.id
+
+      await fastify.notesDataSource.deleteNote(id, userId)
+
+      if (fastify.auditLog) {
+        await fastify.auditLog({
+          request,
+          action: 'note_deleted',
+          userId,
+          resourceType: 'note',
+          resourceId: id
+        })
       }
-      reply.code(204)
+
+      reply.code(204).send()
     },
   })
 }
+
+module.exports.autoPrefix = '/notes'

@@ -1,18 +1,23 @@
 'use strict'
-/**
- * Fastify plugin for enabling Cross-Origin Resource Sharing (CORS).
- *
- * @module corsPlugin
- * @param {Object} fastify - The Fastify instance.
- * @param {Object} opts - The options object.
- * @returns {Promise<void>} - A promise that resolves when the plugin is registered.
- */
 
 const fp = require('fastify-plugin')
 const fastifyCors = require('@fastify/cors')
 
 module.exports = fp(async function corsPlugin(fastify) {
-  fastify.register(fastifyCors, {
-    origin: false,
+  fastify.log.info('Starting registration of cors plugin')
+
+  const allowedOrigins = fastify.config.FRONTEND_URL.split(',').map(s => s.trim())
+
+  await fastify.register(fastifyCors, {
+    origin: allowedOrigins,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'csrf-token', 'x-csrf-token', 'xsrf-token', 'x-xsrf-token'],
   })
+
+  fastify.log.info('Successfully registered cors plugin')
+}, {
+  name: 'cors-plugin',
+  dependencies: ['application-config'],
+  decorators: { fastify: ['config'] }
 })

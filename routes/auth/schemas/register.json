@@ -1,16 +1,26 @@
 {
-  "type": "object",
   "$id": "schema:auth:register",
-  "required": ["username", "password", "email"],
+  "type": "object",
+  "required": [
+    "username",
+    "email",
+    "password"
+  ],
   "properties": {
     "username": {
-      "$ref": "schema:auth:username#"
-    },
-    "password": {
-      "$ref": "schema:auth:password#"
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 32,
+      "description": "Unique username"
     },
     "email": {
-      "$ref": "schema:auth:email#"
+      "type": "string",
+      "format": "email",
+      "description": "Valid email address"
+    },
+    "password": {
+      "$ref": "schema:auth:password-policy"
     }
-  }
+  },
+  "additionalProperties": false
 }

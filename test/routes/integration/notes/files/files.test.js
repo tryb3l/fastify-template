@@ -1,0 +1,213 @@
+'use strict'
+
+const test = require('node:test')
+const assert = require('node:assert')
+const fs = require('node:fs/promises')
+const path = require('node:path')
+const FormData = require('form-data')
+const { createNote } = require('../../../../utils/note-creator')
+const { setup } = require('../../../../utils/setup-user')
+
+const ROUTE_PREFIX = '/files'
+
+function uploadFilePath(fileId, originalFilename) {
+  const extension = path.extname(originalFilename) || '.bin'
+  return path.join(process.cwd(), 'uploads', `${fileId}${extension}`)
+}
+
+async function fileExists(filePath) {
+  try {
+    await fs.access(filePath)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function registerFileCleanup(t, fileId, originalFilename) {
+  const serverPath = uploadFilePath(fileId, originalFilename)
+  t.after(async () => {
+    await fs.unlink(serverPath).catch(() => {})
+  })
+  return serverPath
+}
+
+async function uploadNoteFile(app, accessToken, noteId, form) {
+  return await app.inject({
+    method: 'POST',
+    url: `${ROUTE_PREFIX}/upload?noteId=${noteId}`,
+    headers: {
+      ...form.getHeaders(),
+      Authorization: `Bearer ${accessToken}`,
+    },
+    payload: form,
+  })
+}
+
+test('POST /files/import 201 - Successfully parses and imports CSV', async (t) => {
+  // Arrange
+  const { app, accessToken } = await setup(t, 'user')
+  const csvContent = 'title,body,tags\nTest Title 1,Test Body 1,tagA\nTest Title 2,Test Body 2,tagB,tagC'
+  const form = new FormData()
+  form.append('file', Buffer.from(csvContent), 'import.csv')
+
+  // Act
+  const response = await app.inject({
+    method: 'POST',
+    url: `${ROUTE_PREFIX}/import`,
+    headers: {
+      ...form.getHeaders(),
+      Authorization: `Bearer ${accessToken}`,
+    },
+    payload: form,
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 201)
+  const insertedIds = response.json()
+  assert.strictEqual(Array.isArray(insertedIds), true)
+  assert.strictEqual(insertedIds.length, 2, 'Should have imported exactly 2 notes')
+})
+
+test('GET /files/export 200 - Successfully exports notes as CSV stream', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+
+  // Act
+  const response = await app.inject({
+    method: 'GET',
+    url: `${ROUTE_PREFIX}/export`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 200)
+  assert.strictEqual(response.headers['content-type'], 'text/csv')
+  assert.ok(response.headers['content-disposition'].includes('attachment; filename="note-list.csv"'))
+
+  const csvOutput = response.body
+  assert.ok(csvOutput.includes(note.data.title), 'Exported CSV should contain the created note title')
+})
+
+test('POST /files/upload 201 - Successfully saves raw file to disk', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+  const fileName = 'test-upload-file.txt'
+  const fileContent = 'Hello, this is a raw file upload test!'
+
+  const form = new FormData()
+  form.append('file', Buffer.from(fileContent), { filename: fileName, contentType: 'text/plain' })
+
+  // Act
+  const response = await uploadNoteFile(app, accessToken, note.data.id, form)
+  const body = response.json()
+  const uploadedFile = body.files[0]
+  const serverPath = registerFileCleanup(t, uploadedFile.fileId, uploadedFile.originalFilename)
+  const uploadedFileExists = await fileExists(serverPath)
+
+  // Assert
+  assert.strictEqual(response.statusCode, 201)
+  assert.strictEqual(body.message, 'Files uploaded successfully')
+  assert.strictEqual(body.files.length, 1)
+  assert.ok(uploadedFile.fileId)
+  assert.strictEqual(uploadedFile.originalFilename, fileName)
+  assert.strictEqual(uploadedFile.mimeType, 'text/plain')
+  assert.strictEqual(uploadedFileExists, true, 'File should exist in the uploads directory')
+})
+
+test('POST /files/import 400 - Fails if no file is provided', async (t) => {
+  // Arrange
+  const { app, accessToken } = await setup(t, 'user')
+  const form = new FormData()
+
+  // Act
+  const response = await app.inject({
+    method: 'POST',
+    url: `${ROUTE_PREFIX}/import`,
+    headers: {
+      ...form.getHeaders(),
+      Authorization: `Bearer ${accessToken}`,
+    },
+    payload: form,
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 400)
+})
+
+test('POST /files/upload 415 - Fails on unallowed extensions', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+  const form = new FormData()
+  form.append('file', Buffer.from('console.log("hello")'), { filename: 'script.js', contentType: 'application/javascript' })
+
+  // Act
+  const response = await app.inject({
+    method: 'POST',
+    url: `${ROUTE_PREFIX}/upload?noteId=${note.data.id}`,
+    headers: { ...form.getHeaders(), Authorization: `Bearer ${accessToken}` },
+    payload: form,
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 415)
+})
+
+test('GET /files/:fileId 200 - Successfully streams binary content', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+  const form = new FormData()
+  const fileName = 'download.txt'
+  form.append('file', Buffer.from('download-me'), { filename: fileName, contentType: 'text/plain' })
+
+  const uploadRes = await uploadNoteFile(app, accessToken, note.data.id, form)
+  assert.strictEqual(uploadRes.statusCode, 201)
+  const fileId = uploadRes.json().files[0].fileId
+  registerFileCleanup(t, fileId, fileName)
+
+  // Act
+  const downloadRes = await app.inject({
+    method: 'GET',
+    url: `${ROUTE_PREFIX}/${fileId}?noteId=${note.data.id}`,
+    headers: { Authorization: `Bearer ${accessToken}` }
+  })
+
+  // Assert
+  assert.strictEqual(downloadRes.statusCode, 200)
+  assert.strictEqual(downloadRes.body, 'download-me')
+})
+
+test('POST /files/upload 400 - Fails when file exceeds 10MB size limit', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+  const form = new FormData()
+  // 10MB + 1 byte to exceed the multipart fileSize limit
+  form.append('file', Buffer.alloc(10_000_001), { filename: 'oversized.txt', contentType: 'text/plain' })
+
+  // Act
+  const response = await app.inject({
+    method: 'POST',
+    url: `${ROUTE_PREFIX}/upload?noteId=${note.data.id}`,
+    headers: { ...form.getHeaders(), Authorization: `Bearer ${accessToken}` },
+    payload: form,
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 400)
+})
+
+test('GET /files/:fileId 404 - Fails when fileId is not attached to the note', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+  const nonExistentFileId = '00000000-0000-4000-a000-000000000000'
+
+  // Act
+  const response = await app.inject({
+    method: 'GET',
+    url: `${ROUTE_PREFIX}/${nonExistentFileId}?noteId=${note.data.id}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 404)
+})

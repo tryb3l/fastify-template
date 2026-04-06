@@ -1,0 +1,33 @@
+services:
+  mongo:
+    image: mongo:8
+    container_name: DB
+    restart: unless-stopped
+    command: ["mongod", "--wiredTigerCacheSizeGB", "1.0"]
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app_be:
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    container_name: BE
+    restart: unless-stopped
+    ports:
+      - "3042:3000"
+    env_file:
+      - .env
+    environment:
+      - MONGO_URL=mongodb://mongo:27017/note
+      - NODE_ENV=production
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+volumes:
+  mongo_data:

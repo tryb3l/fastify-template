@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "$id": "schema:user:query:params",
+  "required": [
+    "id"
+  ],
+  "properties": {
+    "id": {
+      "type": "uuid"
+    }
+  }
+}

@@ -4,9 +4,6 @@
   "required": ["id"],
   "additionalProperties": false,
   "properties": {
-    "id": {
-      "type": "string",
-      "format": "uuid"
-    }
+    "id": { "type": "string", "format": "uuid" }
   }
 }

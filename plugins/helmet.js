@@ -1,13 +1,7 @@
 'use strict'
-
 const fp = require('fastify-plugin')
+const helmet = require('@fastify/helmet')
 
-module.exports = fp(async function helmetPlugin(fastify) {
-  fastify.register(require('@fastify/helmet'), {
-    contentSecurityPolicy: {
-      directives: {
-        scriptSrc: ["'self'", 'trusted-cdn.com', 'https://unpkg.com'], // Adjust the CDN domain if needed
-      },
-    },
-  })
-})
+module.exports = fp(async function helmetPlugin(fastify, opts) {
+    await fastify.register(helmet)
+}, { name: 'helmet-plugin' })

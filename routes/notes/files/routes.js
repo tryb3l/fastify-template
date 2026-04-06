@@ -1,6 +1,7 @@
 'use strict'
 
 const fs = require('node:fs')
+const { mkdir, unlink } = require('node:fs/promises')
 const { promisify } = require('node:util')
 const { pipeline } = require('node:stream')
 const pump = promisify(pipeline)
@@ -8,44 +9,31 @@ const fastifyMultipart = require('@fastify/multipart')
 const path = require('node:path')
 const { parse: csvParse } = require('csv-parse')
 const { stringify: csvStringify } = require('csv-stringify')
+const { randomUUID } = require('node:crypto')
+
+const ALLOWED_MIME_TYPES = {
+  'image/png': '.png',
+  'image/jpeg': ['.jpg', '.jpeg'],
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+  'application/pdf': '.pdf',
+  'text/csv': '.csv',
+  'text/plain': '.txt',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+  'application/vnd.ms-excel': '.xls',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx'
+}
 
 module.exports = async function fileRoutes(fastify) {
   await fastify.register(fastifyMultipart, {
-    attachFieldsToBody: 'keyValues',
-    async onFile(part) {
-      const lines = []
-
-      const stream = part.file.pipe(
-        csvParse({
-          bom: true,
-          skip_empty_lines: true,
-          trim: true,
-          columns: true,
-        }),
-      )
-
-      for await (const line of stream) {
-        lines.push({
-          title: line.title,
-          body: line.body,
-          status: line.status,
-          createdAt: line.createdat,
-          modifiedAt: line.modifiedat,
-        })
-      }
-
-      part.value = lines
-    },
-    sharedSchemaId: 'schema:note:import:file',
     limits: {
       fieldNameSize: 50,
       fieldSize: 100,
       fields: 10,
-      fileSize: 10_000_000, // The max file size in bytes (10MB)
+      fileSize: 10_000_000, // 10MB limit
       files: 1,
     },
   })
-  fastify.addHook('onRequest', fastify.authenticate)
 
   fastify.route({
     method: 'POST',
@@ -53,38 +41,49 @@ module.exports = async function fileRoutes(fastify) {
     schema: {
       tags: ['files'],
       summary: 'Import a note list from a CSV file',
-      body: {
-        type: 'object',
-        required: ['noteListFile'],
-        description: 'Import a note list from a CSV file with the following format: title,done',
-        properties: {
-          noteListFile: {
-            type: 'array',
-            items: {
-              type: 'object',
-              required: ['title', 'body', 'status'],
-              properties: {
-                title: { type: 'string' },
-                body: { type: 'string' },
-                status: { type: 'string', enum: ['active', 'archived'] },
-                createdat: { type: 'string', format: 'date-time' },
-                modifiedAt: { type: 'string', format: 'date-time' },
-              },
-            },
-          },
-        },
-      },
+      consumes: ['multipart/form-data'],
       response: {
         201: {
           type: 'array',
-          items: fastify.getSchema('schema:note:create:response'),
+          items: { type: 'string', format: 'uuid' }
         },
       },
     },
-    handler: async function listNotes(request, reply) {
-      const inserted = await request.notesDataSource.createNotes(request.body.noteListFile)
-      reply.code(201)
-      return inserted
+    handler: async function importNotes(request, reply) {
+      const data = await request.file()
+      if (!data) throw this.httpErrors.badRequest('Missing file')
+
+      const lines = []
+
+      const stream = data.file.pipe(
+        csvParse({
+          bom: true,
+          skip_empty_lines: true,
+          trim: true,
+          relax_column_count: true,
+        })
+      )
+
+      let isHeaderRow = true
+
+      for await (const line of stream) {
+        if (isHeaderRow) {
+          isHeaderRow = false
+          continue
+        }
+
+        const [title, body, ...tags] = line
+
+        lines.push({
+          title,
+          body,
+          tags,
+        })
+      }
+
+      const insertedIds = await this.notesDataSource.createNotes(lines, request.user._id)
+
+      return reply.code(201).send(insertedIds)
     },
   })
 
@@ -94,23 +93,28 @@ module.exports = async function fileRoutes(fastify) {
     schema: {
       tags: ['files'],
       summary: 'Export a note list to a CSV file',
-      querystring: fastify.getSchema('schema:note:list:export'),
+      querystring: { $ref: 'schema:note:list:export#' },
     },
-    handler: async function listNotes(request, reply) {
+    handler: async function exportNotes(request, reply) {
       const { title } = request.query
-      const cursor = await request.todosDataSource.listNotes({
-        filter: { title },
+
+      const filter = {}
+      if (title) filter.title = title
+
+      const cursorStream = await this.notesDataSource.listNotes({
+        filter,
         skip: 0,
-        limit: undefined,
         asStream: true,
-      })
+      }, request.user._id)
+
       reply.header('Content-Disposition', 'attachment; filename="note-list.csv"')
       reply.type('text/csv')
-      return cursor.pipe(
+
+      return cursorStream.pipe(
         csvStringify({
           quoted_string: true,
           header: true,
-          columns: ['title', 'status', 'body', 'createdAt', 'modifiedAt', 'id'],
+          columns: ['title', 'body', 'tags', 'createdAt', 'modifiedAt', 'id'],
           cast: {
             date: (value) => value.toISOString(),
             object: (value) => JSON.stringify(value),
@@ -125,44 +129,167 @@ module.exports = async function fileRoutes(fastify) {
     url: '/upload',
     schema: {
       tags: ['files'],
-      summary: 'Upload a file',
-      body: {
+      summary: 'Upload a raw file',
+      consumes: ['multipart/form-data'],
+      querystring: {
         type: 'object',
-        required: ['file'],
+        required: ['noteId'],
+        additionalProperties: false,
         properties: {
-          file: { type: 'string', format: 'binary' },
+          noteId: { type: 'string', format: 'uuid' },
+        },
+      },
+      response: {
+        201: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            message: { type: 'string' },
+            files: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                  fileId: { type: 'string', format: 'uuid' },
+                  originalFilename: { type: 'string' },
+                  mimeType: { type: 'string' },
+                  size: { type: 'integer', minimum: 0 },
+                  uploadedAt: { type: 'string', format: 'date-time' },
+                },
+              },
+            },
+          },
         },
       },
     },
     handler: async function uploadFile(request, reply) {
+      const { noteId } = request.query
+      const userId = request.user._id || request.user.id
       const parts = request.parts()
       const uploadDir = './uploads'
 
-      // Ensure the upload directory exists
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true })
-      }
+      await mkdir(uploadDir, { recursive: true })
+      await this.notesDataSource.readNote(noteId, userId)
+
+      const uploadedFiles = []
 
       try {
         for await (const part of parts) {
           if (part.file) {
-            const filename = part.filename
-            const filePath = path.join(uploadDir, filename)
+            const ext = path.extname(part.filename).toLowerCase()
+            const allowedExts = ALLOWED_MIME_TYPES[part.mimetype]
 
-            if (part.file.truncated) {
-              return reply.code(400).send({ error: 'File is too large' })
+            const isValid = allowedExts && (Array.isArray(allowedExts) ? allowedExts.includes(ext) : allowedExts === ext)
+
+            if (!isValid) {
+              throw this.httpErrors.unsupportedMediaType(`File type not allowed or extension mismatch: ${part.filename}`)
             }
 
+            const safeFilename = randomUUID() + ext
+            const filePath = path.join(uploadDir, safeFilename)
+            const fileId = safeFilename.slice(0, safeFilename.lastIndexOf('.'))
+            const uploadedAt = new Date().toISOString()
+
             await pump(part.file, fs.createWriteStream(filePath))
-          } else {
-            console.log(part)
+
+            // Push before truncated check so the catch cleanup loop removes this file
+            uploadedFiles.push({
+              fileId,
+              originalFilename: part.filename,
+              mimeType: part.mimetype,
+              size: Number(part.file.bytesRead || 0),
+              uploadedAt,
+              _filePath: filePath
+            })
+
+            if (part.file.truncated) {
+              throw this.httpErrors.badRequest('File is too large')
+            }
           }
         }
-        return { message: 'File uploaded' }
+
+        if (uploadedFiles.length === 0) {
+          throw this.httpErrors.badRequest('No files uploaded')
+        }
+
+        // Clean internal field before saving to DB
+        const dbFiles = uploadedFiles.map(({ _filePath, ...rest }) => rest)
+        await this.notesDataSource.addAttachments(noteId, dbFiles, userId)
+
+        reply.code(201)
+        return { message: 'Files uploaded successfully', files: dbFiles }
       } catch (err) {
-        console.error(err)
-        return reply.code(500).send({ error: 'File upload failed' })
+        request.log.error(err)
+
+        for (const file of uploadedFiles) {
+          if (file._filePath) {
+            try { await unlink(file._filePath) } catch (e) { /* ignore cleanup errors */ }
+          }
+        }
+
+        if (err.statusCode) {
+          throw err
+        }
+        throw this.httpErrors.internalServerError('File upload failed')
       }
     },
   })
+
+  fastify.route({
+    method: 'GET',
+    url: '/:fileId',
+    schema: {
+      tags: ['files'],
+      summary: 'Download an attachment',
+      params: {
+        type: 'object',
+        required: ['fileId'],
+        properties: {
+          fileId: { type: 'string', format: 'uuid' },
+        },
+      },
+      querystring: {
+        type: 'object',
+        required: ['noteId'],
+        properties: {
+          noteId: { type: 'string', format: 'uuid' },
+        },
+      },
+      response: {
+        200: {
+          type: 'object', // Streaming binary content
+        },
+      },
+    },
+    handler: async function downloadFile(request, reply) {
+      const { fileId } = request.params
+      const { noteId } = request.query
+      const userId = request.user._id || request.user.id
+
+      const note = await this.notesDataSource.readNote(noteId, userId)
+      if (!note) throw this.httpErrors.notFound('Note not found')
+
+      const attachment = (note.attachments || []).find((att) => att.fileId === fileId)
+      if (!attachment) throw this.httpErrors.notFound('Attachment not found on this note')
+
+      const ext = path.extname(attachment.originalFilename).toLowerCase()
+      const filePath = path.join('./uploads', fileId + ext)
+
+      try {
+        await fs.promises.access(filePath, fs.constants.R_OK)
+      } catch {
+        throw this.httpErrors.notFound('File not found on disk')
+      }
+
+      const stream = fs.createReadStream(filePath)
+
+      reply.header('Content-Disposition', `attachment; filename="${attachment.originalFilename}"`)
+      reply.type(attachment.mimeType)
+
+      return reply.send(stream)
+    },
+  })
 }
+
+module.exports.autoPrefix = '/files'

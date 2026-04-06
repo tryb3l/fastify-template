@@ -1,160 +1,163 @@
 'use strict'
 
-const fp = require('fastify-plugin')
-
-module.exports = fp(async function userRoutes(fastify) {
+module.exports = async function userRoutes(fastify, options) {
   fastify.addHook('onRequest', fastify.authenticate)
 
   fastify.route({
     method: 'GET',
-    url: '/users',
+    url: '/me',
     schema: {
       tags: ['users'],
-      summary: 'List users',
-      headers: fastify.getSchema('schema:auth:token-header'),
-      querystring: {
-        type: 'object',
-        properties: {
-          skip: { type: 'integer', default: 0 },
-          limit: { type: 'integer', default: 10 },
-          username: { type: 'string' },
-        },
-        required: [],
-      },
+      summary: 'Read current user profile',
       response: {
         200: {
           type: 'object',
           properties: {
-            data: { type: 'array', items: fastify.getSchema('schema:user') },
-            totalCount: { type: 'integer' },
+            data: { $ref: 'schema:user#' },
           },
-        },
-        400: {
-          type: 'object',
-          properties: {
-            error: { type: 'string' },
-            message: { type: 'string' },
-            statusCode: { type: 'integer' },
-          },
-          required: ['error', 'message', 'statusCode'],
         },
       },
     },
-    handler: async function listUsers(request, reply) {
-      try {
-        const { skip, limit, username } = request.query
-        if (!Number.isInteger(skip) || skip < 0 || !Number.isInteger(limit) || limit < 0) {
-          reply.code(400)
-          return {
-            error: 'Bad Request',
-            message: 'Skip and limit must be non-negative integers',
-            statusCode: 400,
-          }
-        }
-
-        const filter = username ? { username } : {}
-        const users = await this.usersDataSource.listUsers({ filter, skip, limit })
-        const totalCount = await this.usersDataSource.countUsers({ filter })
-        reply.code(200)
-        return { data: users, totalCount }
-      } catch (error) {
-        reply.code(400).send({ error: 'Bad request', message: error.message, statusCode: 400 })
-      }
+    handler: async function readProfile(request, reply) {
+      const user = await fastify.usersDataSource.readUserDetails(request.user._id);
+      if (!user) throw fastify.httpErrors.notFound('User not found');
+      return { data: user };
     },
   })
 
   fastify.route({
     method: 'GET',
-    url: '/user-details/:id',
+    url: '/',
+    preHandler: fastify.authorize(['admin']),
     schema: {
       tags: ['users'],
-      summary: 'Read user details',
-      headers: fastify.getSchema('schema:auth:token-header'),
-      params: fastify.getSchema('schema:user:read:params', 'schema:auth:token-header'),
+      summary: 'List all users (Admin)',
+      querystring: { $ref: 'schema:user:list:query#' },
+      response: {
+        200: { $ref: 'schema:user:list:response#' },
+      },
+    },
+    handler: async function listUsers(request, reply) {
+      const { skip, limit, username } = request.query
+      const filter = username ? { username } : {}
+
+      const users = await fastify.usersDataSource.listUsers({ filter, skip, limit })
+      const totalCount = await fastify.usersDataSource.countUsers({ filter })
+
+      return { data: users, totalCount }
+    }
+  })
+
+  fastify.route({
+    method: 'GET',
+    url: '/:id',
+    preHandler: fastify.authorize(['admin']),
+    schema: {
+      tags: ['users'],
+      summary: 'Read user by id (Admin)',
+      params: { $ref: 'schema:user:read:params#' },
       response: {
         200: {
           type: 'object',
           properties: {
-            data: fastify.getSchema('schema:user'),
+            data: { $ref: 'schema:user#' },
           },
         },
       },
     },
-    handler: async function readUserDetails(request, reply) {
-      try {
-        const user = await this.usersDataSource.readUserDetails(request.params.id)
-        if (!user) {
-          reply.code(404)
-          return { error: 'User not found' }
-        }
-        console.log('Raw user object', user)
-
-        return { data: user }
-      } catch (error) {
-        console.error('Error fetching user details:', error)
-        reply.code(500)
-        return { error: 'Internal Server Error' }
-      }
+    handler: async function readUser(request, reply) {
+      const user = await fastify.usersDataSource.readUserDetails(request.params.id)
+      if (!user) throw fastify.httpErrors.notFound('User not found')
+      return { data: user }
     },
-  }),
-    fastify.route({
-      method: 'GET',
-      url: '/user/:id',
-      schema: {
-        tags: ['users'],
-        summary: 'Read user by id',
-        headers: fastify.getSchema('schema:auth:token-header'),
-        params: fastify.getSchema('schema:user:read:params', 'schema:auth:token-header'),
-        response: {
-          200: fastify.getSchema('schema:user'),
-        },
-      },
-      handler: async function readUser(request, reply) {
-        const user = await this.usersDataSource.readUser(request.params.id)
-        if (!user) {
-          reply.code(404)
-          return { error: 'User not found' }
-        }
-        return user
-      },
-    })
+  })
 
   fastify.route({
     method: 'PUT',
-    url: '/user/:id',
+    url: '/me',
     schema: {
       tags: ['users'],
-      summary: 'Update user by id',
-      headers: fastify.getSchema('schema:auth:token-header'),
-      params: fastify.getSchema('schema:user:read:params', 'schema:auth:token-header'),
-      body: fastify.getSchema('schema:user:update:body'),
+      summary: 'Update own profile',
+      body: { $ref: 'schema:user:update:body#' },
+      response: {
+        200: {
+          type: 'object',
+          properties: { data: { $ref: 'schema:user#' } },
+        },
+      },
     },
-    handler: async function updateUser(request, reply) {
-      const res = await this.usersDataSource.updateUser(request.params.id, request.body)
+    handler: async function updateSelf(request, reply) {
+      const id = request.user._id
+      const res = await fastify.usersDataSource.updateUser(id, request.body)
       if (res.modifiedCount === 0) {
-        reply.code(404)
-        return { error: 'User is not found or not updated' }
+        throw fastify.httpErrors.notFound('User not found or no changes made')
       }
-      reply.code(204)
+      const updated = await fastify.usersDataSource.readUserDetails(id)
+      return { data: updated }
     },
   })
 
   fastify.route({
     method: 'DELETE',
-    url: '/user/:id',
+    url: '/me',
     schema: {
       tags: ['users'],
-      summary: 'Delete user by id',
-      headers: fastify.getSchema('schema:auth:token-header'),
-      params: fastify.getSchema('schema:user:read:params'),
+      summary: 'Soft delete own account',
     },
-    handler: async function deleteUser(request, reply) {
-      const res = await this.usersDataSource.deleteUser(request.params.id)
-      if (res.deletedCount === 0) {
-        reply.code(404)
-        return { error: 'User is not found' }
-      }
-      reply.code(204)
+    handler: async function deleteSelf(request, reply) {
+      const id = request.user._id
+      const ok = await fastify.usersDataSource.deleteUser(id)
+      if (!ok) throw fastify.httpErrors.notFound('User not found or already deleted')
+      reply.code(204).send()
     },
   })
-})
+
+  fastify.route({
+    method: 'PUT',
+    url: '/:id',
+    schema: {
+      tags: ['users'],
+      summary: 'Update user by id (Admin)',
+      params: { $ref: 'schema:user:read:params#' },
+      body: { $ref: 'schema:user:update:body#' },
+    },
+    handler: async function updateUser(request, reply) {
+      const res = await fastify.usersDataSource.updateUser(request.params.id, request.body)
+      if (res.modifiedCount === 0) {
+        throw fastify.httpErrors.notFound('User not found or no changes made')
+      }
+      reply.code(204).send()
+    },
+  })
+
+  fastify.route({
+    method: 'DELETE',
+    url: '/:id',
+    preHandler: fastify.authorize(['admin']),
+    schema: {
+      tags: ['users'],
+      summary: 'Soft delete user by id (Admin)',
+      params: { $ref: 'schema:user:read:params#' },
+    },
+    handler: async function deleteUser(request, reply) {
+      const res = await fastify.usersDataSource.deleteUser(request.params.id)
+      if (!res) {
+        throw fastify.httpErrors.notFound('User not found or already deleted')
+      }
+
+      if (fastify.auditLog) {
+        await fastify.auditLog({
+          request,
+          action: 'user_soft_deleted',
+          userId: request.user._id || request.user.id,
+          resourceType: 'user',
+          resourceId: request.params.id
+        })
+      }
+
+      reply.code(204).send()
+    },
+  })
+}
+
+module.exports.autoPrefix = '/users'

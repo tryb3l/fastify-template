@@ -1,6 +1,6 @@
 {
-  "type": "object",
   "$id": "schema:user",
+  "type": "object",
   "additionalProperties": false,
   "properties": {
     "id": {
@@ -18,10 +18,28 @@
       "format": "date-time",
       "readOnly": true
     },
-    "username": { "$ref": "schema:auth:username#" },
-    "email": { "$ref": "schema:auth:email#" },
-    "password": { "$ref": "schema:auth:password#" },
-    "firstName": { "$ref": "schema:auth:firstname#" },
-    "lastName": { "$ref": "schema:auth:lastname#" }
+    "username": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 32
+    },
+    "email": {
+      "type": "string",
+      "format": "email"
+    },
+    "firstName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "lastName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "role": {
+      "type": "string",
+      "enum": ["user", "admin"]
+    }
   }
 }

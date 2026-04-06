@@ -1,32 +1,17 @@
 'use strict'
 
-const fp = require('fastify-plugin')
+module.exports = async function infrastructure(fastify) {
 
-module.exports = fp(async function infrastructure(fastify) {
-  fastify.route({
-    method: 'GET',
-    url: '/health',
-    schema: {
-      tags: ['infrastructure'],
-      summary: 'Health check',
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            status: { type: 'string' },
-          },
-        },
-      },
-    },
-    handler: async function healthHandler(request, reply) {
-      reply.code(200)
-      return { status: 'ok' }
-    },
-  })
 
   fastify.route({
     method: 'GET',
     url: '/ready',
+    config: {
+      rateLimit: {
+        max: 30, 
+        timeWindow: '1 minute'
+      }
+    },
     schema: {
       tags: ['infrastructure'],
       summary: 'Readiness check',
@@ -40,8 +25,7 @@ module.exports = fp(async function infrastructure(fastify) {
       },
     },
     handler: async function readyHandler(request, reply) {
-      reply.code(200)
       return { status: 'ok' }
     },
   })
-})
+}

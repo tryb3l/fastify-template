@@ -1,84 +1,59 @@
 'use strict'
 
-const { buildApp } = require('../helper')
+const assert = require('node:assert')
+const { MongoClient } = require('mongodb')
+const { buildApp, getTestMongoUrl } = require('../helper')
 const { randomUsername, randomEmail, randomPassword } = require('./data-creator')
 
-async function setup(t) {
-  // Register the user
-  // Arrange
-  const app = await buildApp(t, {
-    MONGO_URL: 'mongodb://localhost:27017/test-db',
-  })
+async function setup(t, role = 'user', env = {}) {
+  const app = await buildApp(t, env)
+  const mongoUrl = getTestMongoUrl(env)
 
   const username = randomUsername(12)
   const email = randomEmail(10, 5)
   const password = randomPassword(15)
 
-  // Act
   const registerResponse = await app.inject({
     method: 'POST',
     url: '/auth/register',
-    payload: {
-      username: username,
-      email: email,
-      password: password,
-    },
+    payload: { username, email, password },
   })
+  assert.strictEqual(registerResponse.statusCode, 201)
 
-  // Log the register response
-  console.log('Register Response:', registerResponse.statusCode, registerResponse.json())
+  if (role !== 'user') {
+    const client = new MongoClient(mongoUrl.replace(/\/test$/, ''))
+    await client.connect()
 
-  // Assert
-  t.equal(registerResponse.statusCode, 201)
-  t.same(registerResponse.json(), { registered: true })
+    const adminDb = client.db().admin()
+    const { databases } = await adminDb.listDatabases()
 
-  // Authenticate the user
-  // Arrange
+    for (const dbInfo of databases) {
+      const db = client.db(dbInfo.name)
+      await db.collection('users').updateOne(
+        { username: username },
+        { $set: { role: role } }
+      )
+    }
+
+    await client.close()
+  }
+
   const loginResponse = await app.inject({
     method: 'POST',
     url: '/auth/authenticate',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    payload: {
-      username: username,
-      password: password,
-    },
+    payload: { username, password },
   })
+  assert.strictEqual(loginResponse.statusCode, 200)
 
-  // Log the login response
-  console.log('Login Response:', loginResponse.statusCode, loginResponse.json())
+  const responseData = loginResponse.json()
+  const accessToken = responseData.access_token
+  const setCookie = loginResponse.headers['set-cookie'] || []
+  const cookies = Array.isArray(setCookie) ? setCookie : [setCookie]
+  const refreshCookieStr = cookies.find(c => c && c.startsWith('refreshToken=')) || ''
+  const refreshToken = refreshCookieStr.split(';')[0].split('=')[1]
+  const userId = responseData.user.id
 
-  // Assert
-  t.equal(loginResponse.statusCode, 200)
-  const cookies = loginResponse.cookies
-  const accessTokenCookie = cookies.find((cookie) => cookie.name === 'accessToken')
-  const refreshTokenCookie = cookies.find((cookie) => cookie.name === 'refreshToken')
-
-  t.ok(refreshTokenCookie, 'accessToken cookie should be set')
-  t.ok(refreshTokenCookie, 'refreshToken cookie should be set')
-  t.match(refreshTokenCookie.value, /.+/, 'accessToken should have a value')
-  t.match(refreshTokenCookie.value, /.+/, 'refreshToken should have a value')
-
-  const accessToken = accessTokenCookie.value
-  const refreshToken = refreshTokenCookie.value
-
-  // Fetch the user ID
-  const userResponse = await app.inject({
-    method: 'GET',
-    url: '/auth/me',
-    headers: {
-      contentType: 'application/json',
-    },
-    cookies: {
-      accessToken: accessToken,
-      refreshToken: refreshToken,
-    },
-  })
-
-  const userId = userResponse.json().data.id
-
-  return { app, accessToken, refreshToken, userId, username, password }
+  return { app, accessToken, refreshToken, userId, username, email, password, mongoUrl }
 }
 
 module.exports = { setup }

@@ -29,17 +29,27 @@ const cryptoRandom = () => {
 }
 
 const generateUUID = () => {
-  const h1 = randomPrefetcher.next().toString('hex')
-  const h2 = randomPrefetcher.next().toString('hex')
-  const buf = randomPrefetcher.next()
-  buf[6] = (buf[6] & 0x0f) | 0x40
-  buf[8] = (buf[8] & 0x3f) | 0x80
-  const h3 = buf.toString('hex')
-  const h4 = randomPrefetcher.next().toString('hex')
+  // Prevent out-of-bounds errors
+  const b1 = randomPrefetcher.next()
+  const b2 = randomPrefetcher.next()
+  const b3 = randomPrefetcher.next()
+  const b4 = randomPrefetcher.next()
+
+  // Set version to 4 (in the 7th byte overall, which is index 2 of b2)
+  b2[2] = (b2[2] & 0x0f) | 0x40
+  // Set variant to 10xx (in the 9th byte overall, which is index 0 of b3)
+  b3[0] = (b3[0] & 0x3f) | 0x80
+
+  const h1 = b1.toString('hex')
+  const h2 = b2.toString('hex')
+  const h3 = b3.toString('hex')
+  const h4 = b4.toString('hex')
+
   const d2 = h2.substring(0, 4)
-  const d3 = h3.substring(0, 4)
-  const d4 = h3.substring(4, 8)
-  const d5 = h2.substring(4, 8) + h4
+  const d3 = h2.substring(4, 8)
+  const d4 = h3.substring(0, 4)
+  const d5 = h3.substring(4, 8) + h4
+
   return [h1, d2, d3, d4, d5].join('-')
 }
 
@@ -56,7 +66,7 @@ const generateKey = (length, possible) => {
 const CRC_LEN = 4
 
 const crcToken = (secret, key) => {
-  const md5 = crypto.createHash('md5').update(key, secret)
+  const md5 = crypto.createHash('md5').update(key).update(secret)
   return md5.digest('hex').substring(0, CRC_LEN)
 }
 
@@ -73,8 +83,10 @@ const validateToken = (secret, token) => {
   return crcToken(secret, key) === crc
 }
 
+const SALT_LEN = 32
+const KEY_LEN = 32
 const SCRYPT_PARAMS = { N: 32768, r: 8, p: 1, maxmem: 64 * 1024 * 1024, dkLen: 32 }
-const SCRYPT_PREFIX = '$scrypt$N=32768,r=8,p=1$,maxmem=67108864$,dkLen=32$'
+const SCRYPT_PREFIX = '$scrypt$N=32768,r=8,p=1,maxmem=67108864,dkLen=32$'
 
 const serializeHash = (hash, salt) => {
   const saltString = salt.toString('base64').split('=')[0]
@@ -103,27 +115,33 @@ const deserializeHash = (phcString) => {
   return { params, salt, hash }
 }
 
-const SALT_LEN = 32
-const KEY_LEN = 64
+const randomBytesAsync = (size) => new Promise((resolve, reject) => {
+  crypto.randomBytes(size, (err, buf) => {
+    if (err) reject(err)
+    else resolve(buf)
+  })
+})
+
+const scryptAsync = (password, salt, keyLen, params) => new Promise((resolve, reject) => {
+  crypto.scrypt(password, salt, keyLen, params, (err, derivedKey) => {
+    if (err) reject(err)
+    else resolve(derivedKey)
+  })
+})
 
 const hashPassword = async (password) => {
   try {
-    const salt = await crypto.randomBytes(SALT_LEN)
-    const hash = await crypto.scryptSync(password, salt, KEY_LEN, SCRYPT_PARAMS)
+    const salt = await randomBytesAsync(SALT_LEN)
+    const hash = await scryptAsync(password, salt, KEY_LEN, SCRYPT_PARAMS)
     return serializeHash(hash, salt)
   } catch (err) {
     throw new Error('Error hashing the password: ' + err)
   }
 }
 
-let defaultHash
-hashPassword('')
-  .then((hash) => {
-    defaultHash = hash
-  })
-  .catch((err) => {
-    console.error('Error hashing password:', err)
-  })
+const defaultSalt = crypto.randomBytes(SALT_LEN)
+const defaultHashRaw = crypto.scryptSync('', defaultSalt, KEY_LEN, SCRYPT_PARAMS)
+const defaultHash = serializeHash(defaultHashRaw, defaultSalt)
 
 const validatePassword = (password, serHash = defaultHash) => {
   const { params, salt, hash } = deserializeHash(serHash)

@@ -2,26 +2,25 @@
   "type": "object",
   "$id": "schema:user:update:body",
   "additionalProperties": false,
-  "required": ["id"],
   "properties": {
-    "_id": {
+    "username": {
       "type": "string",
-      "format": "uuid",
-      "readOnly": true
+      "minLength": 3,
+      "maxLength": 32
     },
-    "createdAt": {
+    "email": {
       "type": "string",
-      "format": "date-time",
-      "readOnly": true
+      "format": "email"
     },
-    "modifiedAt": {
+    "firstName": {
       "type": "string",
-      "format": "date-time",
-      "readOnly": true
+      "minLength": 1,
+      "maxLength": 64
     },
-    "username": { "$ref": "schema:auth:username#" },
-    "email": { "$ref": "schema:auth:email#" },
-    "firstName": { "$ref": "schema:auth:firstname#" },
-    "lastName": { "$ref": "schema:auth:lastname#" }
+    "lastName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    }
   }
 }
