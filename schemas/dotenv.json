@@ -76,6 +76,18 @@
     },
     "SMTP_PASS": {
       "type": "string"
+    },
+    "PASSWORD_RESET_TTL_MINUTES": {
+      "type": "integer",
+      "default": 60
+    },
+    "PASSWORD_RESET_REQUEST_COOLDOWN_SECONDS": {
+      "type": "integer",
+      "default": 300
+    },
+    "PASSWORD_RESET_MAX_ATTEMPTS": {
+      "type": "integer",
+      "default": 5
     }
   }
 }

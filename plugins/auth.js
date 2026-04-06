@@ -41,6 +41,10 @@ module.exports = fp(async function (fastify) {
       const decoded = await request.jwtVerify()
       request.log.debug({ decoded }, 'Token decoded successfully')
 
+      if (decoded.type !== 'access') {
+        throw fastify.httpErrors.unauthorized('Invalid access token type')
+      }
+
       const user = await fastify.usersDataSource.readUserById(decoded.sub)
       if (!user) {
         request.log.error({ userId: decoded.sub }, 'User not found')

@@ -7,6 +7,9 @@ async function usersPlugin(fastify) {
 
   const users = fastify.mongo.db.collection('users');
   const revokedTokens = fastify.mongo.db.collection('revokedTokens');
+  const getFindOneAndUpdateValue = (result) => {
+    return result && typeof result === 'object' && 'value' in result ? result.value : result;
+  };
 
   const usersDataSource = {
     async createUser(userData) {
@@ -50,6 +53,29 @@ async function usersPlugin(fastify) {
         return user;
       } catch (error) {
         fastify.log.error({ error }, 'Error reading user');
+        throw error;
+      }
+    },
+    async readUserForPasswordReset(email) {
+      fastify.log.info('Entering readUserForPasswordReset method');
+      try {
+        const user = await users.findOne(
+          { email, deleted: { $ne: true } },
+          {
+            projection: {
+              _id: 1,
+              email: 1,
+              'passwordReset.id': 1,
+              'passwordReset.requestedAt': 1,
+              'passwordReset.expiresAt': 1,
+              'passwordReset.failedAttempts': 1,
+            },
+          },
+        );
+        fastify.log.info('Exiting readUserForPasswordReset method');
+        return user;
+      } catch (error) {
+        fastify.log.error({ error }, 'Error reading user for password reset');
         throw error;
       }
     },
@@ -280,17 +306,18 @@ async function usersPlugin(fastify) {
         throw error;
       }
     },
-    async initiatePasswordReset(email, resetId, secretHash, expiresAt) {
-      fastify.log.info({ email }, 'Entering initiatePasswordReset method')
+    async initiatePasswordReset(userId, resetId, secretHash, requestedAt, expiresAt) {
+      fastify.log.info({ userId, resetId }, 'Entering initiatePasswordReset method')
       const result = await users.updateOne(
-        { email, deleted: { $ne: true } },
+        { _id: userId, deleted: { $ne: true } },
         {
           $set: {
             passwordReset: {
               id: resetId,
               secretHash,
-              requestedAt: new Date(),
+              requestedAt,
               expiresAt,
+              failedAttempts: 0,
             }
           }
         }
@@ -299,7 +326,7 @@ async function usersPlugin(fastify) {
       return result.modifiedCount === 1
     },
 
-    async verifyAndExecutePasswordReset(resetId, secretHash, newHash) {
+    async verifyAndExecutePasswordReset(resetId, secretHash, newHash, maxAttempts) {
       fastify.log.info({ resetId }, 'Entering verifyAndExecutePasswordReset method')
 
       const now = new Date()
@@ -308,6 +335,10 @@ async function usersPlugin(fastify) {
           'passwordReset.id': resetId,
           'passwordReset.secretHash': secretHash,
           'passwordReset.expiresAt': { $gt: now },
+          $or: [
+            { 'passwordReset.failedAttempts': { $exists: false } },
+            { 'passwordReset.failedAttempts': { $lt: maxAttempts } },
+          ],
           deleted: { $ne: true },
         },
         {
@@ -325,16 +356,54 @@ async function usersPlugin(fastify) {
         }
       )
 
-      const user = result && typeof result === 'object' && 'value' in result ? result.value : result
+      const user = getFindOneAndUpdateValue(result)
 
       fastify.log.info('Exiting verifyAndExecutePasswordReset method')
       return user
     },
 
+    async incrementPasswordResetFailedAttempts(resetId, maxAttempts) {
+      fastify.log.info({ resetId }, 'Entering incrementPasswordResetFailedAttempts method');
+
+      const now = new Date();
+      const result = await users.findOneAndUpdate(
+        {
+          'passwordReset.id': resetId,
+          $or: [
+            { 'passwordReset.failedAttempts': { $exists: false } },
+            { 'passwordReset.failedAttempts': { $lt: maxAttempts } },
+          ],
+          deleted: { $ne: true },
+        },
+        {
+          $inc: { 'passwordReset.failedAttempts': 1 },
+          $set: { modifiedAt: now },
+        },
+        {
+          projection: {
+            _id: 1,
+            email: 1,
+            'passwordReset.id': 1,
+            'passwordReset.expiresAt': 1,
+            'passwordReset.failedAttempts': 1,
+          },
+          returnDocument: 'after',
+        },
+      );
+
+      const user = getFindOneAndUpdateValue(result);
+
+      fastify.log.info('Exiting incrementPasswordResetFailedAttempts method');
+      return user;
+    },
+
     async rescindPasswordReset(resetId) {
       await users.updateOne(
         { 'passwordReset.id': resetId },
-        { $unset: { passwordReset: "" } }
+        {
+          $set: { modifiedAt: new Date() },
+          $unset: { passwordReset: "" },
+        }
       )
     },
 
@@ -342,10 +411,18 @@ async function usersPlugin(fastify) {
       return await users.findOne(
         {
           'passwordReset.id': resetId,
-          'passwordReset.expiresAt': { $gt: new Date() },
           deleted: { $ne: true },
         },
-        { projection: { 'passwordReset.secretHash': 1 } }
+        {
+          projection: {
+            _id: 1,
+            email: 1,
+            'passwordReset.id': 1,
+            'passwordReset.secretHash': 1,
+            'passwordReset.expiresAt': 1,
+            'passwordReset.failedAttempts': 1,
+          },
+        }
       )
     }
   };
