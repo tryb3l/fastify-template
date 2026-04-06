@@ -5,6 +5,11 @@ const assert = require('node:assert')
 const { setup } = require('../../../utils/setup-user')
 const { randomUsername, randomPassword } = require('../../../utils/data-creator')
 
+function findRefreshCookie(setCookieHeader) {
+  const cookies = Array.isArray(setCookieHeader) ? setCookieHeader : [setCookieHeader]
+  return cookies.find((cookie) => cookie && cookie.startsWith('refreshToken='))
+}
+
 test('POST /auth/authenticate 200 - User can successfully login and receive tokens', async (t) => {
   // Arrange
   const { app, username, password, userId } = await setup(t)
@@ -19,16 +24,13 @@ test('POST /auth/authenticate 200 - User can successfully login and receive toke
     },
   })
 
+  const body = response.json()
+  const refreshCookie = findRefreshCookie(response.headers['set-cookie'])
+
   // Assert
   assert.strictEqual(response.statusCode, 200)
-  const body = response.json()
   assert.ok(body.access_token, 'Access token should be returned')
   assert.strictEqual(body.refresh_token, undefined, 'Refresh token should not be in body payload')
-  
-  const setCookie = response.headers['set-cookie']
-  const cookies = Array.isArray(setCookie) ? setCookie : [setCookie]
-  
-  const refreshCookie = cookies.find(c => c && c.startsWith('refreshToken='))
   assert.ok(refreshCookie, 'Refresh token cookie should be set')
   assert.ok(refreshCookie.includes('Path=/auth'), 'Refresh token cookie should be bound to /auth path')
   assert.ok(refreshCookie.includes('HttpOnly'), 'Refresh token cookie must be HttpOnly')

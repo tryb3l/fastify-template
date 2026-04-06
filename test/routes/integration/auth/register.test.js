@@ -5,11 +5,25 @@ const assert = require('node:assert')
 const { buildApp } = require('../../../helper')
 const { randomUsername, randomEmail, randomPassword } = require('../../../utils/data-creator')
 
+const registerTestEnv = {
+  MONGO_URL: 'mongodb://localhost:27017/login-test-db',
+}
+
+async function buildRegisterApp(t) {
+  return buildApp(t, registerTestEnv)
+}
+
+async function registerUser(app, payload) {
+  return app.inject({
+    method: 'POST',
+    url: '/auth/register',
+    payload,
+  })
+}
+
 test('POST /auth/register 201 - register the user successfully', async (t) => {
   // Arrange
-  const app = await buildApp(t, {
-    MONGO_URL: 'mongodb://localhost:27017/login-test-db',
-  })
+  const app = await buildRegisterApp(t)
 
   const payload = {
     username: randomUsername(),
@@ -18,11 +32,7 @@ test('POST /auth/register 201 - register the user successfully', async (t) => {
   }
 
   // Act
-  const response = await app.inject({
-    method: 'POST',
-    url: '/auth/register',
-    payload,
-  })
+  const response = await registerUser(app, payload)
 
   // Assert
   assert.strictEqual(response.statusCode, 201)
@@ -31,9 +41,7 @@ test('POST /auth/register 201 - register the user successfully', async (t) => {
 
 test('POST /auth/register 409 - conflict on existing user', async (t) => {
   // Arrange
-  const app = await buildApp(t, {
-    MONGO_URL: 'mongodb://localhost:27017/login-test-db',
-  })
+  const app = await buildRegisterApp(t)
 
   const payload = {
     username: randomUsername(),
@@ -41,15 +49,11 @@ test('POST /auth/register 409 - conflict on existing user', async (t) => {
     password: randomPassword(),
   }
 
-  // Create the initial user
-  await app.inject({ method: 'POST', url: '/auth/register', payload })
+  const existingUserResponse = await registerUser(app, payload)
+  assert.strictEqual(existingUserResponse.statusCode, 201)
 
   // Act
-  const response = await app.inject({
-    method: 'POST',
-    url: '/auth/register',
-    payload,
-  })
+  const response = await registerUser(app, payload)
 
   // Assert
   assert.strictEqual(response.statusCode, 409)
@@ -58,9 +62,7 @@ test('POST /auth/register 409 - conflict on existing user', async (t) => {
 
 test('POST /auth/register 400 - failed signup, invalid email format', async (t) => {
   // Arrange
-  const app = await buildApp(t, {
-    MONGO_URL: 'mongodb://localhost:27017/login-test-db',
-  })
+  const app = await buildRegisterApp(t)
 
   const payload = {
     username: randomUsername(),
@@ -69,11 +71,7 @@ test('POST /auth/register 400 - failed signup, invalid email format', async (t) 
   }
 
   // Act
-  const response = await app.inject({
-    method: 'POST',
-    url: '/auth/register',
-    payload,
-  })
+  const response = await registerUser(app, payload)
 
   // Assert
   assert.strictEqual(response.statusCode, 400)
@@ -82,9 +80,7 @@ test('POST /auth/register 400 - failed signup, invalid email format', async (t) 
 
 test('POST /auth/register 400 - failed signup, missing required field (password)', async (t) => {
   // Arrange
-  const app = await buildApp(t, {
-    MONGO_URL: 'mongodb://localhost:27017/login-test-db',
-  })
+  const app = await buildRegisterApp(t)
 
   const payload = {
     username: randomUsername(),
@@ -93,11 +89,7 @@ test('POST /auth/register 400 - failed signup, missing required field (password)
   }
 
   // Act
-  const response = await app.inject({
-    method: 'POST',
-    url: '/auth/register',
-    payload,
-  })
+  const response = await registerUser(app, payload)
 
   // Assert
   assert.strictEqual(response.statusCode, 400)
@@ -106,9 +98,7 @@ test('POST /auth/register 400 - failed signup, missing required field (password)
 
 test('POST /auth/register 400 - failed signup, weak password policy violation', async (t) => {
   // Arrange
-  const app = await buildApp(t, {
-    MONGO_URL: 'mongodb://localhost:27017/login-test-db',
-  })
+  const app = await buildRegisterApp(t)
 
   const payload = {
     username: randomUsername(),
@@ -117,11 +107,7 @@ test('POST /auth/register 400 - failed signup, weak password policy violation', 
   }
 
   // Act
-  const response = await app.inject({
-    method: 'POST',
-    url: '/auth/register',
-    payload,
-  })
+  const response = await registerUser(app, payload)
 
   // Assert
   assert.strictEqual(response.statusCode, 400)

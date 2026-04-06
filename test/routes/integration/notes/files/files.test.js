@@ -10,6 +10,40 @@ const { setup } = require('../../../../utils/setup-user')
 
 const ROUTE_PREFIX = '/files'
 
+function uploadFilePath(fileId, originalFilename) {
+  const extension = path.extname(originalFilename) || '.bin'
+  return path.join(process.cwd(), 'uploads', `${fileId}${extension}`)
+}
+
+async function fileExists(filePath) {
+  try {
+    await fs.access(filePath)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function registerFileCleanup(t, fileId, originalFilename) {
+  const serverPath = uploadFilePath(fileId, originalFilename)
+  t.after(async () => {
+    await fs.unlink(serverPath).catch(() => {})
+  })
+  return serverPath
+}
+
+async function uploadNoteFile(app, accessToken, noteId, form) {
+  return await app.inject({
+    method: 'POST',
+    url: `${ROUTE_PREFIX}/upload?noteId=${noteId}`,
+    headers: {
+      ...form.getHeaders(),
+      Authorization: `Bearer ${accessToken}`,
+    },
+    payload: form,
+  })
+}
+
 test('POST /files/import 201 - Successfully parses and imports CSV', async (t) => {
   // Arrange
   const { app, accessToken } = await setup(t, 'user')
@@ -65,31 +99,20 @@ test('POST /files/upload 201 - Successfully saves raw file to disk', async (t) =
   form.append('file', Buffer.from(fileContent), { filename: fileName, contentType: 'text/plain' })
 
   // Act
-  const response = await app.inject({
-    method: 'POST',
-    url: `${ROUTE_PREFIX}/upload?noteId=${note.data.id}`,
-    headers: {
-      ...form.getHeaders(),
-      Authorization: `Bearer ${accessToken}`,
-    },
-    payload: form,
-  })
+  const response = await uploadNoteFile(app, accessToken, note.data.id, form)
+  const body = response.json()
+  const uploadedFile = body.files[0]
+  const serverPath = registerFileCleanup(t, uploadedFile.fileId, uploadedFile.originalFilename)
+  const uploadedFileExists = await fileExists(serverPath)
 
   // Assert
   assert.strictEqual(response.statusCode, 201)
-  const body = response.json()
   assert.strictEqual(body.message, 'Files uploaded successfully')
   assert.strictEqual(body.files.length, 1)
-  assert.ok(body.files[0].fileId)
-  assert.strictEqual(body.files[0].originalFilename, fileName)
-  assert.strictEqual(body.files[0].mimeType, 'text/plain')
-
-  const serverPath = path.join(process.cwd(), 'uploads', `${body.files[0].fileId}.txt`)
-  const fileExists = await fs.access(serverPath).then(() => true).catch(() => false)
-  assert.strictEqual(fileExists, true, 'File should exist in the uploads directory')
-
-  // Cleanup
-  if (fileExists) await fs.unlink(serverPath)
+  assert.ok(uploadedFile.fileId)
+  assert.strictEqual(uploadedFile.originalFilename, fileName)
+  assert.strictEqual(uploadedFile.mimeType, 'text/plain')
+  assert.strictEqual(uploadedFileExists, true, 'File should exist in the uploads directory')
 })
 
 test('POST /files/import 400 - Fails if no file is provided', async (t) => {
@@ -134,19 +157,13 @@ test('GET /files/:fileId 200 - Successfully streams binary content', async (t) =
   // Arrange
   const { app, accessToken, note } = await createNote(t)
   const form = new FormData()
-  form.append('file', Buffer.from('download-me'), { filename: 'download.txt', contentType: 'text/plain' })
+  const fileName = 'download.txt'
+  form.append('file', Buffer.from('download-me'), { filename: fileName, contentType: 'text/plain' })
 
-  // Act
-  const uploadRes = await app.inject({
-    method: 'POST',
-    url: `${ROUTE_PREFIX}/upload?noteId=${note.data.id}`,
-    headers: { ...form.getHeaders(), Authorization: `Bearer ${accessToken}` },
-    payload: form,
-  })
-
-  // Assert
+  const uploadRes = await uploadNoteFile(app, accessToken, note.data.id, form)
   assert.strictEqual(uploadRes.statusCode, 201)
   const fileId = uploadRes.json().files[0].fileId
+  registerFileCleanup(t, fileId, fileName)
 
   // Act
   const downloadRes = await app.inject({
@@ -155,11 +172,9 @@ test('GET /files/:fileId 200 - Successfully streams binary content', async (t) =
     headers: { Authorization: `Bearer ${accessToken}` }
   })
 
+  // Assert
   assert.strictEqual(downloadRes.statusCode, 200)
   assert.strictEqual(downloadRes.body, 'download-me')
-
-  // Cleanup
-  await fs.unlink(path.join(process.cwd(), 'uploads', `${fileId}.txt`))
 })
 
 test('POST /files/upload 400 - Fails when file exceeds 10MB size limit', async (t) => {

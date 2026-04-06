@@ -4,38 +4,60 @@ const test = require('node:test')
 const assert = require('node:assert')
 const { setup } = require('../../../utils/setup-user')
 
-test('Auth CSRF Assurances - Enforces Strict Token Presence', async (t) => {
+test('POST /auth/refresh 403 - Requires a CSRF token', async (t) => {
   // Arrange
   const { app, refreshToken } = await setup(t, 'user')
   const cookieHeader = `refreshToken=${refreshToken}`
 
-  // Act (No CSRF on refresh)
-  const missingCsrfRefresh = await app.inject({
+  // Act
+  const response = await app.inject({
     method: 'POST',
     url: '/auth/refresh',
     headers: { cookie: cookieHeader }
   })
-  assert.strictEqual(missingCsrfRefresh.statusCode, 403, 'Refresh without CSRF token must fail natively')
 
-  // Act (No CSRF on logout)
-  const missingCsrfLogout = await app.inject({
+  // Assert
+  assert.strictEqual(response.statusCode, 403, 'Refresh without CSRF token must fail natively')
+})
+
+test('POST /auth/logout 403 - Requires a CSRF token', async (t) => {
+  // Arrange
+  const { app, refreshToken } = await setup(t, 'user')
+  const cookieHeader = `refreshToken=${refreshToken}`
+
+  // Act
+  const response = await app.inject({
     method: 'POST',
     url: '/auth/logout',
     headers: { cookie: cookieHeader }
   })
-  assert.strictEqual(missingCsrfLogout.statusCode, 403, 'Logout without CSRF token must fail natively')
 
-  // Act (GET CSRF generation)
-  const csrfResponse = await app.inject({
+  // Assert
+  assert.strictEqual(response.statusCode, 403, 'Logout without CSRF token must fail natively')
+})
+
+test('GET /auth/csrf 200 - Issues a CSRF token', async (t) => {
+  // Arrange
+  const { app } = await setup(t, 'user')
+
+  // Act
+  const response = await app.inject({
     method: 'GET',
     url: '/auth/csrf'
   })
-  assert.strictEqual(csrfResponse.statusCode, 200)
-  const csrfToken = csrfResponse.json().csrfToken
-  assert.ok(csrfToken, 'Should successfully issue a CSRF generation payload')
 
-  // Act (Invalid CSRF signature on refresh)
-  const invalidCsrfRefresh = await app.inject({
+  // Assert
+  assert.strictEqual(response.statusCode, 200)
+  assert.ok(response.json().csrfToken, 'Should successfully issue a CSRF generation payload')
+})
+
+test('POST /auth/refresh 403 - Rejects an invalid CSRF token', async (t) => {
+  // Arrange
+  const { app, refreshToken } = await setup(t, 'user')
+  const cookieHeader = `refreshToken=${refreshToken}`
+
+  // Act
+  const response = await app.inject({
     method: 'POST',
     url: '/auth/refresh',
     headers: {
@@ -43,5 +65,7 @@ test('Auth CSRF Assurances - Enforces Strict Token Presence', async (t) => {
       'x-csrf-token': 'invalid-token-signature-attempt'
     }
   })
-  assert.strictEqual(invalidCsrfRefresh.statusCode, 403, 'Refresh with invalid CSRF token must fail natively')
+
+  // Assert
+  assert.strictEqual(response.statusCode, 403, 'Refresh with invalid CSRF token must fail natively')
 })
