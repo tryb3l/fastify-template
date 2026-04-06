@@ -15,6 +15,7 @@ async function usersPlugin(fastify) {
       userData.createdAt = new Date();
       userData.modifiedAt = new Date();
       userData.role = userData.role || 'user';
+      userData.credentialsVersion = 0;
       try {
         const result = await users.insertOne(userData);
         fastify.log.info('Exiting createUser method');
@@ -38,10 +39,10 @@ async function usersPlugin(fastify) {
               username: 1,
               email: 1,
               role: 1,
-              hash: 1,
               deleted: 1,
               createdAt: 1,
               modifiedAt: 1,
+              credentialsVersion: 1,
             },
           },
         );
@@ -49,6 +50,32 @@ async function usersPlugin(fastify) {
         return user;
       } catch (error) {
         fastify.log.error({ error }, 'Error reading user');
+        throw error;
+      }
+    },
+    async readUserWithHash(identifier) {
+      fastify.log.info('Entering readUserWithHash method');
+      try {
+        const user = await users.findOne(
+          { $or: [{ username: identifier }, { email: identifier }], deleted: { $ne: true } },
+          {
+            projection: {
+              _id: 1,
+              username: 1,
+              email: 1,
+              role: 1,
+              hash: 1,
+              deleted: 1,
+              createdAt: 1,
+              modifiedAt: 1,
+              credentialsVersion: 1,
+            },
+          },
+        );
+        fastify.log.info('Exiting readUserWithHash method');
+        return user;
+      } catch (error) {
+        fastify.log.error({ error }, 'Error reading user with hash');
         throw error;
       }
     },
@@ -127,6 +154,7 @@ async function usersPlugin(fastify) {
               username: 1,
               email: 1,
               role: 1,
+              credentialsVersion: 1,
             },
           },
         );
@@ -252,6 +280,74 @@ async function usersPlugin(fastify) {
         throw error;
       }
     },
+    async initiatePasswordReset(email, resetId, secretHash, expiresAt) {
+      fastify.log.info({ email }, 'Entering initiatePasswordReset method')
+      const result = await users.updateOne(
+        { email, deleted: { $ne: true } },
+        {
+          $set: {
+            passwordReset: {
+              id: resetId,
+              secretHash,
+              requestedAt: new Date(),
+              expiresAt,
+            }
+          }
+        }
+      )
+      fastify.log.info('Exiting initiatePasswordReset method')
+      return result.modifiedCount === 1
+    },
+
+    async verifyAndExecutePasswordReset(resetId, secretHash, newHash) {
+      fastify.log.info({ resetId }, 'Entering verifyAndExecutePasswordReset method')
+
+      const now = new Date()
+      const result = await users.findOneAndUpdate(
+        {
+          'passwordReset.id': resetId,
+          'passwordReset.secretHash': secretHash,
+          'passwordReset.expiresAt': { $gt: now },
+          deleted: { $ne: true },
+        },
+        {
+          $set: {
+            hash: newHash,
+            modifiedAt: now,
+            passwordChangedAt: now,
+          },
+          $inc: { credentialsVersion: 1 },
+          $unset: { passwordReset: '' },
+        },
+        {
+          projection: { _id: 1, email: 1 },
+          returnDocument: 'before',
+        }
+      )
+
+      const user = result && typeof result === 'object' && 'value' in result ? result.value : result
+
+      fastify.log.info('Exiting verifyAndExecutePasswordReset method')
+      return user
+    },
+
+    async rescindPasswordReset(resetId) {
+      await users.updateOne(
+        { 'passwordReset.id': resetId },
+        { $unset: { passwordReset: "" } }
+      )
+    },
+
+    async checkPasswordResetExists(resetId) {
+      return await users.findOne(
+        {
+          'passwordReset.id': resetId,
+          'passwordReset.expiresAt': { $gt: new Date() },
+          deleted: { $ne: true },
+        },
+        { projection: { 'passwordReset.secretHash': 1 } }
+      )
+    }
   };
 
   fastify.decorate('usersDataSource', usersDataSource);
