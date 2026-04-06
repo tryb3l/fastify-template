@@ -5,7 +5,11 @@ const path = require('path')
 async function authSchemasLoader(fastify) {
   console.log('Loading auth schemas')
   const schemas = [
+    './password-policy.json',
     './register.json',
+    './reset-request.json',
+    './reset-validate.json',
+    './reset-confirm.json',
     './authenticate.json',
     './email.json',
     './firstname.json',

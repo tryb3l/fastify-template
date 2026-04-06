@@ -1,0 +1,16 @@
+{
+  "$id": "schema:auth:reset-validate",
+  "type": "object",
+  "required": ["resetId", "secret"],
+  "properties": {
+    "resetId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "secret": {
+      "type": "string",
+      "minLength": 32
+    }
+  },
+  "additionalProperties": false
+}
