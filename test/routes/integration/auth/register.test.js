@@ -2,15 +2,17 @@
 
 const test = require('node:test')
 const assert = require('node:assert')
-const { buildApp } = require('../../../helper')
+const { buildApp, getTestMongoUrl } = require('../../../helper')
 const { randomUsername, randomEmail, randomPassword } = require('../../../utils/data-creator')
 
-const registerTestEnv = {
-  MONGO_URL: 'mongodb://localhost:27017/login-test-db',
+function replaceDatabaseName(mongoUrl, databaseName) {
+  return mongoUrl.replace(/\/[^/?]+(?=$|\?)/, `/${databaseName}`)
 }
 
 async function buildRegisterApp(t) {
-  return buildApp(t, registerTestEnv)
+  return buildApp(t, {
+    MONGO_URL: replaceDatabaseName(getTestMongoUrl(), 'login-test-db'),
+  })
 }
 
 async function registerUser(app, payload) {

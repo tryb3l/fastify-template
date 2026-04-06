@@ -6,6 +6,7 @@ const fs = require('node:fs')
 const args = process.argv.slice(2)
 const isCoverage = args.includes('--coverage')
 const isNoStop = args.includes('--nostop')
+const mongoUrl = process.env.MONGO_URL || 'mongodb://localhost:27017/test'
 
 function getTestFiles(dir, fileList = []) {
   const files = fs.readdirSync(dir)
@@ -24,7 +25,7 @@ async function run() {
   try {
     console.log('⏳ Running global setup (Starting Docker)...')
     execSync(`node "${path.join(__dirname, 'run-before.js')}"`, { stdio: 'inherit' })
-    execSync('npx migrate-mongo up', { stdio: 'inherit', env: { ...process.env, MONGO_URL: 'mongodb://localhost:27017/test' } })
+    execSync('npx migrate-mongo up', { stdio: 'inherit', env: { ...process.env, MONGO_URL: mongoUrl } })
 
     console.log('\n🧪 Starting Node.js Native Tests...\n')
 
