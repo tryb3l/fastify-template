@@ -14,14 +14,14 @@ module.exports = async function liveNotesRoutes(fastify) {
         throw fastify.httpErrors.forbidden('Access to this live feed is forbidden');
       }
     }
-  }, (connection, req) => {
+  }, (socket, req) => {
     const noteId = req.params.id;
 
     fastify.log.info({ noteId }, 'Client connected to Live Note broadcast feed');
 
     const eventHandler = (payload) => {
-      if (connection.socket.readyState === 1) { // 1 === OPEN
-        connection.socket.send(JSON.stringify(payload));
+      if (socket.readyState === 1) { // 1 === OPEN
+        socket.send(JSON.stringify(payload));
       }
     };
 
@@ -29,7 +29,7 @@ module.exports = async function liveNotesRoutes(fastify) {
 
     let lastValidation = Date.now()
 
-    connection.socket.on('message', async message => {
+    socket.on('message', async message => {
       if (message.toString() === 'ping') {
         const now = Date.now()
         // Rate-limit database authorization checks to once per 60 seconds per socket
@@ -38,18 +38,18 @@ module.exports = async function liveNotesRoutes(fastify) {
             const userId = req.user._id || req.user.id
             const user = await fastify.usersDataSource.readUserById(userId)
             if (!user || user.deleted) {
-              connection.socket.close(1008, 'Session Revoked')
+              socket.close(1008, 'Session Revoked')
               return
             }
             lastValidation = now
           } catch (e) { /* transient database error, permit continuation until next interval */ }
         }
         
-        connection.socket.send('pong');
+        socket.send('pong');
       }
     });
 
-    connection.socket.on('close', () => {
+    socket.on('close', () => {
       fastify.log.info({ noteId }, 'Client disconnected from Live Network');
       fastify.eventBus.off(`note_updated:${noteId}`, eventHandler);
     });

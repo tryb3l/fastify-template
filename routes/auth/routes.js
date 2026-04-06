@@ -277,7 +277,10 @@ module.exports = async function authRoutes(fastify) {
       }
     },
     handler: async function resetRequestHandler(request, reply) {
-      await fastify.passwordResetService.requestReset(request.body.email)
+      await fastify.passwordResetService.requestReset({
+        request,
+        email: request.body.email,
+      })
       return { message: 'If an account exists for that email, a password reset link has been sent.' }
     }
   })
@@ -296,10 +299,11 @@ module.exports = async function authRoutes(fastify) {
       }
     },
     handler: async function resetValidateHandler(request, reply) {
-      const isValid = await fastify.passwordResetService.validateToken(
-        request.body.resetId,
-        request.body.secret
-      )
+      const isValid = await fastify.passwordResetService.validateToken({
+        request,
+        resetId: request.body.resetId,
+        rawSecret: request.body.secret,
+      })
       if (!isValid) {
         throw fastify.httpErrors.unauthorized('Invalid or expired reset token')
       }
@@ -321,11 +325,12 @@ module.exports = async function authRoutes(fastify) {
       }
     },
     handler: async function resetConfirmHandler(request, reply) {
-      const success = await fastify.passwordResetService.executeReset(
-        request.body.resetId,
-        request.body.secret,
-        request.body.newPassword
-      )
+      const success = await fastify.passwordResetService.executeReset({
+        request,
+        resetId: request.body.resetId,
+        rawSecret: request.body.secret,
+        newPassword: request.body.newPassword,
+      })
 
       if (!success) {
         throw fastify.httpErrors.unauthorized('Invalid or expired reset token')
