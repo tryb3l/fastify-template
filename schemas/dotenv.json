@@ -57,6 +57,25 @@
     "ADMIN_PASSWORD": {
       "type": "string",
       "default": "changeme123"
+    },
+    "MAIL_FROM": {
+      "type": "string"
+    },
+    "SMTP_HOST": {
+      "type": "string"
+    },
+    "SMTP_PORT": {
+      "type": "integer"
+    },
+    "SMTP_SECURE": {
+      "type": "boolean",
+      "default": false
+    },
+    "SMTP_USER": {
+      "type": "string"
+    },
+    "SMTP_PASS": {
+      "type": "string"
     }
   }
 }
