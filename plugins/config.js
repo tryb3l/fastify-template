@@ -42,6 +42,16 @@ module.exports = fp(
         accessMaxAge: fastify.secrets.COOKIE_ACCESS_MAX_AGE,
         refreshMaxAge: fastify.secrets.COOKIE_REFRESH_MAX_AGE,
       },
+      mailer: {
+        fromEmail: fastify.secrets.MAIL_FROM,
+        smtp: {
+          host: fastify.secrets.SMTP_HOST,
+          port: fastify.secrets.SMTP_PORT,
+          secure: fastify.secrets.SMTP_SECURE,
+          user: fastify.secrets.SMTP_USER,
+          pass: fastify.secrets.SMTP_PASS,
+        }
+      }
     })
 
     fastify.log.info("'config' decorator added successfully");

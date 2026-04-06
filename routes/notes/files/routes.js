@@ -221,7 +221,7 @@ module.exports = async function fileRoutes(fastify) {
         return { message: 'Files uploaded successfully', files: dbFiles }
       } catch (err) {
         request.log.error(err)
-        
+
         for (const file of uploadedFiles) {
           if (file._filePath) {
             try { await unlink(file._filePath) } catch (e) { /* ignore cleanup errors */ }
@@ -275,7 +275,7 @@ module.exports = async function fileRoutes(fastify) {
 
       const ext = path.extname(attachment.originalFilename).toLowerCase()
       const filePath = path.join('./uploads', fileId + ext)
-      
+
       try {
         await fs.promises.access(filePath, fs.constants.R_OK)
       } catch {
