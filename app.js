@@ -12,7 +12,7 @@ module.exports = async function (fastify, opts) {
     await require('./routes/users/schemas/loader').loadUserSchemas(fastify)
 
     // Load Config
-    await fastify.register(require('./plugins/config'))
+    await fastify.register(require('./plugins/config'), opts)
 
     // Load Plugins
     await fastify.register(AutoLoad, {

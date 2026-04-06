@@ -42,6 +42,11 @@ module.exports = fp(
         accessMaxAge: fastify.secrets.COOKIE_ACCESS_MAX_AGE,
         refreshMaxAge: fastify.secrets.COOKIE_REFRESH_MAX_AGE,
       },
+      passwordReset: {
+        ttlMinutes: fastify.secrets.PASSWORD_RESET_TTL_MINUTES,
+        requestCooldownSeconds: fastify.secrets.PASSWORD_RESET_REQUEST_COOLDOWN_SECONDS,
+        maxAttempts: fastify.secrets.PASSWORD_RESET_MAX_ATTEMPTS,
+      },
       mailer: {
         fromEmail: fastify.secrets.MAIL_FROM,
         smtp: {

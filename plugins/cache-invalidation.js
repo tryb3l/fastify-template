@@ -36,5 +36,8 @@ module.exports = fp(async function cacheInvalidationPlugin(fastify) {
     fastify.log.info('Successfully registered cache-invalidation plugin')
 }, {
     name: 'cache-invalidation',
-    dependencies: ['app-cache']
+    dependencies: ['app-cache'],
+    decorators: {
+        fastify: ['cacheDelete']
+    }
 })

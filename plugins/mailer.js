@@ -5,6 +5,12 @@ const nodemailer = require('nodemailer')
 
 const sentMessages = []
 
+function createMissingSmtpConfigError() {
+  const error = new Error('SMTP configuration is required outside test mode')
+  error.code = 'SMTP_CONFIG_REQUIRED'
+  return error
+}
+
 function getTestMessages() {
   return sentMessages.map((message) => ({ ...message }))
 }
@@ -17,7 +23,7 @@ function clearTestMessages() {
  * Fastify Mailer Plugin
  *
  * Exposes a structured API for sending emails safely without blocking event loops.
- * Falls back to ethereal/mock transport in tests or when missing real credentials.
+ * Uses a local capture transport in tests and requires SMTP in non-test environments.
  *
  * @example
  * // Usage in routes/services:
@@ -30,10 +36,17 @@ async function mailerPlugin(fastify, options) {
   fastify.log.info('Starting registration of mailer plugin')
 
   const { smtp, fromEmail } = fastify.config.mailer || {}
+  const isTestEnv = fastify.config.NODE_ENV === 'test'
+  const hasSmtpConfig = Boolean(smtp?.host)
+  const useCaptureTransport = isTestEnv && !hasSmtpConfig
   let transporter
 
-  if (!smtp || !smtp.host) {
-    fastify.log.warn('No SMTP credentials found. Using local capture transport.')
+  if (!hasSmtpConfig) {
+    if (!isTestEnv) {
+      throw createMissingSmtpConfigError()
+    }
+
+    fastify.log.warn('No SMTP credentials found. Using local capture transport for tests.')
     transporter = nodemailer.createTransport({
       streamTransport: true,
       newline: 'unix',
@@ -54,13 +67,16 @@ async function mailerPlugin(fastify, options) {
   const sendMail = async (mailOptions) => {
     try {
       const info = await transporter.sendMail(mailOptions)
-      sentMessages.push({
-        from: mailOptions.from,
-        to: mailOptions.to,
-        subject: mailOptions.subject,
-        text: mailOptions.text,
-        html: mailOptions.html,
-      })
+      if (useCaptureTransport) {
+        sentMessages.push({
+          from: mailOptions.from,
+          to: mailOptions.to,
+          subject: mailOptions.subject,
+          text: mailOptions.text,
+          html: mailOptions.html,
+        })
+      }
+
       if (info.messageUrl) {
         fastify.log.info({ url: info.messageUrl }, 'Preview email')
       }
