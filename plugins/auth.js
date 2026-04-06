@@ -4,6 +4,11 @@ const fp = require('fastify-plugin')
 const fastifyJwt = require('@fastify/jwt')
 const { randomUUID } = require('node:crypto')
 
+function tagUnauthorizedError(error, authErrorCode) {
+  error.authErrorCode = authErrorCode
+  return error
+}
+
 module.exports = fp(async function (fastify) {
   fastify.log.info('Starting registration of auth plugin')
 
@@ -42,12 +47,27 @@ module.exports = fp(async function (fastify) {
         throw fastify.httpErrors.unauthorized('User not found')
       }
 
+      const userCredentialsVersion = user.credentialsVersion ?? 0
+      const tokenCredentialsVersion = decoded.cv ?? 0
+
+      if (userCredentialsVersion !== tokenCredentialsVersion) {
+        request.log.warn({ userId: decoded.sub }, 'Session invalidated due to credentials version mismatch')
+        throw tagUnauthorizedError(
+          fastify.httpErrors.unauthorized('Session invalidated'),
+          'AUTH_SESSION_INVALIDATED'
+        )
+      }
+
       request.user = user
     } catch (err) {
       request.log.error({ err }, 'Authentication failed')
 
       if (err.code === 'FST_JWT_AUTHORIZATION_TOKEN_EXPIRED') {
         throw fastify.httpErrors.unauthorized('Token expired')
+      }
+
+      if (err.authErrorCode === 'AUTH_SESSION_INVALIDATED') {
+        throw err
       }
 
       throw fastify.httpErrors.unauthorized('Authentication required')
@@ -71,6 +91,7 @@ module.exports = fp(async function (fastify) {
       sub: user._id,
       username: user.username,
       role: user.role,
+      cv: user.credentialsVersion ?? 0,
     }
 
     const accessToken = await fastify.jwt.sign(
@@ -129,11 +150,26 @@ module.exports = fp(async function (fastify) {
         throw fastify.httpErrors.unauthorized('User not found')
       }
 
+      const userCredentialsVersion = user.credentialsVersion ?? 0
+      const tokenCredentialsVersion = decoded.cv ?? 0
+
+      if (userCredentialsVersion !== tokenCredentialsVersion) {
+        throw tagUnauthorizedError(
+          fastify.httpErrors.unauthorized('Refresh token session invalidated'),
+          'AUTH_REFRESH_SESSION_INVALIDATED'
+        )
+      }
+
       request.user = user
       request.refreshTokenId = decoded.jti
       request.refreshTokenExp = decoded.exp
     } catch (err) {
       request.log.error({ err }, 'Verify refresh token failed')
+
+      if (err.authErrorCode === 'AUTH_REFRESH_SESSION_INVALIDATED') {
+        throw err
+      }
+
       throw fastify.httpErrors.unauthorized('Invalid refresh token')
     }
   })
