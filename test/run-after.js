@@ -11,7 +11,7 @@ async function after() {
   console.log('✅ MongoDB stopped!')
 }
 
-after().catch(err => {
+after().catch((err) => {
   console.error('❌ Failed to stop Docker container:', err)
   process.exit(1)
 })

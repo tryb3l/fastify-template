@@ -25,7 +25,7 @@ module.exports = async function noteRoutes(fastify, opts) {
         200: { $ref: 'schema:note:list:response#' },
       },
     },
-    handler: async function listNotesHandler(request, reply) {
+    handler: async function listNotesHandler(request) {
       const { skip, limit, title } = request.query
       const notes = await fastify.notesDataSource.listNotes(
         { filter: { title }, skip, limit },
@@ -78,7 +78,7 @@ module.exports = async function noteRoutes(fastify, opts) {
         },
       },
     },
-    handler: async function readNoteHandler(request, reply) {
+    handler: async function readNoteHandler(request) {
       const { id } = request.params
       const userId = request.user._id || request.user.id
       const cacheKey = `note:${id}:${userId}`
@@ -116,7 +116,7 @@ module.exports = async function noteRoutes(fastify, opts) {
         },
       },
     },
-    handler: async function updateNoteHandler(request, reply) {
+    handler: async function updateNoteHandler(request) {
       const { id } = request.params
       const userId = request.user._id || request.user.id
       const updateData = request.body

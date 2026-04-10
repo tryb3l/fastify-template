@@ -23,9 +23,9 @@ module.exports = {
       }
     },
     res: function (reply) {
-    return {
-    statusCode: reply.statusCode,
-    responseTime: typeof reply.elapsedTime === 'number' ? reply.elapsedTime : undefined,
+      return {
+        statusCode: reply.statusCode,
+        responseTime: typeof reply.elapsedTime === 'number' ? reply.elapsedTime : undefined,
       }
     },
   },

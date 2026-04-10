@@ -19,7 +19,7 @@ module.exports = async function (fastify, opts) {
       dir: path.join(__dirname, 'plugins'),
       ignorePattern: /.*.no-load\.js/,
       indexPattern: /^no$/i,
-      options: Object.assign({}, opts)
+      options: Object.assign({}, opts),
     })
 
     // Load Routes
@@ -30,7 +30,7 @@ module.exports = async function (fastify, opts) {
       autoHooksPattern: /.*hooks(\.js|\.cjs)$/i,
       autoHooks: true,
       cascadeHooks: true,
-      options: Object.assign({}, opts)
+      options: Object.assign({}, opts),
     })
 
     const closeListeners = closeWithGrace(
@@ -41,16 +41,15 @@ module.exports = async function (fastify, opts) {
         } else {
           fastify.log.info(`${signal} received, gracefully shutting down server...`)
         }
-        
+
         await fastify.close()
-      }
+      },
     )
 
     fastify.addHook('onClose', (instance, done) => {
       closeListeners.uninstall()
       done()
     })
-
   } catch (err) {
     fastify.log.error(err)
     throw err

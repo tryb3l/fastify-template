@@ -1,6 +1,10 @@
 'use strict'
 
-try { process.loadEnvFile() } catch { /* .env may not exist in CI/Docker */ }
+try {
+  process.loadEnvFile()
+} catch {
+  /* .env may not exist in CI/Docker */
+}
 const packageJson = require('../package.json')
 
 const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node')
@@ -18,7 +22,8 @@ const { ZipkinExporter } = require('@opentelemetry/exporter-zipkin')
 // Read configuration from environment variables
 const ZIPKIN_URL = process.env.ZIPKIN_URL || 'http://localhost:9411/api/v2/spans'
 // Default to 100% locally, but 5% (0.05) in production
-const TRACE_RATIO = parseFloat(process.env.TRACE_RATIO) || (process.env.NODE_ENV === 'production' ? 0.05 : 1)
+const TRACE_RATIO =
+  parseFloat(process.env.TRACE_RATIO) || (process.env.NODE_ENV === 'production' ? 0.05 : 1)
 
 if (process.env.ENABLE_TRACING === 'true') {
   const sdk = new NodeTracerProvider({

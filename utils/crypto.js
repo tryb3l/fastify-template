@@ -115,19 +115,21 @@ const deserializeHash = (phcString) => {
   return { params, salt, hash }
 }
 
-const randomBytesAsync = (size) => new Promise((resolve, reject) => {
-  crypto.randomBytes(size, (err, buf) => {
-    if (err) reject(err)
-    else resolve(buf)
+const randomBytesAsync = (size) =>
+  new Promise((resolve, reject) => {
+    crypto.randomBytes(size, (err, buf) => {
+      if (err) reject(err)
+      else resolve(buf)
+    })
   })
-})
 
-const scryptAsync = (password, salt, keyLen, params) => new Promise((resolve, reject) => {
-  crypto.scrypt(password, salt, keyLen, params, (err, derivedKey) => {
-    if (err) reject(err)
-    else resolve(derivedKey)
+const scryptAsync = (password, salt, keyLen, params) =>
+  new Promise((resolve, reject) => {
+    crypto.scrypt(password, salt, keyLen, params, (err, derivedKey) => {
+      if (err) reject(err)
+      else resolve(derivedKey)
+    })
   })
-})
 
 const hashPassword = async (password) => {
   try {
@@ -135,7 +137,7 @@ const hashPassword = async (password) => {
     const hash = await scryptAsync(password, salt, KEY_LEN, SCRYPT_PARAMS)
     return serializeHash(hash, salt)
   } catch (err) {
-    throw new Error('Error hashing the password: ' + err)
+    throw new Error('Error hashing the password: ' + err, { cause: err })
   }
 }
 

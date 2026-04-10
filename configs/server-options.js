@@ -29,8 +29,8 @@ module.exports = {
           object.trace_id = object.reqId
         }
         return object
-      }
-    }
+      },
+    },
   },
   requestIdLogLabel: false,
   requestIdHeader: false,
@@ -39,9 +39,11 @@ module.exports = {
     const traceId = extractTraceId(req.headers['traceparent'])
     if (traceId) return traceId
 
-    return sanitizeRequestId(req.headers['x-request-id'])
-      || sanitizeRequestId(req.headers['x-amz-request-id'])
-      || crypto.randomUUID()
+    return (
+      sanitizeRequestId(req.headers['x-request-id']) ||
+      sanitizeRequestId(req.headers['x-amz-request-id']) ||
+      crypto.randomUUID()
+    )
   },
   ajv: {
     customOptions: {

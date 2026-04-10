@@ -21,7 +21,7 @@ const ALLOWED_MIME_TYPES = {
   'text/plain': '.txt',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
   'application/vnd.ms-excel': '.xls',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx'
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
 }
 
 module.exports = async function fileRoutes(fastify) {
@@ -45,7 +45,7 @@ module.exports = async function fileRoutes(fastify) {
       response: {
         201: {
           type: 'array',
-          items: { type: 'string', format: 'uuid' }
+          items: { type: 'string', format: 'uuid' },
         },
       },
     },
@@ -61,7 +61,7 @@ module.exports = async function fileRoutes(fastify) {
           skip_empty_lines: true,
           trim: true,
           relax_column_count: true,
-        })
+        }),
       )
 
       let isHeaderRow = true
@@ -101,11 +101,14 @@ module.exports = async function fileRoutes(fastify) {
       const filter = {}
       if (title) filter.title = title
 
-      const cursorStream = await this.notesDataSource.listNotes({
-        filter,
-        skip: 0,
-        asStream: true,
-      }, request.user._id)
+      const cursorStream = await this.notesDataSource.listNotes(
+        {
+          filter,
+          skip: 0,
+          asStream: true,
+        },
+        request.user._id,
+      )
 
       reply.header('Content-Disposition', 'attachment; filename="note-list.csv"')
       reply.type('text/csv')
@@ -174,65 +177,92 @@ module.exports = async function fileRoutes(fastify) {
 
       const uploadedFiles = []
 
-      try {
-        for await (const part of parts) {
-          if (part.file) {
-            const ext = path.extname(part.filename).toLowerCase()
-            const allowedExts = ALLOWED_MIME_TYPES[part.mimetype]
-
-            const isValid = allowedExts && (Array.isArray(allowedExts) ? allowedExts.includes(ext) : allowedExts === ext)
-
-            if (!isValid) {
-              throw this.httpErrors.unsupportedMediaType(`File type not allowed or extension mismatch: ${part.filename}`)
-            }
-
-            const safeFilename = randomUUID() + ext
-            const filePath = path.join(uploadDir, safeFilename)
-            const fileId = safeFilename.slice(0, safeFilename.lastIndexOf('.'))
-            const uploadedAt = new Date().toISOString()
-
-            await pump(part.file, fs.createWriteStream(filePath))
-
-            // Push before truncated check so the catch cleanup loop removes this file
-            uploadedFiles.push({
-              fileId,
-              originalFilename: part.filename,
-              mimeType: part.mimetype,
-              size: Number(part.file.bytesRead || 0),
-              uploadedAt,
-              _filePath: filePath
-            })
-
-            if (part.file.truncated) {
-              throw this.httpErrors.badRequest('File is too large')
+      const cleanupUploadedFiles = async () => {
+        for (const file of uploadedFiles) {
+          if (file.filePath) {
+            try {
+              await unlink(file.filePath)
+            } catch {
+              /* ignore cleanup errors */
             }
           }
         }
+      }
 
-        if (uploadedFiles.length === 0) {
-          throw this.httpErrors.badRequest('No files uploaded')
+      for await (const part of parts) {
+        if (!part.file) {
+          continue
         }
 
-        // Clean internal field before saving to DB
-        const dbFiles = uploadedFiles.map(({ _filePath, ...rest }) => rest)
-        await this.notesDataSource.addAttachments(noteId, dbFiles, userId)
+        const ext = path.extname(part.filename).toLowerCase()
+        const allowedExts = ALLOWED_MIME_TYPES[part.mimetype]
 
-        reply.code(201)
-        return { message: 'Files uploaded successfully', files: dbFiles }
+        const isValid =
+          allowedExts &&
+          (Array.isArray(allowedExts) ? allowedExts.includes(ext) : allowedExts === ext)
+
+        if (!isValid) {
+          await cleanupUploadedFiles()
+          throw this.httpErrors.unsupportedMediaType(
+            `File type not allowed or extension mismatch: ${part.filename}`,
+          )
+        }
+
+        const safeFilename = randomUUID() + ext
+        const filePath = path.join(uploadDir, safeFilename)
+        const fileId = safeFilename.slice(0, safeFilename.lastIndexOf('.'))
+        const uploadedAt = new Date().toISOString()
+
+        uploadedFiles.push({
+          fileId,
+          originalFilename: part.filename,
+          mimeType: part.mimetype,
+          size: 0,
+          uploadedAt,
+          filePath,
+        })
+
+        try {
+          await pump(part.file, fs.createWriteStream(filePath))
+        } catch (err) {
+          request.log.error(err)
+          await cleanupUploadedFiles()
+          throw this.httpErrors.internalServerError('File upload failed')
+        }
+
+        if (part.file.truncated) {
+          await cleanupUploadedFiles()
+          throw this.httpErrors.badRequest('File is too large')
+        }
+
+        uploadedFiles[uploadedFiles.length - 1].size = Number(part.file.bytesRead || 0)
+      }
+
+      if (uploadedFiles.length === 0) {
+        throw this.httpErrors.badRequest('No files uploaded')
+      }
+
+      const dbFiles = uploadedFiles.map((file) => ({
+        fileId: file.fileId,
+        originalFilename: file.originalFilename,
+        mimeType: file.mimeType,
+        size: file.size,
+        uploadedAt: file.uploadedAt,
+      }))
+
+      try {
+        await this.notesDataSource.addAttachments(noteId, dbFiles, userId)
       } catch (err) {
         request.log.error(err)
-
-        for (const file of uploadedFiles) {
-          if (file._filePath) {
-            try { await unlink(file._filePath) } catch (e) { /* ignore cleanup errors */ }
-          }
-        }
-
+        await cleanupUploadedFiles()
         if (err.statusCode) {
           throw err
         }
         throw this.httpErrors.internalServerError('File upload failed')
       }
+
+      reply.code(201)
+      return { message: 'Files uploaded successfully', files: dbFiles }
     },
   })
 
@@ -268,7 +298,6 @@ module.exports = async function fileRoutes(fastify) {
       const userId = request.user._id || request.user.id
 
       const note = await this.notesDataSource.readNote(noteId, userId)
-      if (!note) throw this.httpErrors.notFound('Note not found')
 
       const attachment = (note.attachments || []).find((att) => att.fileId === fileId)
       if (!attachment) throw this.httpErrors.notFound('Attachment not found on this note')

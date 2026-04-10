@@ -19,9 +19,9 @@ module.exports = async function userRoutes(fastify, options) {
       },
     },
     handler: async function readProfile(request, reply) {
-      const user = await fastify.usersDataSource.readUserDetails(request.user._id);
-      if (!user) throw fastify.httpErrors.notFound('User not found');
-      return { data: user };
+      const user = await fastify.usersDataSource.readUserDetails(request.user._id)
+      if (!user) throw fastify.httpErrors.notFound('User not found')
+      return { data: user }
     },
   })
 
@@ -45,7 +45,7 @@ module.exports = async function userRoutes(fastify, options) {
       const totalCount = await fastify.usersDataSource.countUsers({ filter })
 
       return { data: users, totalCount }
-    }
+    },
   })
 
   fastify.route({
@@ -151,7 +151,7 @@ module.exports = async function userRoutes(fastify, options) {
           action: 'user_soft_deleted',
           userId: request.user._id || request.user.id,
           resourceType: 'user',
-          resourceId: request.params.id
+          resourceId: request.params.id,
         })
       }
 
