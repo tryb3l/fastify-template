@@ -1,7 +1,11 @@
 'use strict'
 
 module.exports = async function noteRoutes(fastify, opts) {
-  const nodeEnv = opts?.configData?.NODE_ENV || fastify.config?.NODE_ENV || fastify.secrets?.NODE_ENV || process.env.NODE_ENV
+  const nodeEnv =
+    opts?.configData?.NODE_ENV ||
+    fastify.config?.NODE_ENV ||
+    fastify.secrets?.NODE_ENV ||
+    process.env.NODE_ENV
   const notesRateLimit = {
     max: nodeEnv === 'test' ? 5 : 30,
     timeWindow: '1 minute',
@@ -23,7 +27,10 @@ module.exports = async function noteRoutes(fastify, opts) {
     },
     handler: async function listNotesHandler(request, reply) {
       const { skip, limit, title } = request.query
-      const notes = await fastify.notesDataSource.listNotes({ filter: { title }, skip, limit }, request.user._id)
+      const notes = await fastify.notesDataSource.listNotes(
+        { filter: { title }, skip, limit },
+        request.user._id,
+      )
       const totalCount = await fastify.notesDataSource.countNotes({ title }, request.user._id)
       return { data: notes, totalCount }
     },
@@ -42,7 +49,7 @@ module.exports = async function noteRoutes(fastify, opts) {
       response: {
         201: {
           type: 'object',
-          properties: { data: { $ref: 'schema:note#' } }
+          properties: { data: { $ref: 'schema:note#' } },
         },
       },
     },
@@ -67,8 +74,8 @@ module.exports = async function noteRoutes(fastify, opts) {
       response: {
         200: {
           type: 'object',
-          properties: { data: { $ref: 'schema:note#' } }
-        }
+          properties: { data: { $ref: 'schema:note#' } },
+        },
       },
     },
     handler: async function readNoteHandler(request, reply) {
@@ -84,7 +91,6 @@ module.exports = async function noteRoutes(fastify, opts) {
 
       request.log.info('Cache MISS - Fetching from MongoDB')
       const note = await fastify.notesDataSource.readNote(id, userId)
-      if (!note) throw fastify.httpErrors.notFound('Note not found')
 
       await fastify.cacheSet(cacheKey, note, 300000)
 
@@ -106,8 +112,8 @@ module.exports = async function noteRoutes(fastify, opts) {
       response: {
         200: {
           type: 'object',
-          properties: { data: { $ref: 'schema:note#' } }
-        }
+          properties: { data: { $ref: 'schema:note#' } },
+        },
       },
     },
     handler: async function updateNoteHandler(request, reply) {
@@ -116,7 +122,6 @@ module.exports = async function noteRoutes(fastify, opts) {
       const updateData = request.body
 
       const updatedNote = await fastify.notesDataSource.updateNote(id, updateData, userId)
-      if (!updatedNote) throw fastify.httpErrors.notFound('Note not found')
 
       if (fastify.auditLog) {
         await fastify.auditLog({
@@ -124,7 +129,7 @@ module.exports = async function noteRoutes(fastify, opts) {
           action: 'note_updated',
           userId,
           resourceType: 'note',
-          resourceId: id
+          resourceId: id,
         })
       }
 
@@ -134,9 +139,12 @@ module.exports = async function noteRoutes(fastify, opts) {
           title: updatedNote.title,
           body: updatedNote.body,
           tags: updatedNote.tags,
-          modifiedAt: updatedNote.modifiedAt
+          modifiedAt: updatedNote.modifiedAt,
         }
-        fastify.eventBus.emit(`note_updated:${id}`, { type: 'NOTE_UPDATED', payload: sanitizedEventDTO })
+        fastify.eventBus.emit(`note_updated:${id}`, {
+          type: 'NOTE_UPDATED',
+          payload: sanitizedEventDTO,
+        })
       }
 
       return { data: updatedNote }
@@ -166,7 +174,7 @@ module.exports = async function noteRoutes(fastify, opts) {
           action: 'note_deleted',
           userId,
           resourceType: 'note',
-          resourceId: id
+          resourceId: id,
         })
       }
 

@@ -8,22 +8,18 @@ const hashPassword = async (password) => {
       type: argon2.argon2id,
       memoryCost: 65536,
       timeCost: 3,
-      parallelism: 4
-    });
+      parallelism: 4,
+    })
   } catch (err) {
-    throw new Error('Error hashing password: ' + err.message);
+    throw new Error('Error hashing password: ' + err.message, { cause: err })
   }
-};
+}
 
 const validatePassword = async (password, hash) => {
-  try {
-    return await argon2.verify(hash, password);
-  } catch (err) {
-    return false;
-  }
-};
+  return argon2.verify(hash, password)
+}
 
 module.exports = {
   hashPassword,
-  validatePassword
+  validatePassword,
 }

@@ -3,7 +3,6 @@
 const { validatePassword, hashPassword } = require('../auth/generate-hash')
 
 module.exports = async function authRoutes(fastify) {
-
   fastify.post('/register', {
     schema: {
       tags: ['auth'],
@@ -12,22 +11,22 @@ module.exports = async function authRoutes(fastify) {
       response: {
         201: {
           type: 'object',
-          properties: { registered: { type: 'boolean' } }
-        }
-      }
+          properties: { registered: { type: 'boolean' } },
+        },
+      },
     },
     config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
     handler: async function registerHandler(request, reply) {
-      let userExists = false;
+      let userExists = false
 
       if (request.body.username) {
         const byUsername = await fastify.usersDataSource.readUser(request.body.username)
-        if (byUsername) userExists = true;
+        if (byUsername) userExists = true
       }
 
       if (request.body.email && !userExists) {
         const byEmail = await fastify.usersDataSource.readUser(request.body.email)
-        if (byEmail) userExists = true;
+        if (byEmail) userExists = true
       }
 
       if (userExists) {
@@ -43,11 +42,11 @@ module.exports = async function authRoutes(fastify) {
         role: 'user',
       })
 
-      request.log.info({ userId: newUserId }, 'New user successfully registered');
+      request.log.info({ userId: newUserId }, 'New user successfully registered')
 
       reply.code(201)
       return { registered: true }
-    }
+    },
   })
 
   fastify.post('/authenticate', {
@@ -67,12 +66,12 @@ module.exports = async function authRoutes(fastify) {
               properties: {
                 id: { type: 'string' },
                 username: { type: 'string' },
-                role: { type: 'string' }
-              }
-            }
-          }
-        }
-      }
+                role: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
     },
     config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
     handler: async function authenticateHandler(request, reply) {
@@ -81,14 +80,14 @@ module.exports = async function authRoutes(fastify) {
       const user = await fastify.usersDataSource.readUserWithHash(identifier)
 
       if (!user) {
-        request.log.warn({ identifier }, "Login failed: User not found in DB")
+        request.log.warn({ identifier }, 'Login failed: User not found in DB')
         if (fastify.auditLog) {
           await fastify.auditLog({
             request,
             action: 'auth_login_failed',
             resourceType: 'user',
             resourceId: identifier,
-            details: { reason: 'user_not_found' }
+            details: { reason: 'user_not_found' },
           })
         }
         throw fastify.httpErrors.unauthorized('Invalid credentials')
@@ -102,17 +101,23 @@ module.exports = async function authRoutes(fastify) {
             userId: user._id,
             resourceType: 'user',
             resourceId: user._id,
-            details: { reason: 'account_deleted' }
+            details: { reason: 'account_deleted' },
           })
         }
         throw fastify.httpErrors.unauthorized('Invalid credentials')
       }
 
       const storedHash = user.password || user.hash
-      const isMatch = await validatePassword(request.body.password, storedHash)
+      let isMatch
+      try {
+        isMatch = await validatePassword(request.body.password, storedHash)
+      } catch (err) {
+        request.log.error({ err }, 'Password verification failed due to operational error')
+        throw fastify.httpErrors.internalServerError('Authentication service error')
+      }
 
       if (!isMatch) {
-        request.log.warn("Login failed: Password mismatch")
+        request.log.warn('Login failed: Password mismatch')
         if (fastify.auditLog) {
           await fastify.auditLog({
             request,
@@ -120,7 +125,7 @@ module.exports = async function authRoutes(fastify) {
             userId: user._id,
             resourceType: 'user',
             resourceId: user._id,
-            details: { reason: 'invalid_password' }
+            details: { reason: 'invalid_password' },
           })
         }
         throw fastify.httpErrors.unauthorized('Invalid credentials')
@@ -134,7 +139,7 @@ module.exports = async function authRoutes(fastify) {
           action: 'auth_login_success',
           userId: user._id,
           resourceType: 'user',
-          resourceId: user._id
+          resourceId: user._id,
         })
       }
 
@@ -146,12 +151,11 @@ module.exports = async function authRoutes(fastify) {
         signed: false,
       }
 
-      reply
-        .setCookie('refreshToken', refreshToken, {
-          ...cookieOptions,
-          path: '/auth',
-          maxAge: fastify.config.cookie.refreshMaxAge
-        })
+      reply.setCookie('refreshToken', refreshToken, {
+        ...cookieOptions,
+        path: '/auth',
+        maxAge: fastify.config.cookie.refreshMaxAge,
+      })
 
       const decodedAccess = fastify.jwt.decode(accessToken)
       const expiresIn = decodedAccess.exp - Math.floor(Date.now() / 1000)
@@ -163,10 +167,10 @@ module.exports = async function authRoutes(fastify) {
         user: {
           id: user._id,
           username: user.username || user.email,
-          role: user.role
-        }
+          role: user.role,
+        },
       }
-    }
+    },
   })
 
   fastify.post('/refresh', {
@@ -189,12 +193,12 @@ module.exports = async function authRoutes(fastify) {
               properties: {
                 id: { type: 'string' },
                 username: { type: 'string' },
-                role: { type: 'string' }
-              }
-            }
-          }
-        }
-      }
+                role: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
     },
     handler: async function refreshHandler(request, reply) {
       await request.revokeToken(request.refreshTokenId, request.refreshTokenExp, request.user._id)
@@ -206,14 +210,13 @@ module.exports = async function authRoutes(fastify) {
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
         signed: false,
-      };
+      }
 
-      reply
-        .setCookie('refreshToken', refreshToken, {
-          ...cookieOptions,
-          path: '/auth',
-          maxAge: fastify.config.cookie.refreshMaxAge
-        })
+      reply.setCookie('refreshToken', refreshToken, {
+        ...cookieOptions,
+        path: '/auth',
+        maxAge: fastify.config.cookie.refreshMaxAge,
+      })
 
       const decodedAccess = fastify.jwt.decode(accessToken)
       const expiresIn = decodedAccess.exp - Math.floor(Date.now() / 1000)
@@ -225,10 +228,10 @@ module.exports = async function authRoutes(fastify) {
         user: {
           id: request.user._id,
           username: request.user.username || request.user.email,
-          role: request.user.role
-        }
+          role: request.user.role,
+        },
       }
-    }
+    },
   })
 
   fastify.post('/logout', {
@@ -240,14 +243,9 @@ module.exports = async function authRoutes(fastify) {
       summary: 'Logout the current user',
     },
     handler: async function logoutHandler(request, reply) {
-      await request.revokeToken(
-        request.refreshTokenId,
-        request.refreshTokenExp,
-        request.user._id
-      );
+      await request.revokeToken(request.refreshTokenId, request.refreshTokenExp, request.user._id)
 
-      reply
-        .clearCookie('refreshToken', { path: '/auth' });
+      reply.clearCookie('refreshToken', { path: '/auth' })
 
       reply.code(204).send()
     },
@@ -260,7 +258,7 @@ module.exports = async function authRoutes(fastify) {
     },
     handler: async function csrfHandler(request, reply) {
       return { csrfToken: await reply.generateCsrf() }
-    }
+    },
   })
 
   fastify.post('/reset-password/request', {
@@ -272,17 +270,19 @@ module.exports = async function authRoutes(fastify) {
       response: {
         200: {
           type: 'object',
-          properties: { message: { type: 'string' } }
-        }
-      }
+          properties: { message: { type: 'string' } },
+        },
+      },
     },
     handler: async function resetRequestHandler(request, reply) {
       await fastify.passwordResetService.requestReset({
         request,
         email: request.body.email,
       })
-      return { message: 'If an account exists for that email, a password reset link has been sent.' }
-    }
+      return {
+        message: 'If an account exists for that email, a password reset link has been sent.',
+      }
+    },
   })
 
   fastify.post('/reset-password/validate', {
@@ -294,9 +294,9 @@ module.exports = async function authRoutes(fastify) {
       response: {
         200: {
           type: 'object',
-          properties: { valid: { type: 'boolean' } }
-        }
-      }
+          properties: { valid: { type: 'boolean' } },
+        },
+      },
     },
     handler: async function resetValidateHandler(request, reply) {
       const isValid = await fastify.passwordResetService.validateToken({
@@ -308,7 +308,7 @@ module.exports = async function authRoutes(fastify) {
         throw fastify.httpErrors.unauthorized('Invalid or expired reset token')
       }
       return { valid: true }
-    }
+    },
   })
 
   fastify.post('/reset-password/confirm', {
@@ -320,9 +320,9 @@ module.exports = async function authRoutes(fastify) {
       response: {
         200: {
           type: 'object',
-          properties: { message: { type: 'string' } }
-        }
-      }
+          properties: { message: { type: 'string' } },
+        },
+      },
     },
     handler: async function resetConfirmHandler(request, reply) {
       const success = await fastify.passwordResetService.executeReset({
@@ -336,6 +336,6 @@ module.exports = async function authRoutes(fastify) {
         throw fastify.httpErrors.unauthorized('Invalid or expired reset token')
       }
       return { message: 'Password has been successfully reset. You may now log in.' }
-    }
+    },
   })
 }

@@ -87,34 +87,28 @@ module.exports = fp(
 
       async readNote(id, userId, projection = {}) {
         fastify.log.info('Entering readNote method')
-        try {
-          const note = await notes.findOne(
-            { id: id, userId: userId },
-            {
-              projection: {
-                _id: 0,
-                id: 1,
-                title: 1,
-                body: 1,
-                tags: 1,
-                attachments: 1,
-                createdAt: 1,
-                modifiedAt: 1,
-                ...projection,
-              },
+        const note = await notes.findOne(
+          { id: id, userId: userId },
+          {
+            projection: {
+              _id: 0,
+              id: 1,
+              title: 1,
+              body: 1,
+              tags: 1,
+              attachments: 1,
+              createdAt: 1,
+              modifiedAt: 1,
+              ...projection,
             },
-          )
-          if (!note) {
-            fastify.log.info(`Note not found for ID: ${id} and User ID: ${userId}`)
-            throw fastify.httpErrors.notFound('Note not found')
-          }
-          fastify.log.info('Exiting readNote method')
-          return note
-        } catch (error) {
-          if (error.statusCode === 404) throw error
-          fastify.log.error({ err: error, id }, 'Failed to read note')
-          throw fastify.httpErrors.internalServerError('Internal server error')
+          },
+        )
+        if (!note) {
+          fastify.log.info(`Note not found for ID: ${id} and User ID: ${userId}`)
+          throw fastify.httpErrors.notFound('Note not found')
         }
+        fastify.log.info('Exiting readNote method')
+        return note
       },
 
       async updateNote(id, newNote, userId) {
