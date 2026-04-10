@@ -72,7 +72,7 @@
     "fastify-secrets-env": "^3.0.0",
     "fluent-json-schema": "^6.0.0",
     "migrate-mongo": "^14.0.7",
-    "nodemailer": "^8.0.4",
+    "nodemailer": "^8.0.5",
     "split2": "^4.2.0"
   },
   "devDependencies": {
