@@ -13,8 +13,8 @@ module.exports = fp(
           secure: process.env.NODE_ENV === 'production',
           httpOnly: true,
           sameSite: 'lax',
-          signed: false
-        }
+          signed: false,
+        },
       })
       fastify.log.info('Successfully registered cookie plugin')
     } catch (err) {
@@ -26,7 +26,7 @@ module.exports = fp(
     name: 'cookie-plugin',
     dependencies: ['application-config'],
     decorators: {
-      fastify: ['config']
-    }
-  }
+      fastify: ['config'],
+    },
+  },
 )

@@ -12,7 +12,8 @@ async function passwordResetPlugin(fastify, options) {
     .trim()
     .replace(/\/+$/, '')
   const ttlMinutes = Math.max(1, Number(fastify.config.passwordReset?.ttlMinutes || 60))
-  const requestCooldownMs = Math.max(0, Number(fastify.config.passwordReset?.requestCooldownSeconds || 0)) * 1000
+  const requestCooldownMs =
+    Math.max(0, Number(fastify.config.passwordReset?.requestCooldownSeconds || 0)) * 1000
   const maxAttempts = Math.max(1, Number(fastify.config.passwordReset?.maxAttempts || 5))
 
   const generateOpaqueToken = () => {
@@ -26,7 +27,8 @@ async function passwordResetPlugin(fastify, options) {
   }
 
   const buildEmailMarker = (email) => {
-    return crypto.createHash('sha256')
+    return crypto
+      .createHash('sha256')
       .update(String(email).trim().toLowerCase())
       .digest('hex')
       .slice(0, 12)
@@ -48,7 +50,14 @@ async function passwordResetPlugin(fastify, options) {
     return null
   }
 
-  const auditValidationFailure = async ({ request, phase, resetId, resetData, reason, failedAttempts }) => {
+  const auditValidationFailure = async ({
+    request,
+    phase,
+    resetId,
+    resetData,
+    reason,
+    failedAttempts,
+  }) => {
     const details = { phase, reason }
     if (typeof failedAttempts === 'number') {
       details.failedAttempts = failedAttempts
@@ -140,11 +149,17 @@ async function passwordResetPlugin(fastify, options) {
         return true
       } catch (err) {
         // Rollback atomic DB state so usrs aren't locked out of trying again
-        fastify.log.error({ err, userId: user._id, emailMarker: buildEmailMarker(email) }, 'Could not dispatch reset email, rolling back reset state.')
+        fastify.log.error(
+          { err, userId: user._id, emailMarker: buildEmailMarker(email) },
+          'Could not dispatch reset email, rolling back reset state.',
+        )
         try {
           await fastify.usersDataSource.rescindPasswordReset(id)
         } catch (rollbackError) {
-          fastify.log.error({ err: rollbackError, userId: user._id, resetId: id }, 'Could not rollback password reset state after email failure.')
+          fastify.log.error(
+            { err: rollbackError, userId: user._id, resetId: id },
+            'Could not rollback password reset state after email failure.',
+          )
         }
 
         await fastify.auditLog({
@@ -177,21 +192,26 @@ async function passwordResetPlugin(fastify, options) {
       const incomingHash = hashSecret(rawSecret)
       const isValid = crypto.timingSafeEqual(
         Buffer.from(incomingHash, 'hex'),
-        Buffer.from(resetData.passwordReset.secretHash, 'hex')
+        Buffer.from(resetData.passwordReset.secretHash, 'hex'),
       )
 
       if (isValid) {
         return true
       }
 
-      const failedResetData = await fastify.usersDataSource.incrementPasswordResetFailedAttempts(resetId, maxAttempts)
+      const failedResetData = await fastify.usersDataSource.incrementPasswordResetFailedAttempts(
+        resetId,
+        maxAttempts,
+      )
       await auditValidationFailure({
         request,
         phase: 'validate',
         resetId,
         resetData: failedResetData || resetData,
         reason: 'invalid_secret',
-        failedAttempts: failedResetData?.passwordReset?.failedAttempts ?? Math.min((resetData.passwordReset.failedAttempts ?? 0) + 1, maxAttempts),
+        failedAttempts:
+          failedResetData?.passwordReset?.failedAttempts ??
+          Math.min((resetData.passwordReset.failedAttempts ?? 0) + 1, maxAttempts),
       })
 
       return false
@@ -214,18 +234,25 @@ async function passwordResetPlugin(fastify, options) {
 
       const secretHash = hashSecret(rawSecret)
 
-      if (!crypto.timingSafeEqual(
-        Buffer.from(secretHash, 'hex'),
-        Buffer.from(resetData.passwordReset.secretHash, 'hex')
-      )) {
-        const failedResetData = await fastify.usersDataSource.incrementPasswordResetFailedAttempts(resetId, maxAttempts)
+      if (
+        !crypto.timingSafeEqual(
+          Buffer.from(secretHash, 'hex'),
+          Buffer.from(resetData.passwordReset.secretHash, 'hex'),
+        )
+      ) {
+        const failedResetData = await fastify.usersDataSource.incrementPasswordResetFailedAttempts(
+          resetId,
+          maxAttempts,
+        )
         await auditValidationFailure({
           request,
           phase: 'confirm',
           resetId,
           resetData: failedResetData || resetData,
           reason: 'invalid_secret',
-          failedAttempts: failedResetData?.passwordReset?.failedAttempts ?? Math.min((resetData.passwordReset.failedAttempts ?? 0) + 1, maxAttempts),
+          failedAttempts:
+            failedResetData?.passwordReset?.failedAttempts ??
+            Math.min((resetData.passwordReset.failedAttempts ?? 0) + 1, maxAttempts),
         })
         return false
       }
@@ -233,7 +260,12 @@ async function passwordResetPlugin(fastify, options) {
       const newPasswordHash = await hashPassword(newPassword)
 
       try {
-        const user = await fastify.usersDataSource.verifyAndExecutePasswordReset(resetId, secretHash, newPasswordHash, maxAttempts)
+        const user = await fastify.usersDataSource.verifyAndExecutePasswordReset(
+          resetId,
+          secretHash,
+          newPasswordHash,
+          maxAttempts,
+        )
         if (!user) {
           await auditValidationFailure({
             request,
@@ -255,8 +287,11 @@ async function passwordResetPlugin(fastify, options) {
 
         // Fire async confirmation email
         setImmediate(() => {
-          fastify.mailer.sendPasswordResetSuccessMail({ to: user.email }).catch(err => {
-            fastify.log.warn({ err, userId: user._id }, 'Could not send reset confirmation email, but password was reset.')
+          fastify.mailer.sendPasswordResetSuccessMail({ to: user.email }).catch((err) => {
+            fastify.log.warn(
+              { err, userId: user._id },
+              'Could not send reset confirmation email, but password was reset.',
+            )
           })
         })
 
@@ -273,7 +308,7 @@ async function passwordResetPlugin(fastify, options) {
         })
         return false
       }
-    }
+    },
   }
 
   fastify.decorate('passwordResetService', passwordResetServiceApi)
@@ -283,6 +318,6 @@ module.exports = fp(passwordResetPlugin, {
   name: 'password-reset-plugin',
   dependencies: ['application-config', 'users-store', 'mailer-plugin', 'audit-plugin'],
   decorators: {
-    fastify: ['config', 'usersDataSource', 'mailer', 'auditLog']
-  }
+    fastify: ['config', 'usersDataSource', 'mailer', 'auditLog'],
+  },
 })

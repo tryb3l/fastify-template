@@ -55,6 +55,6 @@ module.exports = fp(
   {
     dependencies: ['application-config'],
     name: 'swagger-plugin',
-    decorators: { fastify: ['config'] }
-  }
+    decorators: { fastify: ['config'] },
+  },
 )

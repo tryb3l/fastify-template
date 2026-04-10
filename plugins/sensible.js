@@ -8,8 +8,11 @@ const fastifySensible = require('@fastify/sensible')
  *
  * @see https://github.com/fastify/fastify-sensible
  */
-module.exports = fp(async function sensiblePlugin(fastify) {
-  await fastify.register(fastifySensible, {
-    errorHandler: false,
-  })
-}, { name: 'sensible-plugin' })
+module.exports = fp(
+  async function sensiblePlugin(fastify) {
+    await fastify.register(fastifySensible, {
+      errorHandler: false,
+    })
+  },
+  { name: 'sensible-plugin' },
+)

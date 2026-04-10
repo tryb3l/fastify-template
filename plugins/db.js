@@ -18,15 +18,15 @@ module.exports = fp(
       })
       fastify.log.info("'db-plugin' registered successfully")
     } catch (err) {
-      fastify.log.error({ err }, "Error registering 'db-plugin'");
-      throw err;
+      fastify.log.error({ err }, "Error registering 'db-plugin'")
+      throw err
     }
   },
   {
     name: 'db-plugin',
     dependencies: ['application-config'],
     decorators: {
-      fastify: ['config']
-    }
+      fastify: ['config'],
+    },
   },
 )

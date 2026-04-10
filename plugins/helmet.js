@@ -2,6 +2,9 @@
 const fp = require('fastify-plugin')
 const helmet = require('@fastify/helmet')
 
-module.exports = fp(async function helmetPlugin(fastify, opts) {
+module.exports = fp(
+  async function helmetPlugin(fastify, opts) {
     await fastify.register(helmet)
-}, { name: 'helmet-plugin' })
+  },
+  { name: 'helmet-plugin' },
+)

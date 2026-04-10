@@ -6,23 +6,23 @@ const envSchema = require('../schemas/dotenv.json')
 
 module.exports = fp(
   async function registerPluginsAndConfig(fastify, opts) {
-    fastify.log.info("Registering 'application-config' plugin");
+    fastify.log.info("Registering 'application-config' plugin")
 
     if (fastify.hasDecorator('secrets')) {
-      fastify.log.warn("'application-config' already registered, skipping");
+      fastify.log.warn("'application-config' already registered, skipping")
       return
     }
 
-    fastify.log.debug("Registering '@fastify/env'");
+    fastify.log.debug("Registering '@fastify/env'")
     await fastify.register(fastifyEnv, {
       confKey: 'secrets',
       data: opts.configData,
       schema: envSchema,
     })
-    fastify.log.debug("'@fastify/env' registered successfully");
+    fastify.log.debug("'@fastify/env' registered successfully")
 
     fastify.log.level = fastify.secrets.LOG_LEVEL
-    fastify.log.info(`Log level set to: ${fastify.log.level}`);
+    fastify.log.info(`Log level set to: ${fastify.log.level}`)
 
     fastify.decorate('config', {
       NODE_ENV: fastify.secrets.NODE_ENV,
@@ -55,11 +55,11 @@ module.exports = fp(
           secure: fastify.secrets.SMTP_SECURE,
           user: fastify.secrets.SMTP_USER,
           pass: fastify.secrets.SMTP_PASS,
-        }
-      }
+        },
+      },
     })
 
-    fastify.log.info("'config' decorator added successfully");
+    fastify.log.info("'config' decorator added successfully")
   },
   { name: 'application-config', dependencies: [] },
 )

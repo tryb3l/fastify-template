@@ -50,7 +50,7 @@ async function mailerPlugin(fastify, options) {
     transporter = nodemailer.createTransport({
       streamTransport: true,
       newline: 'unix',
-      buffer: true
+      buffer: true,
     })
   } else {
     transporter = nodemailer.createTransport({
@@ -59,8 +59,8 @@ async function mailerPlugin(fastify, options) {
       secure: smtp.secure !== false,
       auth: {
         user: smtp.user,
-        pass: smtp.pass
-      }
+        pass: smtp.pass,
+      },
     })
   }
 
@@ -94,7 +94,7 @@ async function mailerPlugin(fastify, options) {
         to,
         subject: 'Password Reset Request',
         text: `You have requested a password reset. Please click on the following link or paste it into your browser to complete the process:\n\n${rawResetUrl}\n\nIf you did not request this, please ignore this email and your password will remain unchanged.`,
-        html: `<p>You have requested a password reset.</p><p>Please <a href="${rawResetUrl}">click here</a> to complete the process.</p><p>If you did not request this, please ignore this email.</p>`
+        html: `<p>You have requested a password reset.</p><p>Please <a href="${rawResetUrl}">click here</a> to complete the process.</p><p>If you did not request this, please ignore this email.</p>`,
       })
     },
 
@@ -104,7 +104,7 @@ async function mailerPlugin(fastify, options) {
         to,
         subject: 'Your password has been changed',
         text: `Hello,\n\nThis is a confirmation that the password for your account has just been changed.\n`,
-        html: `<p>Hello,</p><p>This is a confirmation that the password for your account has just been changed.</p>`
+        html: `<p>Hello,</p><p>This is a confirmation that the password for your account has just been changed.</p>`,
       })
     },
 
@@ -114,7 +114,7 @@ async function mailerPlugin(fastify, options) {
 
     clearTestMessages() {
       clearTestMessages()
-    }
+    },
   }
 
   fastify.decorate('mailer', mailerApi)
@@ -125,8 +125,8 @@ module.exports = fp(mailerPlugin, {
   name: 'mailer-plugin',
   dependencies: ['application-config'],
   decorators: {
-    fastify: ['config']
-  }
+    fastify: ['config'],
+  },
 })
 
 module.exports.getTestMessages = getTestMessages

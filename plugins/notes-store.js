@@ -26,10 +26,13 @@ module.exports = fp(
         return totalCount
       },
 
-      async listNotes({ filter = {}, projection = {}, skip = 0, limit = 50, asStream = false } = {}, userId) {
+      async listNotes(
+        { filter = {}, projection = {}, skip = 0, limit = 50, asStream = false } = {},
+        userId,
+      ) {
         fastify.log.info('Entering listNotes method')
         const finalFilter = this._buildFilter(filter, userId)
-        
+
         const cursor = await notes.find(finalFilter, {
           projection: { ...projection, _id: 0 },
           limit,
@@ -108,7 +111,7 @@ module.exports = fp(
           fastify.log.info('Exiting readNote method')
           return note
         } catch (error) {
-          if (error.statusCode === 404) throw error;
+          if (error.statusCode === 404) throw error
           fastify.log.error({ err: error, id }, 'Failed to read note')
           throw fastify.httpErrors.internalServerError('Internal server error')
         }
@@ -139,7 +142,7 @@ module.exports = fp(
         fastify.log.info('Entering deleteNote method')
         const result = await notes.deleteOne({
           id: id,
-          userId: userId
+          userId: userId,
         })
 
         if (result.deletedCount === 0) {
@@ -176,7 +179,7 @@ module.exports = fp(
     dependencies: ['db-plugin'],
     name: 'notes-store',
     decorators: {
-      fastify: ['mongo']
-    }
+      fastify: ['mongo'],
+    },
   },
 )
