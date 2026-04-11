@@ -2,7 +2,7 @@ name: CI
 on: [push, pull_request]
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
 
     services:
@@ -31,7 +31,7 @@ jobs:
         run: npm ci
 
       - name: Run Database Migrations
-        run: npx migrate-mongo up
+        run: npm run migrate
 
       - name: Run tests
-        run: node --test test/**/*.test.js
+        run: npm run test:ci
