@@ -6,7 +6,7 @@ const nodemailer = require('nodemailer')
 const sentMessages = []
 
 function createMissingSmtpConfigError() {
-  const error = new Error('SMTP configuration is required outside test mode')
+  const error = new Error('SMTP configuration is required outside development and test modes')
   error.code = 'SMTP_CONFIG_REQUIRED'
   return error
 }
@@ -37,16 +37,20 @@ async function mailerPlugin(fastify, options) {
 
   const { smtp, fromEmail } = fastify.config.mailer || {}
   const isTestEnv = fastify.config.NODE_ENV === 'test'
+  const isDevelopmentEnv = fastify.config.NODE_ENV === 'development'
   const hasSmtpConfig = Boolean(smtp?.host)
-  const useCaptureTransport = isTestEnv && !hasSmtpConfig
+  const useCaptureTransport = (isTestEnv || isDevelopmentEnv) && !hasSmtpConfig
   let transporter
 
   if (!hasSmtpConfig) {
-    if (!isTestEnv) {
+    if (!useCaptureTransport) {
       throw createMissingSmtpConfigError()
     }
 
-    fastify.log.warn('No SMTP credentials found. Using local capture transport for tests.')
+    fastify.log.warn(
+      { env: fastify.config.NODE_ENV },
+      'No SMTP credentials found. Using local capture transport.',
+    )
     transporter = nodemailer.createTransport({
       streamTransport: true,
       newline: 'unix',

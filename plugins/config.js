@@ -24,8 +24,17 @@ module.exports = fp(
     fastify.log.level = fastify.secrets.LOG_LEVEL
     fastify.log.info(`Log level set to: ${fastify.log.level}`)
 
+    const nodeEnv = fastify.secrets.NODE_ENV
+    const useMailpitDefaults = nodeEnv === 'development' && !fastify.secrets.SMTP_HOST
+    const smtpHost = useMailpitDefaults ? '127.0.0.1' : fastify.secrets.SMTP_HOST
+    const smtpPort = useMailpitDefaults ? 1025 : fastify.secrets.SMTP_PORT
+
+    if (useMailpitDefaults) {
+      fastify.log.info('Development SMTP not configured. Defaulting to local Mailpit on 127.0.0.1:1025')
+    }
+
     fastify.decorate('config', {
-      NODE_ENV: fastify.secrets.NODE_ENV,
+      NODE_ENV: nodeEnv,
       MONGO_URL: fastify.secrets.MONGO_URL,
       FRONTEND_URL: fastify.secrets.FRONTEND_URL || 'http://localhost:5173',
 
@@ -50,8 +59,8 @@ module.exports = fp(
       mailer: {
         fromEmail: fastify.secrets.MAIL_FROM,
         smtp: {
-          host: fastify.secrets.SMTP_HOST,
-          port: fastify.secrets.SMTP_PORT,
+          host: smtpHost,
+          port: smtpPort,
           secure: fastify.secrets.SMTP_SECURE,
           user: fastify.secrets.SMTP_USER,
           pass: fastify.secrets.SMTP_PASS,
