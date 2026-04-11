@@ -5,6 +5,7 @@ const assert = require('node:assert')
 const { createNote } = require('../../../../utils/note-creator')
 const { randomString } = require('../../../../utils/data-creator')
 const { randomUUID } = require('node:crypto')
+const { setup } = require('../../../../utils/setup-user')
 
 test('GET by id /notes/:id 200 - Fetch note by id', async (t) => {
   // Arrange
@@ -39,6 +40,30 @@ test('GET by id /notes/:id 404 - Note not found', async (t) => {
 
   // Assert
   assert.strictEqual(response.statusCode, 404)
+})
+
+test('GET by id /notes/:id 404 - Different user cannot read another users note', async (t) => {
+  // Arrange
+  const owner = await createNote(t)
+  const intruder = await setup(t, 'user')
+
+  // Act
+  const response = await intruder.app.inject({
+    method: 'GET',
+    url: `/notes/${owner.note.data.id}`,
+    headers: { Authorization: `Bearer ${intruder.accessToken}` },
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 404)
+
+  const ownerVerify = await owner.app.inject({
+    method: 'GET',
+    url: `/notes/${owner.note.data.id}`,
+    headers: { Authorization: `Bearer ${owner.accessToken}` },
+  })
+
+  assert.strictEqual(ownerVerify.statusCode, 200)
 })
 
 test('GET by id /notes/:id 400 - Invalid id format', async (t) => {

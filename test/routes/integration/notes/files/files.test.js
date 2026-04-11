@@ -135,6 +135,25 @@ test('POST /files/import 400 - Fails if no file is provided', async (t) => {
   assert.strictEqual(response.statusCode, 400)
 })
 
+test('POST /files/import 401 - Requires authentication', async (t) => {
+  // Arrange
+  const { app } = await setup(t, 'user')
+  const csvContent = 'title,body,tags\nPhase 1,Security,auth'
+  const form = new FormData()
+  form.append('file', Buffer.from(csvContent), 'import.csv')
+
+  // Act
+  const response = await app.inject({
+    method: 'POST',
+    url: `${ROUTE_PREFIX}/import`,
+    headers: form.getHeaders(),
+    payload: form,
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 401)
+})
+
 test('POST /files/upload 415 - Fails on unallowed extensions', async (t) => {
   // Arrange
   const { app, accessToken, note } = await createNote(t)
@@ -151,6 +170,41 @@ test('POST /files/upload 415 - Fails on unallowed extensions', async (t) => {
 
   // Assert
   assert.strictEqual(response.statusCode, 415)
+})
+
+test('GET /files/export 401 - Requires authentication', async (t) => {
+  // Arrange
+  const { app } = await setup(t, 'user')
+
+  // Act
+  const response = await app.inject({
+    method: 'GET',
+    url: `${ROUTE_PREFIX}/export`,
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 401)
+})
+
+test('POST /files/upload 401 - Requires authentication', async (t) => {
+  // Arrange
+  const { app, note } = await createNote(t)
+  const form = new FormData()
+  form.append('file', Buffer.from('unauthorized-upload'), {
+    filename: 'unauthorized.txt',
+    contentType: 'text/plain',
+  })
+
+  // Act
+  const response = await app.inject({
+    method: 'POST',
+    url: `${ROUTE_PREFIX}/upload?noteId=${note.data.id}`,
+    headers: form.getHeaders(),
+    payload: form,
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 401)
 })
 
 test('GET /files/:fileId 200 - Successfully streams binary content', async (t) => {
@@ -175,6 +229,31 @@ test('GET /files/:fileId 200 - Successfully streams binary content', async (t) =
   // Assert
   assert.strictEqual(downloadRes.statusCode, 200)
   assert.strictEqual(downloadRes.body, 'download-me')
+})
+
+test('GET /files/:fileId 401 - Requires authentication', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+  const form = new FormData()
+  const fileName = 'private-download.txt'
+  form.append('file', Buffer.from('private-download'), {
+    filename: fileName,
+    contentType: 'text/plain',
+  })
+
+  const uploadRes = await uploadNoteFile(app, accessToken, note.data.id, form)
+  assert.strictEqual(uploadRes.statusCode, 201)
+  const fileId = uploadRes.json().files[0].fileId
+  registerFileCleanup(t, fileId, fileName)
+
+  // Act
+  const response = await app.inject({
+    method: 'GET',
+    url: `${ROUTE_PREFIX}/${fileId}?noteId=${note.data.id}`,
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 401)
 })
 
 test('POST /files/upload 400 - Fails when file exceeds 10MB size limit', async (t) => {
@@ -206,6 +285,56 @@ test('GET /files/:fileId 404 - Fails when fileId is not attached to the note', a
     method: 'GET',
     url: `${ROUTE_PREFIX}/${nonExistentFileId}?noteId=${note.data.id}`,
     headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 404)
+})
+
+test('POST /files/upload 404 - Different user cannot upload to another users note', async (t) => {
+  // Arrange
+  const owner = await createNote(t)
+  const intruder = await setup(t, 'user')
+  const form = new FormData()
+  form.append('file', Buffer.from('cross-user-upload'), {
+    filename: 'cross-user.txt',
+    contentType: 'text/plain',
+  })
+
+  // Act
+  const response = await uploadNoteFile(
+    intruder.app,
+    intruder.accessToken,
+    owner.note.data.id,
+    form,
+  )
+
+  // Assert
+  assert.strictEqual(response.statusCode, 404)
+})
+
+test('GET /files/:fileId 404 - Different user cannot download another users file', async (t) => {
+  // Arrange
+  const owner = await createNote(t)
+  const intruder = await setup(t, 'user')
+  const form = new FormData()
+  const fileName = 'owners-secret.txt'
+  form.append('file', Buffer.from('owner-secret'), {
+    filename: fileName,
+    contentType: 'text/plain',
+  })
+
+  const uploadRes = await uploadNoteFile(owner.app, owner.accessToken, owner.note.data.id, form)
+  assert.strictEqual(uploadRes.statusCode, 201)
+
+  const fileId = uploadRes.json().files[0].fileId
+  registerFileCleanup(t, fileId, fileName)
+
+  // Act
+  const response = await intruder.app.inject({
+    method: 'GET',
+    url: `${ROUTE_PREFIX}/${fileId}?noteId=${owner.note.data.id}`,
+    headers: { Authorization: `Bearer ${intruder.accessToken}` },
   })
 
   // Assert

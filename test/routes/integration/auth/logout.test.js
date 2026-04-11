@@ -62,3 +62,23 @@ test('POST /auth/logout 204 - Successfully clears token session', async (t) => {
   // Assert
   assert.strictEqual(refreshResponse.statusCode, 401, 'Logged out tokens must be rejected natively by the cache/rotation store')
 })
+
+test('POST /auth/logout 401 - Rejects access tokens supplied via the refreshToken cookie', async (t) => {
+  // Arrange
+  const { app, accessToken } = await setup(t, 'user')
+  const { csrfToken, csrfCookieHeader } = await issueCsrfContext(app)
+  const cookieHeader = `refreshToken=${accessToken}; ${csrfCookieHeader}`
+
+  // Act
+  const response = await app.inject({
+    method: 'POST',
+    url: '/auth/logout',
+    headers: {
+      cookie: cookieHeader,
+      'x-csrf-token': csrfToken,
+    }
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 401)
+})

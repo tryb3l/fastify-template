@@ -66,3 +66,23 @@ test('POST /auth/refresh 200 - Successfully rotates tokens with valid CSRF', asy
   // Assert
   assert.strictEqual(oldRefreshResponse.statusCode, 401, 'Old rotated refresh token should be rejected')
 })
+
+test('POST /auth/refresh 401 - Rejects access tokens supplied via the refreshToken cookie', async (t) => {
+  // Arrange
+  const { app, accessToken } = await setup(t, 'user')
+  const { csrfToken, csrfCookieHeader } = await issueCsrfContext(app)
+  const cookieHeader = `refreshToken=${accessToken}; ${csrfCookieHeader}`
+
+  // Act
+  const response = await app.inject({
+    method: 'POST',
+    url: '/auth/refresh',
+    headers: {
+      cookie: cookieHeader,
+      'x-csrf-token': csrfToken,
+    }
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 401)
+})

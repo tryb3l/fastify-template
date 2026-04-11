@@ -19,7 +19,7 @@ test('DELETE /notes/:id 204 - Deletes the note', async (t) => {
   // Assert
   assert.strictEqual(response.statusCode, 204)
 
-  
+
   const verify = await app.inject({
     method: 'GET',
     url: `/notes/${note.data.id}`,
@@ -43,4 +43,42 @@ test('DELETE /notes/:id 404 - Returns 404 if not found', async (t) => {
 
   // Assert
   assert.strictEqual(response.statusCode, 404)
+})
+
+test('DELETE /notes/:id 404 - Different user cannot delete another users note', async (t) => {
+  // Arrange
+  const owner = await createNote(t)
+  const intruder = await setup(t, 'user')
+
+  // Act
+  const response = await intruder.app.inject({
+    method: 'DELETE',
+    url: `/notes/${owner.note.data.id}`,
+    headers: { Authorization: `Bearer ${intruder.accessToken}` },
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 404)
+
+  const ownerVerify = await owner.app.inject({
+    method: 'GET',
+    url: `/notes/${owner.note.data.id}`,
+    headers: { Authorization: `Bearer ${owner.accessToken}` },
+  })
+
+  assert.strictEqual(ownerVerify.statusCode, 200)
+})
+
+test('DELETE /notes/:id 401 - Unauthorized', async (t) => {
+  // Arrange
+  const { app, note } = await createNote(t)
+
+  // Act
+  const response = await app.inject({
+    method: 'DELETE',
+    url: `/notes/${note.data.id}`,
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 401)
 })
