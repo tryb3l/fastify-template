@@ -1,0 +1,30 @@
+{
+  "type": "object",
+  "$id": "schema:user:update:admin:body",
+  "additionalProperties": false,
+  "properties": {
+    "username": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 32
+    },
+    "email": {
+      "type": "string",
+      "format": "email"
+    },
+    "firstName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "lastName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "role": {
+      "type": "string",
+      "enum": ["user", "admin"]
+    }
+  }
+}

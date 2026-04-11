@@ -5,6 +5,7 @@ function loadUserSchemas(fastify) {
   const schemas = [
     './read-params.json',
     './update-user.json',
+    './update-admin-user.json',
     './users-list-query.json',
     './users-list-response.json',
   ];

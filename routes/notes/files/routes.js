@@ -10,18 +10,22 @@ const path = require('node:path')
 const { parse: csvParse } = require('csv-parse')
 const { stringify: csvStringify } = require('csv-stringify')
 const { randomUUID } = require('node:crypto')
+const { ALLOWED_UPLOAD_MIME_TYPES, assertUploadedFileContent } = require('../../../utils/upload-verifier')
 
-const ALLOWED_MIME_TYPES = {
-  'image/png': '.png',
-  'image/jpeg': ['.jpg', '.jpeg'],
-  'image/webp': '.webp',
-  'image/gif': '.gif',
-  'application/pdf': '.pdf',
-  'text/csv': '.csv',
-  'text/plain': '.txt',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
-  'application/vnd.ms-excel': '.xls',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+const DANGEROUS_CSV_PREFIX = /^[\t\r\n ]*[=+\-@]/
+
+function sanitizeCsvCellValue(value) {
+  if (typeof value !== 'string') {
+    return value
+  }
+
+  // Prefix spreadsheet-formula-like cells at export time; this keeps stored note data intact
+  // but intentionally changes emitted CSV values so spreadsheet apps do not execute formulas.
+  if (DANGEROUS_CSV_PREFIX.test(value)) {
+    return `'${value}`
+  }
+
+  return value
 }
 
 module.exports = async function fileRoutes(fastify) {
@@ -120,7 +124,8 @@ module.exports = async function fileRoutes(fastify) {
           columns: ['title', 'body', 'tags', 'createdAt', 'modifiedAt', 'id'],
           cast: {
             date: (value) => value.toISOString(),
-            object: (value) => JSON.stringify(value),
+            object: (value) => sanitizeCsvCellValue(JSON.stringify(value)),
+            string: (value) => sanitizeCsvCellValue(value),
           },
         }),
       )
@@ -195,7 +200,7 @@ module.exports = async function fileRoutes(fastify) {
         }
 
         const ext = path.extname(part.filename).toLowerCase()
-        const allowedExts = ALLOWED_MIME_TYPES[part.mimetype]
+        const allowedExts = ALLOWED_UPLOAD_MIME_TYPES[part.mimetype]
 
         const isValid =
           allowedExts &&
@@ -236,6 +241,27 @@ module.exports = async function fileRoutes(fastify) {
         }
 
         uploadedFiles[uploadedFiles.length - 1].size = Number(part.file.bytesRead || 0)
+
+        try {
+          await assertUploadedFileContent({
+            filePath,
+            filename: part.filename,
+            mimeType: part.mimetype,
+          })
+        } catch (err) {
+          request.log.warn({ err, filename: part.filename }, 'Uploaded file content verification failed')
+          await cleanupUploadedFiles()
+
+          if (err.statusCode === 400) {
+            throw this.httpErrors.badRequest(err.message)
+          }
+
+          if (err.statusCode === 415) {
+            throw this.httpErrors.unsupportedMediaType(err.message)
+          }
+
+          throw this.httpErrors.internalServerError('File upload failed')
+        }
       }
 
       if (uploadedFiles.length === 0) {

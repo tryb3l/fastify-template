@@ -1,22 +1,28 @@
 'use strict'
 
 module.exports = async function userRoutes(fastify, options) {
-  const updateableUserFields = new Set(['username', 'email', 'firstName', 'lastName'])
+  const selfUpdateableUserFields = new Set(['username', 'email', 'firstName', 'lastName'])
+  const adminUpdateableUserFields = new Set([...selfUpdateableUserFields, 'role'])
 
-  async function rejectUnknownUpdateFields(request) {
-    if (!request.body || typeof request.body !== 'object' || Array.isArray(request.body)) {
-      return
-    }
+  function createRejectUnknownUpdateFields(allowedFields) {
+    return async function rejectUnknownUpdateFields(request) {
+      if (!request.body || typeof request.body !== 'object' || Array.isArray(request.body)) {
+        return
+      }
 
-    const forbiddenFields = Object.keys(request.body)
-      .filter((field) => !updateableUserFields.has(field))
+      const forbiddenFields = Object.keys(request.body)
+        .filter((field) => !allowedFields.has(field))
 
-    if (forbiddenFields.length > 0) {
-      throw fastify.httpErrors.badRequest(
-        `Body must not contain additional properties: ${forbiddenFields.join(', ')}`,
-      )
+      if (forbiddenFields.length > 0) {
+        throw fastify.httpErrors.badRequest(
+          `Body must not contain additional properties: ${forbiddenFields.join(', ')}`,
+        )
+      }
     }
   }
+
+  const rejectUnknownSelfUpdateFields = createRejectUnknownUpdateFields(selfUpdateableUserFields)
+  const rejectUnknownAdminUpdateFields = createRejectUnknownUpdateFields(adminUpdateableUserFields)
 
   fastify.route({
     method: 'GET',
@@ -90,7 +96,7 @@ module.exports = async function userRoutes(fastify, options) {
   fastify.route({
     method: 'PUT',
     url: '/me',
-    preValidation: rejectUnknownUpdateFields,
+    preValidation: rejectUnknownSelfUpdateFields,
     schema: {
       tags: ['users'],
       summary: 'Update own profile',
@@ -143,21 +149,47 @@ module.exports = async function userRoutes(fastify, options) {
     method: 'PUT',
     url: '/:id',
     preHandler: fastify.authorize(['admin']),
-    preValidation: rejectUnknownUpdateFields,
+    preValidation: rejectUnknownAdminUpdateFields,
     schema: {
       tags: ['users'],
       summary: 'Update user by id (Admin)',
       params: { $ref: 'schema:user:read:params#' },
-      body: { $ref: 'schema:user:update:body#' },
+      body: { $ref: 'schema:user:update:admin:body#' },
       response: {
         204: { type: 'null' },
       },
     },
     handler: async function updateUser(request, reply) {
+      const roleUpdateRequested = request.body && request.body.role !== undefined
+      const existingUser = roleUpdateRequested
+        ? await fastify.usersDataSource.readUserDetails(request.params.id)
+        : null
+
       const res = await fastify.usersDataSource.updateUser(request.params.id, request.body)
       if (res.modifiedCount === 0) {
         throw fastify.httpErrors.notFound('User not found or no changes made')
       }
+
+      if (
+        fastify.auditLog &&
+        roleUpdateRequested &&
+        existingUser &&
+        existingUser.role !== request.body.role
+      ) {
+        await fastify.auditLog({
+          request,
+          action: 'user_role_changed',
+          userId: request.user._id || request.user.id,
+          resourceType: 'user',
+          resourceId: request.params.id,
+          details: {
+            previousRole: existingUser.role,
+            newRole: request.body.role,
+            targetUserId: request.params.id,
+          },
+        })
+      }
+
       reply.code(204).send()
     },
   })
