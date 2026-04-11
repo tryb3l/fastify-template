@@ -9,6 +9,10 @@ const { createNote } = require('../../../../utils/note-creator')
 const { setup } = require('../../../../utils/setup-user')
 
 const ROUTE_PREFIX = '/files'
+const PNG_SAMPLE = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/aMcAAAAASUVORK5CYII=',
+  'base64',
+)
 
 function uploadFilePath(fileId, originalFilename) {
   const extension = path.extname(originalFilename) || '.bin'
@@ -89,6 +93,24 @@ test('GET /files/export 200 - Successfully exports notes as CSV stream', async (
   assert.ok(csvOutput.includes(note.data.title), 'Exported CSV should contain the created note title')
 })
 
+test('GET /files/export 200 - Sanitizes spreadsheet formula prefixes in CSV output', async (t) => {
+  // Arrange
+  const formulaTitle = '=SUM(1,1)'
+  const { app, accessToken } = await createNote(t, { title: formulaTitle })
+
+  // Act
+  const response = await app.inject({
+    method: 'GET',
+    url: `${ROUTE_PREFIX}/export`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 200)
+  assert.ok(response.body.includes(`"'${formulaTitle}"`))
+  assert.strictEqual(response.body.includes(`"${formulaTitle}"`), false)
+})
+
 test('POST /files/upload 201 - Successfully saves raw file to disk', async (t) => {
   // Arrange
   const { app, accessToken, note } = await createNote(t)
@@ -113,6 +135,28 @@ test('POST /files/upload 201 - Successfully saves raw file to disk', async (t) =
   assert.strictEqual(uploadedFile.originalFilename, fileName)
   assert.strictEqual(uploadedFile.mimeType, 'text/plain')
   assert.strictEqual(uploadedFileExists, true, 'File should exist in the uploads directory')
+})
+
+test('POST /files/upload 201 - Accepts valid CSV content', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+  const fileName = 'note-import.csv'
+  const form = new FormData()
+  form.append('file', Buffer.from('title,body\nAlpha,Beta\n'), {
+    filename: fileName,
+    contentType: 'text/csv',
+  })
+
+  // Act
+  const response = await uploadNoteFile(app, accessToken, note.data.id, form)
+  const body = response.json()
+  const uploadedFile = body.files[0]
+  const serverPath = registerFileCleanup(t, uploadedFile.fileId, uploadedFile.originalFilename)
+
+  // Assert
+  assert.strictEqual(response.statusCode, 201)
+  assert.strictEqual(await fileExists(serverPath), true)
+  assert.strictEqual(uploadedFile.mimeType, 'text/csv')
 })
 
 test('POST /files/import 400 - Fails if no file is provided', async (t) => {
@@ -167,6 +211,70 @@ test('POST /files/upload 415 - Fails on unallowed extensions', async (t) => {
     headers: { ...form.getHeaders(), Authorization: `Bearer ${accessToken}` },
     payload: form,
   })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 415)
+})
+
+test('POST /files/upload 415 - Rejects random binary bytes uploaded as PNG', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+  const form = new FormData()
+  form.append('file', Buffer.from([0x4d, 0x5a, 0x90, 0x00, 0x03]), {
+    filename: 'spoofed.png',
+    contentType: 'image/png',
+  })
+
+  // Act
+  const response = await uploadNoteFile(app, accessToken, note.data.id, form)
+
+  // Assert
+  assert.strictEqual(response.statusCode, 415)
+})
+
+test('POST /files/upload 415 - Rejects PNG bytes labeled as text/plain', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+  const form = new FormData()
+  form.append('file', PNG_SAMPLE, {
+    filename: 'looks-like-text.txt',
+    contentType: 'text/plain',
+  })
+
+  // Act
+  const response = await uploadNoteFile(app, accessToken, note.data.id, form)
+
+  // Assert
+  assert.strictEqual(response.statusCode, 415)
+})
+
+test('POST /files/upload 415 - Rejects binary payload uploaded as text', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+  const form = new FormData()
+  form.append('file', Buffer.from([0xff, 0xfe, 0x00, 0x01]), {
+    filename: 'binary.txt',
+    contentType: 'text/plain',
+  })
+
+  // Act
+  const response = await uploadNoteFile(app, accessToken, note.data.id, form)
+
+  // Assert
+  assert.strictEqual(response.statusCode, 415)
+})
+
+test('POST /files/upload 415 - Rejects XLS uploads by policy', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+  const form = new FormData()
+  form.append('file', Buffer.from('legacy-spreadsheet'), {
+    filename: 'legacy.xls',
+    contentType: 'application/vnd.ms-excel',
+  })
+
+  // Act
+  const response = await uploadNoteFile(app, accessToken, note.data.id, form)
 
   // Assert
   assert.strictEqual(response.statusCode, 415)
