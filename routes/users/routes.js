@@ -3,7 +3,7 @@
 module.exports = async function userRoutes(fastify, options) {
   const updateableUserFields = new Set(['username', 'email', 'firstName', 'lastName'])
 
-  function rejectUnknownUpdateFields(request) {
+  async function rejectUnknownUpdateFields(request) {
     if (!request.body || typeof request.body !== 'object' || Array.isArray(request.body)) {
       return
     }
@@ -17,8 +17,6 @@ module.exports = async function userRoutes(fastify, options) {
       )
     }
   }
-
-  fastify.addHook('onRequest', fastify.authenticate)
 
   fastify.route({
     method: 'GET',
@@ -145,6 +143,7 @@ module.exports = async function userRoutes(fastify, options) {
     method: 'PUT',
     url: '/:id',
     preHandler: fastify.authorize(['admin']),
+    preValidation: rejectUnknownUpdateFields,
     schema: {
       tags: ['users'],
       summary: 'Update user by id (Admin)',
