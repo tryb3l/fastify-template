@@ -1,6 +1,23 @@
 'use strict'
 
 module.exports = async function userRoutes(fastify, options) {
+  const updateableUserFields = new Set(['username', 'email', 'firstName', 'lastName'])
+
+  function rejectUnknownUpdateFields(request) {
+    if (!request.body || typeof request.body !== 'object' || Array.isArray(request.body)) {
+      return
+    }
+
+    const forbiddenFields = Object.keys(request.body)
+      .filter((field) => !updateableUserFields.has(field))
+
+    if (forbiddenFields.length > 0) {
+      throw fastify.httpErrors.badRequest(
+        `Body must not contain additional properties: ${forbiddenFields.join(', ')}`,
+      )
+    }
+  }
+
   fastify.addHook('onRequest', fastify.authenticate)
 
   fastify.route({
@@ -75,6 +92,7 @@ module.exports = async function userRoutes(fastify, options) {
   fastify.route({
     method: 'PUT',
     url: '/me',
+    preValidation: rejectUnknownUpdateFields,
     schema: {
       tags: ['users'],
       summary: 'Update own profile',
@@ -108,6 +126,17 @@ module.exports = async function userRoutes(fastify, options) {
       const id = request.user._id
       const ok = await fastify.usersDataSource.deleteUser(id)
       if (!ok) throw fastify.httpErrors.notFound('User not found or already deleted')
+
+      if (fastify.auditLog) {
+        await fastify.auditLog({
+          request,
+          action: 'user_soft_deleted',
+          userId: id,
+          resourceType: 'user',
+          resourceId: id,
+        })
+      }
+
       reply.code(204).send()
     },
   })
@@ -115,11 +144,15 @@ module.exports = async function userRoutes(fastify, options) {
   fastify.route({
     method: 'PUT',
     url: '/:id',
+    preHandler: fastify.authorize(['admin']),
     schema: {
       tags: ['users'],
       summary: 'Update user by id (Admin)',
       params: { $ref: 'schema:user:read:params#' },
       body: { $ref: 'schema:user:update:body#' },
+      response: {
+        204: { type: 'null' },
+      },
     },
     handler: async function updateUser(request, reply) {
       const res = await fastify.usersDataSource.updateUser(request.params.id, request.body)
