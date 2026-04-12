@@ -10,6 +10,11 @@ const path = require('node:path')
 const { parse: csvParse } = require('csv-parse')
 const { stringify: csvStringify } = require('csv-stringify')
 const { randomUUID } = require('node:crypto')
+const {
+  CSV_IMPORT_BATCH_SIZE,
+  buildNoteImportHeaders,
+  mapNoteImportRow,
+} = require('../../../utils/notes-csv')
 const { ALLOWED_UPLOAD_MIME_TYPES, assertUploadedFileContent } = require('../../../utils/upload-verifier')
 
 const DANGEROUS_CSV_PREFIX = /^[\t\r\n ]*[=+\-@]/
@@ -57,35 +62,56 @@ module.exports = async function fileRoutes(fastify) {
       const data = await request.file()
       if (!data) throw this.httpErrors.badRequest('Missing file')
 
-      const lines = []
+      const insertedIds = []
+      let pendingNotes = []
+      let headers
+      let rowNumber = 0
+
+      const flushPendingNotes = async () => {
+        if (pendingNotes.length === 0) {
+          return
+        }
+
+        const batchIds = await this.notesDataSource.createNotes(pendingNotes, request.user._id)
+        insertedIds.push(...batchIds)
+        pendingNotes = []
+      }
 
       const stream = data.file.pipe(
         csvParse({
           bom: true,
           skip_empty_lines: true,
           trim: true,
-          relax_column_count: true,
         }),
       )
 
-      let isHeaderRow = true
+      try {
+        for await (const line of stream) {
+          if (!headers) {
+            headers = buildNoteImportHeaders(line)
+            continue
+          }
 
-      for await (const line of stream) {
-        if (isHeaderRow) {
-          isHeaderRow = false
-          continue
+          rowNumber += 1
+          pendingNotes.push(mapNoteImportRow(headers, line, rowNumber))
+
+          if (pendingNotes.length >= CSV_IMPORT_BATCH_SIZE) {
+            await flushPendingNotes()
+          }
         }
 
-        const [title, body, ...tags] = line
+        if (!headers) {
+          throw this.httpErrors.badRequest('CSV must include a header row')
+        }
 
-        lines.push({
-          title,
-          body,
-          tags,
-        })
+        await flushPendingNotes()
+      } catch (err) {
+        if (err.statusCode === 400 || err.code?.startsWith('CSV_')) {
+          throw this.httpErrors.badRequest(err.message)
+        }
+
+        throw err
       }
-
-      const insertedIds = await this.notesDataSource.createNotes(lines, request.user._id)
 
       return reply.code(201).send(insertedIds)
     },

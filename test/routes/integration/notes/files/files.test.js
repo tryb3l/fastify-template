@@ -14,6 +14,27 @@ const PNG_SAMPLE = Buffer.from(
   'base64',
 )
 
+function toCsvCell(value) {
+  const stringValue = String(value)
+
+  if (!/[",\n]/.test(stringValue)) {
+    return stringValue
+  }
+
+  return `"${stringValue.replace(/"/g, '""')}"`
+}
+
+function buildCsvRow(values) {
+  return values.map((value) => toCsvCell(value)).join(',')
+}
+
+function buildImportCsv(rows, headers = ['title', 'body', 'tags']) {
+  return [
+    buildCsvRow(headers),
+    ...rows.map((row) => buildCsvRow(row)),
+  ].join('\n')
+}
+
 function uploadFilePath(fileId, originalFilename) {
   const extension = path.extname(originalFilename) || '.bin'
   return path.join(process.cwd(), 'uploads', `${fileId}${extension}`)
@@ -48,15 +69,11 @@ async function uploadNoteFile(app, accessToken, noteId, form) {
   })
 }
 
-test('POST /files/import 201 - Successfully parses and imports CSV', async (t) => {
-  // Arrange
-  const { app, accessToken } = await setup(t, 'user')
-  const csvContent = 'title,body,tags\nTest Title 1,Test Body 1,tagA\nTest Title 2,Test Body 2,tagB,tagC'
+async function importNotesFile(app, accessToken, csvContent, filename = 'import.csv') {
   const form = new FormData()
-  form.append('file', Buffer.from(csvContent), 'import.csv')
+  form.append('file', Buffer.from(csvContent), { filename, contentType: 'text/csv' })
 
-  // Act
-  const response = await app.inject({
+  return await app.inject({
     method: 'POST',
     url: `${ROUTE_PREFIX}/import`,
     headers: {
@@ -65,12 +82,130 @@ test('POST /files/import 201 - Successfully parses and imports CSV', async (t) =
     },
     payload: form,
   })
+}
+
+test('POST /files/import 201 - Successfully parses and imports CSV', async (t) => {
+  // Arrange
+  const { app, accessToken } = await setup(t, 'user')
+  const csvContent = buildImportCsv([
+    ['Test Title 1', 'Test Body 1', JSON.stringify(['tagA'])],
+    ['Test Title 2', 'Test Body 2', JSON.stringify(['tagB', 'tagC'])],
+  ])
+
+  // Act
+  const response = await importNotesFile(app, accessToken, csvContent)
 
   // Assert
   assert.strictEqual(response.statusCode, 201)
   const insertedIds = response.json()
   assert.strictEqual(Array.isArray(insertedIds), true)
   assert.strictEqual(insertedIds.length, 2, 'Should have imported exactly 2 notes')
+})
+
+test('POST /files/import 201 - Round-trips exported CSV without metadata contaminating tags', async (t) => {
+  // Arrange
+  const originalTags = ['ops', 'q2']
+  const { app, accessToken, note } = await createNote(t, { tags: originalTags })
+
+  const exportResponse = await app.inject({
+    method: 'GET',
+    url: `${ROUTE_PREFIX}/export`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  assert.strictEqual(exportResponse.statusCode, 200)
+
+  // Act
+  const importResponse = await importNotesFile(app, accessToken, exportResponse.body, 'round-trip.csv')
+
+  // Assert
+  assert.strictEqual(importResponse.statusCode, 201)
+
+  const insertedIds = importResponse.json()
+  assert.strictEqual(insertedIds.length, 1)
+
+  const readResponse = await app.inject({
+    method: 'GET',
+    url: `/notes/${insertedIds[0]}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  assert.strictEqual(readResponse.statusCode, 200)
+
+  const importedNote = readResponse.json().data
+  assert.deepStrictEqual(importedNote.tags, originalTags)
+  assert.notStrictEqual(importedNote.id, note.data.id)
+  assert.strictEqual(importedNote.tags.includes(note.data.id), false)
+})
+
+test('POST /files/import 201 - Ignores metadata columns when importing CSV', async (t) => {
+  // Arrange
+  const { app, accessToken } = await setup(t, 'user')
+  const csvContent = buildImportCsv(
+    [[
+      'Meta Title',
+      'Meta Body',
+      JSON.stringify(['tagA', 'tagB']),
+      '2000-01-01T00:00:00.000Z',
+      '2000-01-02T00:00:00.000Z',
+      'legacy-id',
+    ]],
+    ['title', 'body', 'tags', 'createdAt', 'modifiedAt', 'id'],
+  )
+
+  // Act
+  const response = await importNotesFile(app, accessToken, csvContent, 'metadata.csv')
+
+  // Assert
+  assert.strictEqual(response.statusCode, 201)
+
+  const [insertedId] = response.json()
+  const readResponse = await app.inject({
+    method: 'GET',
+    url: `/notes/${insertedId}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  assert.strictEqual(readResponse.statusCode, 200)
+
+  const importedNote = readResponse.json().data
+  assert.strictEqual(importedNote.id, insertedId)
+  assert.notStrictEqual(importedNote.id, 'legacy-id')
+  assert.deepStrictEqual(importedNote.tags, ['tagA', 'tagB'])
+})
+
+test('POST /files/import 400 - Rejects malformed tags cells', async (t) => {
+  // Arrange
+  const { app, accessToken } = await setup(t, 'user')
+  const csvContent = buildImportCsv([
+    ['Broken Title', 'Broken Body', 'not-json'],
+  ])
+
+  // Act
+  const response = await importNotesFile(app, accessToken, csvContent, 'malformed-tags.csv')
+
+  // Assert
+  assert.strictEqual(response.statusCode, 400)
+  assert.match(response.json().message, /tags must be a JSON array of strings/)
+})
+
+test('POST /files/import 201 - Imports CSV across batch boundaries', async (t) => {
+  // Arrange
+  const { app, accessToken } = await setup(t, 'user')
+  const rowCount = 501
+  const rows = Array.from({ length: rowCount }, (_, index) => [
+    `Title ${index}`,
+    `Body ${index}`,
+    JSON.stringify([`t${index % 10}`]),
+  ])
+  const csvContent = buildImportCsv(rows)
+
+  // Act
+  const response = await importNotesFile(app, accessToken, csvContent, 'batched-import.csv')
+
+  // Assert
+  assert.strictEqual(response.statusCode, 201)
+  assert.strictEqual(response.json().length, rowCount)
 })
 
 test('GET /files/export 200 - Successfully exports notes as CSV stream', async (t) => {
@@ -182,7 +317,9 @@ test('POST /files/import 400 - Fails if no file is provided', async (t) => {
 test('POST /files/import 401 - Requires authentication', async (t) => {
   // Arrange
   const { app } = await setup(t, 'user')
-  const csvContent = 'title,body,tags\nPhase 1,Security,auth'
+  const csvContent = buildImportCsv([
+    ['Phase 1', 'Security', JSON.stringify(['auth'])],
+  ])
   const form = new FormData()
   form.append('file', Buffer.from(csvContent), 'import.csv')
 
