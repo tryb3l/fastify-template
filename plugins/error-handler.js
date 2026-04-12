@@ -4,7 +4,8 @@ const fp = require('fastify-plugin')
 
 module.exports = fp(
   async function errorHandlerPlugin(fastify, opts) {
-    fastify.addHook('onRequest', async (req) => {
+    fastify.addHook('onRequest', async (req, reply) => {
+      reply.header('x-request-id', req.id)
       req.log.info({ req }, 'incoming request')
     })
 

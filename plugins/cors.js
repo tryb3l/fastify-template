@@ -12,6 +12,7 @@ module.exports = fp(
     await fastify.register(fastifyCors, {
       origin: allowedOrigins,
       credentials: true,
+      exposedHeaders: ['x-request-id'],
       methods: ['GET', 'POST', 'PUT', 'DELETE'],
       allowedHeaders: [
         'Content-Type',

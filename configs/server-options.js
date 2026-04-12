@@ -11,39 +11,22 @@ function extractTraceId(raw) {
   return match ? match[1] : null
 }
 
-function sanitizeRequestId(value) {
-  if (!value || typeof value !== 'string') return null
-  // Cap at 128 chars to prevent memory abuse from oversized headers
-  if (value.length > 128) return null
-  return value
-}
-
 module.exports = {
   disableRequestLogging: true,
-  logger: {
-    ...loggerOptions,
-    formatters: {
-      ...loggerOptions.formatters,
-      log: (object) => {
-        if (object.reqId && object.reqId.length === 32 && /^[\da-f]{32}$/.test(object.reqId)) {
-          object.trace_id = object.reqId
-        }
-        return object
-      },
-    },
+  logger: loggerOptions,
+  childLoggerFactory(logger, bindings, opts, rawReq) {
+    const traceId = extractTraceId(rawReq.headers?.traceparent)
+
+    return logger.child(
+      traceId ? { ...bindings, traceId } : bindings,
+      opts,
+    )
   },
-  requestIdLogLabel: false,
+  requestIdLogLabel: 'requestId',
   requestIdHeader: false,
   pluginTimeout: 20000,
-  genReqId(req) {
-    const traceId = extractTraceId(req.headers['traceparent'])
-    if (traceId) return traceId
-
-    return (
-      sanitizeRequestId(req.headers['x-request-id']) ||
-      sanitizeRequestId(req.headers['x-amz-request-id']) ||
-      crypto.randomUUID()
-    )
+  genReqId() {
+    return crypto.randomUUID()
   },
   ajv: {
     customOptions: {

@@ -55,3 +55,5 @@ module.exports = async function (fastify, opts) {
     throw err
   }
 }
+
+module.exports.options = require('./configs/server-options')
