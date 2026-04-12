@@ -50,7 +50,7 @@ async function passwordResetPlugin(fastify, options) {
     return null
   }
 
-  const auditValidationFailure = async ({
+  const auditValidationFailure = ({
     request,
     phase,
     resetId,
@@ -63,7 +63,7 @@ async function passwordResetPlugin(fastify, options) {
       details.failedAttempts = failedAttempts
     }
 
-    await fastify.auditLog({
+    fastify.auditLog({
       request,
       action: 'auth_password_reset_validation_failed',
       userId: resetData?._id,
@@ -78,7 +78,7 @@ async function passwordResetPlugin(fastify, options) {
       // Validate user existence passively no leak via UI
       const user = await fastify.usersDataSource.readUserForPasswordReset(email)
       if (!user) {
-        await fastify.auditLog({
+        fastify.auditLog({
           request,
           action: 'auth_password_reset_request_ignored',
           resourceType: 'user',
@@ -96,7 +96,7 @@ async function passwordResetPlugin(fastify, options) {
         user.passwordReset?.requestedAt instanceof Date &&
         user.passwordReset.requestedAt.getTime() > Date.now() - requestCooldownMs
       ) {
-        await fastify.auditLog({
+        fastify.auditLog({
           request,
           action: 'auth_password_reset_request_ignored',
           userId: user._id,
@@ -122,7 +122,7 @@ async function passwordResetPlugin(fastify, options) {
         expiresAt,
       )
       if (!initiated) {
-        await fastify.auditLog({
+        fastify.auditLog({
           request,
           action: 'auth_password_reset_request_ignored',
           userId: user._id,
@@ -139,7 +139,7 @@ async function passwordResetPlugin(fastify, options) {
 
       try {
         await fastify.mailer.sendPasswordResetMail({ to: user.email, rawResetUrl: resetUrl })
-        await fastify.auditLog({
+        fastify.auditLog({
           request,
           action: 'auth_password_reset_requested',
           userId: user._id,
@@ -162,7 +162,7 @@ async function passwordResetPlugin(fastify, options) {
           )
         }
 
-        await fastify.auditLog({
+        fastify.auditLog({
           request,
           action: 'auth_password_reset_mail_failed',
           userId: user._id,
@@ -179,7 +179,7 @@ async function passwordResetPlugin(fastify, options) {
 
       const failureReason = getResetFailureReason(resetData)
       if (failureReason) {
-        await auditValidationFailure({
+        auditValidationFailure({
           request,
           phase: 'validate',
           resetId,
@@ -203,7 +203,7 @@ async function passwordResetPlugin(fastify, options) {
         resetId,
         maxAttempts,
       )
-      await auditValidationFailure({
+      auditValidationFailure({
         request,
         phase: 'validate',
         resetId,
@@ -222,7 +222,7 @@ async function passwordResetPlugin(fastify, options) {
       const failureReason = getResetFailureReason(resetData)
 
       if (failureReason) {
-        await auditValidationFailure({
+        auditValidationFailure({
           request,
           phase: 'confirm',
           resetId,
@@ -244,7 +244,7 @@ async function passwordResetPlugin(fastify, options) {
           resetId,
           maxAttempts,
         )
-        await auditValidationFailure({
+        auditValidationFailure({
           request,
           phase: 'confirm',
           resetId,
@@ -267,7 +267,7 @@ async function passwordResetPlugin(fastify, options) {
           maxAttempts,
         )
         if (!user) {
-          await auditValidationFailure({
+          auditValidationFailure({
             request,
             phase: 'confirm',
             resetId,
@@ -277,7 +277,7 @@ async function passwordResetPlugin(fastify, options) {
           return false
         }
 
-        await fastify.auditLog({
+        fastify.auditLog({
           request,
           action: 'auth_password_reset_confirmed',
           userId: user._id,
@@ -299,7 +299,7 @@ async function passwordResetPlugin(fastify, options) {
       } catch (error) {
         // Handle race conditions or edge cases gracefully
         fastify.log.warn({ error, resetId }, 'Atomic reset failed during execution phase')
-        await auditValidationFailure({
+        auditValidationFailure({
           request,
           phase: 'confirm',
           resetId,

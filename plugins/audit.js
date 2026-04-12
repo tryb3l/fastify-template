@@ -10,7 +10,7 @@ module.exports = fp(
 
     fastify.decorate(
       'auditLog',
-      async function auditLog({ request, action, userId, resourceType, resourceId, details }) {
+      function auditLog({ request, action, userId, resourceType, resourceId, details }) {
         let boundedDetails
         if (details !== undefined) {
           try {
@@ -39,6 +39,7 @@ module.exports = fp(
           payload.details = boundedDetails
         }
 
+        // Best-effort background write: preserve API latency and surface failures in logs.
         setImmediate(() => {
           auditLogs.insertOne(payload).catch((err) => {
             request?.log?.warn(

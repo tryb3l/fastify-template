@@ -124,7 +124,7 @@ module.exports = async function noteRoutes(fastify, opts) {
       const updatedNote = await fastify.notesDataSource.updateNote(id, updateData, userId)
 
       if (fastify.auditLog) {
-        await fastify.auditLog({
+        fastify.auditLog({
           request,
           action: 'note_updated',
           userId,
@@ -169,7 +169,7 @@ module.exports = async function noteRoutes(fastify, opts) {
       await fastify.notesDataSource.deleteNote(id, userId)
 
       if (fastify.auditLog) {
-        await fastify.auditLog({
+        fastify.auditLog({
           request,
           action: 'note_deleted',
           userId,

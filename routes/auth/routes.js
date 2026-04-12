@@ -82,7 +82,7 @@ module.exports = async function authRoutes(fastify) {
       if (!user) {
         request.log.warn({ identifier }, 'Login failed: User not found in DB')
         if (fastify.auditLog) {
-          await fastify.auditLog({
+          fastify.auditLog({
             request,
             action: 'auth_login_failed',
             resourceType: 'user',
@@ -95,7 +95,7 @@ module.exports = async function authRoutes(fastify) {
 
       if (user.deleted === true) {
         if (fastify.auditLog) {
-          await fastify.auditLog({
+          fastify.auditLog({
             request,
             action: 'auth_login_failed',
             userId: user._id,
@@ -119,7 +119,7 @@ module.exports = async function authRoutes(fastify) {
       if (!isMatch) {
         request.log.warn('Login failed: Password mismatch')
         if (fastify.auditLog) {
-          await fastify.auditLog({
+          fastify.auditLog({
             request,
             action: 'auth_login_failed',
             userId: user._id,
@@ -134,7 +134,7 @@ module.exports = async function authRoutes(fastify) {
       const { accessToken, refreshToken } = await request.generateTokens(user)
 
       if (fastify.auditLog) {
-        await fastify.auditLog({
+        fastify.auditLog({
           request,
           action: 'auth_login_success',
           userId: user._id,

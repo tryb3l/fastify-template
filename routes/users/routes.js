@@ -132,7 +132,7 @@ module.exports = async function userRoutes(fastify, options) {
       if (!ok) throw fastify.httpErrors.notFound('User not found or already deleted')
 
       if (fastify.auditLog) {
-        await fastify.auditLog({
+        fastify.auditLog({
           request,
           action: 'user_soft_deleted',
           userId: id,
@@ -176,7 +176,7 @@ module.exports = async function userRoutes(fastify, options) {
         existingUser &&
         existingUser.role !== request.body.role
       ) {
-        await fastify.auditLog({
+        fastify.auditLog({
           request,
           action: 'user_role_changed',
           userId: request.user._id || request.user.id,
@@ -210,7 +210,7 @@ module.exports = async function userRoutes(fastify, options) {
       }
 
       if (fastify.auditLog) {
-        await fastify.auditLog({
+        fastify.auditLog({
           request,
           action: 'user_soft_deleted',
           userId: request.user._id || request.user.id,
