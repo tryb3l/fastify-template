@@ -16,7 +16,10 @@ module.exports = fp(
       }
 
       const pathname = (request.url || '').split('?')[0]
-      if (!pathname.startsWith('/notes/')) {
+      const isNoteMutationPath = pathname.startsWith('/notes/')
+      const isNoteAttachmentUpload = pathname === '/files/upload'
+
+      if (!isNoteMutationPath && !isNoteAttachmentUpload) {
         return
       }
 
