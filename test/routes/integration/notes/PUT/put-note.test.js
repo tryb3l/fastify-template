@@ -37,6 +37,47 @@ test('PUT /notes/:id 200 - Update a note', async (t) => {
   assert.deepStrictEqual(payload.data.tags, updatedNote.tags)
 })
 
+test('PUT /notes/:id 200 - Invalidates cached note reads after update', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+  const noteId = note.data.id
+  const updatedNote = {
+    title: randomString(15),
+    body: randomString(30),
+    tags: [randomString(5), randomString(5)],
+  }
+
+  const cachedReadResponse = await app.inject({
+    method: 'GET',
+    url: `/notes/${noteId}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  assert.strictEqual(cachedReadResponse.statusCode, 200)
+  assert.strictEqual(cachedReadResponse.json().data.title, note.data.title)
+
+  // Act
+  const updateResponse = await app.inject({
+    method: 'PUT',
+    url: `/notes/${noteId}`,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    payload: updatedNote,
+  })
+
+  const refreshedReadResponse = await app.inject({
+    method: 'GET',
+    url: `/notes/${noteId}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  // Assert
+  assert.strictEqual(updateResponse.statusCode, 200)
+  assert.strictEqual(refreshedReadResponse.statusCode, 200)
+  assert.strictEqual(refreshedReadResponse.json().data.title, updatedNote.title)
+  assert.strictEqual(refreshedReadResponse.json().data.body, updatedNote.body)
+  assert.deepStrictEqual(refreshedReadResponse.json().data.tags, updatedNote.tags)
+})
+
 test('PUT /notes/:id 404 - Note not found', async (t) => {
   // Arrange
   const { app, accessToken } = await createNote(t)

@@ -29,6 +29,36 @@ test('DELETE /notes/:id 204 - Deletes the note', async (t) => {
   assert.strictEqual(verify.statusCode, 404)
 })
 
+test('DELETE /notes/:id 204 - Invalidates cached note reads after delete', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+
+  const cachedReadResponse = await app.inject({
+    method: 'GET',
+    url: `/notes/${note.data.id}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  assert.strictEqual(cachedReadResponse.statusCode, 200)
+
+  // Act
+  const deleteResponse = await app.inject({
+    method: 'DELETE',
+    url: `/notes/${note.data.id}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  const verifyResponse = await app.inject({
+    method: 'GET',
+    url: `/notes/${note.data.id}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  // Assert
+  assert.strictEqual(deleteResponse.statusCode, 204)
+  assert.strictEqual(verifyResponse.statusCode, 404)
+})
+
 test('DELETE /notes/:id 404 - Returns 404 if not found', async (t) => {
   // Arrange
   const { app, accessToken } = await setup(t, 'user')

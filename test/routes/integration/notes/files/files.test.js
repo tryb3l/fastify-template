@@ -272,6 +272,46 @@ test('POST /files/upload 201 - Successfully saves raw file to disk', async (t) =
   assert.strictEqual(uploadedFileExists, true, 'File should exist in the uploads directory')
 })
 
+test('POST /files/upload 201 - Invalidates cached note reads after attachment upload', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+  const fileName = 'attachment-cache.txt'
+  const form = new FormData()
+  form.append('file', Buffer.from('attachment-cache-test'), {
+    filename: fileName,
+    contentType: 'text/plain',
+  })
+
+  const cachedReadResponse = await app.inject({
+    method: 'GET',
+    url: `/notes/${note.data.id}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  assert.strictEqual(cachedReadResponse.statusCode, 200)
+  assert.deepStrictEqual(cachedReadResponse.json().data.attachments, [])
+
+  // Act
+  const uploadResponse = await uploadNoteFile(app, accessToken, note.data.id, form)
+  const uploadedFile = uploadResponse.json().files[0]
+  registerFileCleanup(t, uploadedFile.fileId, uploadedFile.originalFilename)
+
+  const refreshedReadResponse = await app.inject({
+    method: 'GET',
+    url: `/notes/${note.data.id}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  // Assert
+  assert.strictEqual(uploadResponse.statusCode, 201)
+  assert.strictEqual(refreshedReadResponse.statusCode, 200)
+  assert.strictEqual(refreshedReadResponse.json().data.attachments.length, 1)
+  assert.strictEqual(
+    refreshedReadResponse.json().data.attachments[0].originalFilename,
+    fileName,
+  )
+})
+
 test('POST /files/upload 201 - Accepts valid CSV content', async (t) => {
   // Arrange
   const { app, accessToken, note } = await createNote(t)
