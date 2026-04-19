@@ -1,5 +1,7 @@
 'use strict'
 
+const { NOTE_LIST_PROJECTION } = require('./query-shapes')
+
 module.exports = async function noteRoutes(fastify, opts) {
   const nodeEnv =
     opts?.configData?.NODE_ENV ||
@@ -28,7 +30,7 @@ module.exports = async function noteRoutes(fastify, opts) {
     handler: async function listNotesHandler(request) {
       const { skip, limit, title } = request.query
       const notes = await fastify.notesDataSource.listNotes(
-        { filter: { title }, skip, limit },
+        { filter: { title }, projection: NOTE_LIST_PROJECTION, skip, limit },
         request.user._id,
       )
       const totalCount = await fastify.notesDataSource.countNotes({ title }, request.user._id)

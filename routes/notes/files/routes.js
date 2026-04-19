@@ -16,6 +16,7 @@ const {
   mapNoteImportRow,
 } = require('../../../utils/notes-csv')
 const { ALLOWED_UPLOAD_MIME_TYPES, assertUploadedFileContent } = require('../../../utils/upload-verifier')
+const { NOTE_EXPORT_PROJECTION } = require('../query-shapes')
 
 const DANGEROUS_CSV_PREFIX = /^[\t\r\n ]*[=+\-@]/
 
@@ -134,7 +135,9 @@ module.exports = async function fileRoutes(fastify) {
       const cursorStream = await this.notesDataSource.listNotes(
         {
           filter,
+          projection: NOTE_EXPORT_PROJECTION,
           skip: 0,
+          limit: 0,
           asStream: true,
         },
         request.user._id,
