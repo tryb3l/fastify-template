@@ -6,7 +6,7 @@
     "data": {
       "type": "array",
       "items": {
-        "$ref": "schema:note#"
+        "$ref": "schema:note:list:item#"
       }
     },
     "totalCount": {

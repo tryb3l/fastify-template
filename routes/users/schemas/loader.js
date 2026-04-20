@@ -1,7 +1,7 @@
 'use strict'
 
 function loadUserSchemas(fastify) {
-  console.log('Loading users schemas');
+  fastify.log.debug('Loading users schemas');
   const schemas = [
     './read-params.json',
     './update-user.json',
@@ -12,9 +12,9 @@ function loadUserSchemas(fastify) {
   for (const schemaPath of schemas) {
     const schema = require(schemaPath);
     fastify.addSchema(schema);
-    console.log(`User schema added: ${schema.$id}`);
+    fastify.log.debug(`User schema added: ${schema.$id}`);
   }
-  console.log('Users schemas loaded');
+  fastify.log.debug('Users schemas loaded');
 }
 
 module.exports = { loadUserSchemas }

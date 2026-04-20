@@ -3,7 +3,7 @@
 const path = require('path')
 
 async function authSchemasLoader(fastify) {
-  console.log('Loading auth schemas')
+  fastify.log.debug('Loading auth schemas')
   const schemas = [
     './password-policy.json',
     './register.json',
@@ -25,11 +25,11 @@ async function authSchemasLoader(fastify) {
     for (const schemaPath of schemas) {
       const schema = require(path.resolve(__dirname, schemaPath))
       await fastify.addSchema(schema)
-      console.log(`Auth schema added: ${schema.$id}`)
+      fastify.log.debug(`Auth schema added: ${schema.$id}`)
     }
-    console.log('Auth schemas loaded')
+    fastify.log.debug('Auth schemas loaded')
   } catch (err) {
-    console.error('Error loading auth schemas:', err)
+    fastify.log.error({ err }, 'Error loading auth schemas')
     throw err
   }
 }
