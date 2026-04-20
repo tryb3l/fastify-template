@@ -4,6 +4,7 @@ const test = require('node:test')
 const assert = require('node:assert')
 const { setup } = require('../../../utils/setup-user')
 const { randomUsername, randomEmail, randomPassword } = require('../../../utils/data-creator')
+const { buildMarkdownNote } = require('../../../utils/markdown-note')
 const WebSocket = require('ws')
 
 async function listenOnRandomPort(app) {
@@ -241,9 +242,10 @@ test('WS /notes/:id/live broadcasts NOTE_UPDATED payload after note change', asy
   const { app, accessToken } = await setup(t, 'user')
   const port = await listenOnRandomPort(app)
   const noteId = await createOwnedNote(app, accessToken)
+  const markdownBody = buildMarkdownNote({ minLength: 32000 })
   const updatePayload = {
     title: 'Updated Live Note',
-    body: 'broadcast body',
+    body: markdownBody,
     tags: ['live', 'update']
   }
   const ws = new WebSocket(`ws://localhost:${port}/notes/live/${noteId}`, {

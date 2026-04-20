@@ -6,6 +6,7 @@ const { randomUUID } = require('node:crypto')
 const { createNote } = require('../../../../utils/note-creator')
 const { randomString } = require('../../../../utils/data-creator')
 const { setup } = require('../../../../utils/setup-user')
+const { buildMarkdownNote } = require('../../../../utils/markdown-note')
 
 test('PUT /notes/:id 200 - Update a note', async (t) => {
   // Arrange
@@ -35,6 +36,99 @@ test('PUT /notes/:id 200 - Update a note', async (t) => {
   assert.strictEqual(payload.data.title, updatedNote.title)
   assert.strictEqual(payload.data.body, updatedNote.body)
   assert.deepStrictEqual(payload.data.tags, updatedNote.tags)
+})
+
+test('PUT /notes/:id 200 - Updates a note with a large markdown body', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+  const noteId = note.data.id
+  const markdownBody = buildMarkdownNote({ minLength: 32000 })
+  const updatedNote = {
+    title: 'Milkdown updated note',
+    body: markdownBody,
+    tags: ['markdown', 'updated'],
+  }
+
+  // Act
+  const updateResponse = await app.inject({
+    method: 'PUT',
+    url: `/notes/${noteId}`,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    payload: updatedNote,
+  })
+
+  const readResponse = await app.inject({
+    method: 'GET',
+    url: `/notes/${noteId}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  // Assert
+  assert.strictEqual(updateResponse.statusCode, 200)
+  assert.strictEqual(readResponse.statusCode, 200)
+  assert.strictEqual(updateResponse.json().data.body, markdownBody)
+  assert.strictEqual(readResponse.json().data.body, markdownBody)
+  assert.deepStrictEqual(readResponse.json().data.tags, updatedNote.tags)
+})
+
+test('PUT /notes/:id 200 - Accepts a note body at the 50000 character limit', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+  const noteId = note.data.id
+  const updatedBody = 'b'.repeat(50000)
+
+  // Act
+  const updateResponse = await app.inject({
+    method: 'PUT',
+    url: `/notes/${noteId}`,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    payload: {
+      title: 'Boundary update accepted',
+      body: updatedBody,
+      tags: ['boundary', 'accepted'],
+    },
+  })
+
+  const readResponse = await app.inject({
+    method: 'GET',
+    url: `/notes/${noteId}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  // Assert
+  assert.strictEqual(updateResponse.statusCode, 200)
+  assert.strictEqual(readResponse.statusCode, 200)
+  assert.strictEqual(readResponse.json().data.body, updatedBody)
+})
+
+test('PUT /notes/:id 400 - Rejects a note body above the 50000 character limit without changing the note', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+  const noteId = note.data.id
+  const originalBody = note.data.body
+
+  // Act
+  const updateResponse = await app.inject({
+    method: 'PUT',
+    url: `/notes/${noteId}`,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    payload: {
+      title: 'Boundary update rejected',
+      body: 'b'.repeat(50001),
+      tags: ['boundary', 'rejected'],
+    },
+  })
+
+  const readResponse = await app.inject({
+    method: 'GET',
+    url: `/notes/${noteId}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  // Assert
+  assert.strictEqual(updateResponse.statusCode, 400)
+  assert.strictEqual(readResponse.statusCode, 200)
+  assert.strictEqual(readResponse.json().data.body, originalBody)
 })
 
 test('PUT /notes/:id 200 - Invalidates cached note reads after update', async (t) => {

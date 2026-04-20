@@ -7,7 +7,7 @@ const { setup } = require('../../../../utils/setup-user')
 
 test('GET /notes 200 - List notes', async (t) => {
   // Arrange
-  const { app, accessToken } = await createNote(t)
+  const { app, accessToken, note } = await createNote(t)
 
   // Act
   const response = await app.inject({
@@ -22,6 +22,9 @@ test('GET /notes 200 - List notes', async (t) => {
   assert.ok(Array.isArray(payload.data))
   assert.strictEqual(payload.data.length, 1)
   assert.strictEqual(payload.totalCount, 1)
+  assert.strictEqual(payload.data[0].title, note.data.title)
+  assert.strictEqual(Object.hasOwn(payload.data[0], 'body'), false)
+  assert.strictEqual(Object.hasOwn(payload.data[0], 'attachments'), false)
 })
 
 test('GET /notes 200 - List notes with pagination', async (t) => {

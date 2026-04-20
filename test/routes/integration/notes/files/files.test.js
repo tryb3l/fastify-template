@@ -7,6 +7,8 @@ const path = require('node:path')
 const FormData = require('form-data')
 const { createNote } = require('../../../../utils/note-creator')
 const { setup } = require('../../../../utils/setup-user')
+const { buildMarkdownNote } = require('../../../../utils/markdown-note')
+const { getGzipResponse, listenOnRandomPort } = require('../../../../utils/http-compression')
 
 const ROUTE_PREFIX = '/files'
 const PNG_SAMPLE = Buffer.from(
@@ -52,7 +54,7 @@ async function fileExists(filePath) {
 function registerFileCleanup(t, fileId, originalFilename) {
   const serverPath = uploadFilePath(fileId, originalFilename)
   t.after(async () => {
-    await fs.unlink(serverPath).catch(() => {})
+    await fs.unlink(serverPath).catch(() => { })
   })
   return serverPath
 }
@@ -100,6 +102,31 @@ test('POST /files/import 201 - Successfully parses and imports CSV', async (t) =
   const insertedIds = response.json()
   assert.strictEqual(Array.isArray(insertedIds), true)
   assert.strictEqual(insertedIds.length, 2, 'Should have imported exactly 2 notes')
+})
+
+test('POST /files/import 201 - Imports large markdown bodies unchanged', async (t) => {
+  // Arrange
+  const { app, accessToken } = await setup(t, 'user')
+  const markdownBody = buildMarkdownNote({ minLength: 32000 })
+  const csvContent = buildImportCsv([
+    ['Milkdown import note', markdownBody, JSON.stringify(['markdown', 'import'])],
+  ])
+
+  // Act
+  const response = await importNotesFile(app, accessToken, csvContent, 'milkdown-import.csv')
+
+  // Assert
+  assert.strictEqual(response.statusCode, 201)
+
+  const [insertedId] = response.json()
+  const readResponse = await app.inject({
+    method: 'GET',
+    url: `/notes/${insertedId}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  assert.strictEqual(readResponse.statusCode, 200)
+  assert.strictEqual(readResponse.json().data.body, markdownBody)
 })
 
 test('POST /files/import 201 - Round-trips exported CSV without metadata contaminating tags', async (t) => {
@@ -226,6 +253,59 @@ test('GET /files/export 200 - Successfully exports notes as CSV stream', async (
 
   const csvOutput = response.body
   assert.ok(csvOutput.includes(note.data.title), 'Exported CSV should contain the created note title')
+})
+
+test('GET /files/export 200 - Compresses large CSV exports over HTTP when gzip is requested', async (t) => {
+  // Arrange
+  const markdownBody = buildMarkdownNote({ minLength: 32000 })
+  const { app, accessToken } = await createNote(t, {
+    title: 'Compressed export note',
+    body: markdownBody,
+    tags: ['csv', 'gzip'],
+  })
+  const port = await listenOnRandomPort(app)
+
+  // Act
+  const response = await getGzipResponse({
+    port,
+    path: `${ROUTE_PREFIX}/export`,
+    accessToken,
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 200)
+  assert.strictEqual(response.headers['content-encoding'], 'gzip')
+  assert.match(response.headers['content-type'], /^text\/csv/)
+  assert.ok(response.body.includes('Compressed export note'))
+  assert.ok(response.rawBody.length < Buffer.byteLength(response.body))
+})
+
+test('GET /files/export 200 - Exports all notes beyond the default list limit', async (t) => {
+  // Arrange
+  const { app, accessToken } = await setup(t, 'user')
+  const rowCount = 55
+  const csvContent = buildImportCsv(
+    Array.from({ length: rowCount }, (_, index) => [
+      `Export Title ${index}`,
+      `Export Body ${index}`,
+      JSON.stringify([`tag${index}`]),
+    ]),
+  )
+
+  const importResponse = await importNotesFile(app, accessToken, csvContent, 'export-limit.csv')
+  assert.strictEqual(importResponse.statusCode, 201)
+
+  // Act
+  const response = await app.inject({
+    method: 'GET',
+    url: `${ROUTE_PREFIX}/export`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 200)
+  assert.strictEqual(response.body.trim().split('\n').length, rowCount + 1)
+  assert.ok(response.body.includes('Export Title 54'))
 })
 
 test('GET /files/export 200 - Sanitizes spreadsheet formula prefixes in CSV output', async (t) => {

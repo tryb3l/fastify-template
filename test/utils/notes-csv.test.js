@@ -62,6 +62,26 @@ test('mapNoteImportRow enforces note field constraints', () => {
     )
 })
 
+test('mapNoteImportRow accepts note bodies up to the 50000 character ceiling', () => {
+    const headers = buildNoteImportHeaders(['title', 'body'])
+    const body = 'x'.repeat(50000)
+
+    assert.deepStrictEqual(mapNoteImportRow(headers, ['Large note', body], 4), {
+        title: 'Large note',
+        body,
+        tags: [],
+    })
+})
+
+test('mapNoteImportRow rejects note bodies above the 50000 character ceiling', () => {
+    const headers = buildNoteImportHeaders(['title', 'body'])
+
+    assert.throws(
+        () => mapNoteImportRow(headers, ['Too large', 'x'.repeat(50001)], 5),
+        /Row 5: body must be a string between 1 and 50000 characters/,
+    )
+})
+
 test('CSV import batching uses the documented chunk size', () => {
     assert.strictEqual(CSV_IMPORT_BATCH_SIZE, 500)
 })
