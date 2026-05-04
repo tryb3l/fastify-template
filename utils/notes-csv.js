@@ -5,7 +5,7 @@ const IGNORED_NOTE_HEADERS = new Set(['createdAt', 'modifiedAt', 'id'])
 const REQUIRED_NOTE_HEADERS = ['title', 'body']
 
 const NOTE_TITLE_LIMITS = { min: 1, max: 100 }
-const NOTE_BODY_LIMITS = { min: 1, max: 50000 }
+const NOTE_BODY_LIMITS = { min: 0, max: 50000 }
 const NOTE_TAG_LIMITS = { min: 1, max: 10 }
 
 const CSV_IMPORT_BATCH_SIZE = 500

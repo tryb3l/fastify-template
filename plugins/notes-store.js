@@ -3,6 +3,13 @@
 const fp = require('fastify-plugin')
 const { randomUUID } = require('node:crypto')
 
+const normalizeNoteBody = (body) => (typeof body === 'string' ? body : '')
+
+const normalizePersistedNote = (note) => ({
+  ...note,
+  body: normalizeNoteBody(note.body),
+})
+
 module.exports = fp(
   async function notesStorePlugin(fastify) {
     fastify.log.info('Starting registration of notes-store plugin')
@@ -53,7 +60,7 @@ module.exports = fp(
         const note = {
           userId,
           title,
-          body,
+          body: normalizeNoteBody(body),
           tags,
           attachments: [],
           id: _id,
@@ -62,7 +69,7 @@ module.exports = fp(
         }
         await notes.insertOne(note)
         fastify.log.info('Exiting createNote method')
-        return note
+        return normalizePersistedNote(note)
       },
 
       async createNotes(noteList, userId) {
@@ -74,6 +81,7 @@ module.exports = fp(
             _id,
             userId,
             ...rawNote,
+            body: normalizeNoteBody(rawNote.body),
             attachments: rawNote.attachments || [],
             id: _id,
             createdAt: now,
@@ -108,15 +116,23 @@ module.exports = fp(
           throw fastify.httpErrors.notFound('Note not found')
         }
         fastify.log.info('Exiting readNote method')
-        return note
+        return normalizePersistedNote(note)
       },
 
       async updateNote(id, newNote, userId) {
+        const normalizedUpdate = {
+          ...newNote,
+        }
+
+        if (Object.hasOwn(normalizedUpdate, 'body')) {
+          normalizedUpdate.body = normalizeNoteBody(normalizedUpdate.body)
+        }
+
         const result = await notes.findOneAndUpdate(
           { id, userId },
           {
             $set: {
-              ...newNote,
+              ...normalizedUpdate,
               modifiedAt: new Date(),
             },
           },
@@ -129,7 +145,7 @@ module.exports = fp(
           throw fastify.httpErrors.notFound('Note not found')
         }
 
-        return updatedNote
+        return normalizePersistedNote(updatedNote)
       },
 
       async deleteNote(id, userId) {
