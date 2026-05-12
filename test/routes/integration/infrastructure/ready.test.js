@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert')
-const { buildApp } = require('../../../helper')
+const { buildApp } = require('../../../test-setup')
 
 test('GET /infrastructure/ready 200 - Returns OK without authentication', async (t) => {
   // Arrange

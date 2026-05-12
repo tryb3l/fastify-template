@@ -2,7 +2,7 @@
 
 const assert = require('node:assert')
 const { MongoClient } = require('mongodb')
-const { buildApp, getTestMongoUrl } = require('../helper')
+const { buildApp, getTestMongoUrl } = require('../test-setup')
 const { randomUsername, randomEmail, randomPassword } = require('./data-creator')
 
 async function setup(t, role = 'user', env = {}) {

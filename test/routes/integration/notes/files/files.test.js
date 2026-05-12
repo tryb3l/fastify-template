@@ -31,10 +31,7 @@ function buildCsvRow(values) {
 }
 
 function buildImportCsv(rows, headers = ['title', 'body', 'tags']) {
-  return [
-    buildCsvRow(headers),
-    ...rows.map((row) => buildCsvRow(row)),
-  ].join('\n')
+  return [buildCsvRow(headers), ...rows.map((row) => buildCsvRow(row))].join('\n')
 }
 
 function uploadFilePath(fileId, originalFilename) {
@@ -54,7 +51,7 @@ async function fileExists(filePath) {
 function registerFileCleanup(t, fileId, originalFilename) {
   const serverPath = uploadFilePath(fileId, originalFilename)
   t.after(async () => {
-    await fs.unlink(serverPath).catch(() => { })
+    await fs.unlink(serverPath).catch(() => {})
   })
   return serverPath
 }
@@ -104,6 +101,28 @@ test('POST /files/import 201 - Successfully parses and imports CSV', async (t) =
   assert.strictEqual(insertedIds.length, 2, 'Should have imported exactly 2 notes')
 })
 
+test('POST /files/import 201 - Accepts empty body cells and persists them as empty strings', async (t) => {
+  // Arrange
+  const { app, accessToken } = await setup(t, 'user')
+  const csvContent = buildImportCsv([['Empty body note', '', JSON.stringify(['draft'])]])
+
+  // Act
+  const response = await importNotesFile(app, accessToken, csvContent, 'empty-body.csv')
+
+  // Assert
+  assert.strictEqual(response.statusCode, 201)
+
+  const [insertedId] = response.json()
+  const readResponse = await app.inject({
+    method: 'GET',
+    url: `/notes/${insertedId}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  assert.strictEqual(readResponse.statusCode, 200)
+  assert.strictEqual(readResponse.json().data.body, '')
+})
+
 test('POST /files/import 201 - Imports large markdown bodies unchanged', async (t) => {
   // Arrange
   const { app, accessToken } = await setup(t, 'user')
@@ -143,7 +162,12 @@ test('POST /files/import 201 - Round-trips exported CSV without metadata contami
   assert.strictEqual(exportResponse.statusCode, 200)
 
   // Act
-  const importResponse = await importNotesFile(app, accessToken, exportResponse.body, 'round-trip.csv')
+  const importResponse = await importNotesFile(
+    app,
+    accessToken,
+    exportResponse.body,
+    'round-trip.csv',
+  )
 
   // Assert
   assert.strictEqual(importResponse.statusCode, 201)
@@ -165,18 +189,60 @@ test('POST /files/import 201 - Round-trips exported CSV without metadata contami
   assert.strictEqual(importedNote.tags.includes(note.data.id), false)
 })
 
+test('POST /files/import 201 - Round-trips exported CSV for empty-body notes', async (t) => {
+  // Arrange
+  const { app, accessToken } = await createNote(t, {
+    title: 'Empty body round-trip',
+    body: '',
+    tags: ['round-trip'],
+  })
+
+  const exportResponse = await app.inject({
+    method: 'GET',
+    url: `${ROUTE_PREFIX}/export`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  assert.strictEqual(exportResponse.statusCode, 200)
+
+  // Act
+  const importResponse = await importNotesFile(
+    app,
+    accessToken,
+    exportResponse.body,
+    'empty-round-trip.csv',
+  )
+
+  // Assert
+  assert.strictEqual(importResponse.statusCode, 201)
+
+  const insertedIds = importResponse.json()
+  assert.strictEqual(insertedIds.length, 1)
+
+  const readResponse = await app.inject({
+    method: 'GET',
+    url: `/notes/${insertedIds[0]}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  assert.strictEqual(readResponse.statusCode, 200)
+  assert.strictEqual(readResponse.json().data.body, '')
+})
+
 test('POST /files/import 201 - Ignores metadata columns when importing CSV', async (t) => {
   // Arrange
   const { app, accessToken } = await setup(t, 'user')
   const csvContent = buildImportCsv(
-    [[
-      'Meta Title',
-      'Meta Body',
-      JSON.stringify(['tagA', 'tagB']),
-      '2000-01-01T00:00:00.000Z',
-      '2000-01-02T00:00:00.000Z',
-      'legacy-id',
-    ]],
+    [
+      [
+        'Meta Title',
+        'Meta Body',
+        JSON.stringify(['tagA', 'tagB']),
+        '2000-01-01T00:00:00.000Z',
+        '2000-01-02T00:00:00.000Z',
+        'legacy-id',
+      ],
+    ],
     ['title', 'body', 'tags', 'createdAt', 'modifiedAt', 'id'],
   )
 
@@ -204,9 +270,7 @@ test('POST /files/import 201 - Ignores metadata columns when importing CSV', asy
 test('POST /files/import 400 - Rejects malformed tags cells', async (t) => {
   // Arrange
   const { app, accessToken } = await setup(t, 'user')
-  const csvContent = buildImportCsv([
-    ['Broken Title', 'Broken Body', 'not-json'],
-  ])
+  const csvContent = buildImportCsv([['Broken Title', 'Broken Body', 'not-json']])
 
   // Act
   const response = await importNotesFile(app, accessToken, csvContent, 'malformed-tags.csv')
@@ -249,10 +313,15 @@ test('GET /files/export 200 - Successfully exports notes as CSV stream', async (
   // Assert
   assert.strictEqual(response.statusCode, 200)
   assert.strictEqual(response.headers['content-type'], 'text/csv')
-  assert.ok(response.headers['content-disposition'].includes('attachment; filename="note-list.csv"'))
+  assert.ok(
+    response.headers['content-disposition'].includes('attachment; filename="note-list.csv"'),
+  )
 
   const csvOutput = response.body
-  assert.ok(csvOutput.includes(note.data.title), 'Exported CSV should contain the created note title')
+  assert.ok(
+    csvOutput.includes(note.data.title),
+    'Exported CSV should contain the created note title',
+  )
 })
 
 test('GET /files/export 200 - Compresses large CSV exports over HTTP when gzip is requested', async (t) => {
@@ -386,10 +455,7 @@ test('POST /files/upload 201 - Invalidates cached note reads after attachment up
   assert.strictEqual(uploadResponse.statusCode, 201)
   assert.strictEqual(refreshedReadResponse.statusCode, 200)
   assert.strictEqual(refreshedReadResponse.json().data.attachments.length, 1)
-  assert.strictEqual(
-    refreshedReadResponse.json().data.attachments[0].originalFilename,
-    fileName,
-  )
+  assert.strictEqual(refreshedReadResponse.json().data.attachments[0].originalFilename, fileName)
 })
 
 test('POST /files/upload 201 - Accepts valid CSV content', async (t) => {
@@ -437,9 +503,7 @@ test('POST /files/import 400 - Fails if no file is provided', async (t) => {
 test('POST /files/import 401 - Requires authentication', async (t) => {
   // Arrange
   const { app } = await setup(t, 'user')
-  const csvContent = buildImportCsv([
-    ['Phase 1', 'Security', JSON.stringify(['auth'])],
-  ])
+  const csvContent = buildImportCsv([['Phase 1', 'Security', JSON.stringify(['auth'])]])
   const form = new FormData()
   form.append('file', Buffer.from(csvContent), 'import.csv')
 
@@ -459,7 +523,10 @@ test('POST /files/upload 415 - Fails on unallowed extensions', async (t) => {
   // Arrange
   const { app, accessToken, note } = await createNote(t)
   const form = new FormData()
-  form.append('file', Buffer.from('console.log("hello")'), { filename: 'script.js', contentType: 'application/javascript' })
+  form.append('file', Buffer.from('console.log("hello")'), {
+    filename: 'script.js',
+    contentType: 'application/javascript',
+  })
 
   // Act
   const response = await app.inject({
@@ -588,7 +655,7 @@ test('GET /files/:fileId 200 - Successfully streams binary content', async (t) =
   const downloadRes = await app.inject({
     method: 'GET',
     url: `${ROUTE_PREFIX}/${fileId}?noteId=${note.data.id}`,
-    headers: { Authorization: `Bearer ${accessToken}` }
+    headers: { Authorization: `Bearer ${accessToken}` },
   })
 
   // Assert
@@ -626,7 +693,10 @@ test('POST /files/upload 400 - Fails when file exceeds 10MB size limit', async (
   const { app, accessToken, note } = await createNote(t)
   const form = new FormData()
   // 10MB + 1 byte to exceed the multipart fileSize limit
-  form.append('file', Buffer.alloc(10_000_001), { filename: 'oversized.txt', contentType: 'text/plain' })
+  form.append('file', Buffer.alloc(10_000_001), {
+    filename: 'oversized.txt',
+    contentType: 'text/plain',
+  })
 
   // Act
   const response = await app.inject({

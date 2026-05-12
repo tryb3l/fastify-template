@@ -1,7 +1,7 @@
 'use strict'
 
 const { test } = require('node:test')
-const { buildApp } = require('../helper')
+const { buildApp } = require('../test-setup')
 const assert = require('node:assert')
 
 test('should expose the request id header for allowed browser origins', async (t) => {

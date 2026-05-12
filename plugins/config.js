@@ -30,7 +30,9 @@ module.exports = fp(
     const smtpPort = useMailpitDefaults ? 1025 : fastify.secrets.SMTP_PORT
 
     if (useMailpitDefaults) {
-      fastify.log.info('Development SMTP not configured. Defaulting to local Mailpit on 127.0.0.1:1025')
+      fastify.log.info(
+        'Development SMTP not configured. Defaulting to local Mailpit on 127.0.0.1:1025',
+      )
     }
 
     fastify.decorate('config', {

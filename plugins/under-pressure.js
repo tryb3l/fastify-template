@@ -4,7 +4,7 @@ const fp = require('fastify-plugin')
 const underPressure = require('@fastify/under-pressure')
 
 module.exports = fp(
-  async function underPressurePlugin(fastify, opts) {
+  async function underPressurePlugin(fastify) {
     fastify.log.info('Starting registration of under-pressure plugin')
 
     await fastify.register(underPressure, {

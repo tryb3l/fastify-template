@@ -12,7 +12,11 @@ async function listenOnRandomPort(app) {
   return app.server.address().port
 }
 
-async function createOwnedNote(app, accessToken, payload = { title: 'Live Test Note', body: 'ws content' }) {
+async function createOwnedNote(
+  app,
+  accessToken,
+  payload = { title: 'Live Test Note', body: 'ws content' },
+) {
   const response = await app.inject({
     method: 'POST',
     url: '/notes',
@@ -216,7 +220,7 @@ test('WS /notes/:id/live 101 - Authorized owner receives ping/pong on own note',
 
   // Act
   const ws = new WebSocket(`ws://localhost:${port}/notes/live/${noteId}`, {
-    headers: { Authorization: `Bearer ${accessToken}` }
+    headers: { Authorization: `Bearer ${accessToken}` },
   })
   const message = await sendPingAndReadMessage(ws)
 
@@ -246,10 +250,10 @@ test('WS /notes/:id/live broadcasts NOTE_UPDATED payload after note change', asy
   const updatePayload = {
     title: 'Updated Live Note',
     body: markdownBody,
-    tags: ['live', 'update']
+    tags: ['live', 'update'],
   }
   const ws = new WebSocket(`ws://localhost:${port}/notes/live/${noteId}`, {
-    headers: { Authorization: `Bearer ${accessToken}` }
+    headers: { Authorization: `Bearer ${accessToken}` },
   })
 
   await waitForSocketOpen(ws)
@@ -276,7 +280,7 @@ test('WS /notes/:id/live broadcasts NOTE_UPDATED payload after note change', asy
       body: updatedNote.body,
       tags: updatedNote.tags,
       modifiedAt: updatedNote.modifiedAt,
-    }
+    },
   })
 })
 
@@ -287,14 +291,14 @@ test('WS /notes/:id/live ignores updates for a different users different note', 
   const port = await listenOnRandomPort(app)
   const watchedNoteId = await createOwnedNote(app, accessToken, {
     title: 'Watched Note',
-    body: 'watch me'
+    body: 'watch me',
   })
   const unrelatedNoteId = await createOwnedNote(app, otherUser.accessToken, {
     title: 'Unrelated Note',
-    body: 'do not broadcast'
+    body: 'do not broadcast',
   })
   const ws = new WebSocket(`ws://localhost:${port}/notes/live/${watchedNoteId}`, {
-    headers: { Authorization: `Bearer ${accessToken}` }
+    headers: { Authorization: `Bearer ${accessToken}` },
   })
 
   await waitForSocketOpen(ws)
@@ -308,7 +312,7 @@ test('WS /notes/:id/live ignores updates for a different users different note', 
     payload: {
       title: 'Unrelated Note Updated',
       body: 'still do not broadcast',
-      tags: ['other-user']
+      tags: ['other-user'],
     },
   })
 
@@ -323,13 +327,13 @@ test('WS /notes/:id/live 403 - Blocks cross-user subscription to another users n
   const intruderCtx = await setup(t, 'user')
   const privateNoteId = await createOwnedNote(ownerCtx.app, ownerCtx.accessToken, {
     title: 'Private Note',
-    body: 'do not leak'
+    body: 'do not leak',
   })
   const port = await listenOnRandomPort(ownerCtx.app)
 
   // Act
   const ws = new WebSocket(`ws://localhost:${port}/notes/live/${privateNoteId}`, {
-    headers: { Authorization: `Bearer ${intruderCtx.accessToken}` }
+    headers: { Authorization: `Bearer ${intruderCtx.accessToken}` },
   })
   const statusCode = await readUnexpectedResponseStatus(ws)
 

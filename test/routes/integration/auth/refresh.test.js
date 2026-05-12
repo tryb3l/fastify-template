@@ -12,7 +12,7 @@ function findRefreshCookie(setCookieHeader) {
 async function issueCsrfContext(app) {
   const csrfResponse = await app.inject({
     method: 'GET',
-    url: '/auth/csrf'
+    url: '/auth/csrf',
   })
 
   assert.strictEqual(csrfResponse.statusCode, 200)
@@ -21,7 +21,7 @@ async function issueCsrfContext(app) {
     csrfToken: csrfResponse.json().csrfToken,
     csrfCookieHeader: Array.isArray(csrfResponse.headers['set-cookie'])
       ? csrfResponse.headers['set-cookie'][0]
-      : csrfResponse.headers['set-cookie']
+      : csrfResponse.headers['set-cookie'],
   }
 }
 
@@ -37,8 +37,8 @@ test('POST /auth/refresh 200 - Successfully rotates tokens with valid CSRF', asy
     url: '/auth/refresh',
     headers: {
       cookie: originalRefreshCookieHeader,
-      'x-csrf-token': csrfToken
-    }
+      'x-csrf-token': csrfToken,
+    },
   })
 
   const body = refreshResponse.json()
@@ -59,12 +59,16 @@ test('POST /auth/refresh 200 - Successfully rotates tokens with valid CSRF', asy
     url: '/auth/refresh',
     headers: {
       cookie: originalRefreshCookieHeader,
-      'x-csrf-token': csrfToken
-    }
+      'x-csrf-token': csrfToken,
+    },
   })
 
   // Assert
-  assert.strictEqual(oldRefreshResponse.statusCode, 401, 'Old rotated refresh token should be rejected')
+  assert.strictEqual(
+    oldRefreshResponse.statusCode,
+    401,
+    'Old rotated refresh token should be rejected',
+  )
 })
 
 test('POST /auth/refresh 401 - Rejects access tokens supplied via the refreshToken cookie', async (t) => {
@@ -80,7 +84,7 @@ test('POST /auth/refresh 401 - Rejects access tokens supplied via the refreshTok
     headers: {
       cookie: cookieHeader,
       'x-csrf-token': csrfToken,
-    }
+    },
   })
 
   // Assert

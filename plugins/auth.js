@@ -50,7 +50,10 @@ module.exports = fp(
       request.log.debug({ decoded }, 'Token decoded successfully')
 
       if (decoded.type !== 'access') {
-        request.log.warn({ tokenType: decoded.type }, 'Rejecting token with invalid access token type')
+        request.log.warn(
+          { tokenType: decoded.type },
+          'Rejecting token with invalid access token type',
+        )
         throw fastify.httpErrors.unauthorized('Authentication required')
       }
 
@@ -138,7 +141,10 @@ module.exports = fp(
       }
 
       if (decoded.type !== 'refresh') {
-        request.log.warn({ tokenType: decoded.type }, 'Rejecting token with invalid refresh token type')
+        request.log.warn(
+          { tokenType: decoded.type },
+          'Rejecting token with invalid refresh token type',
+        )
         throw fastify.httpErrors.unauthorized('Invalid refresh token')
       }
 
@@ -150,7 +156,10 @@ module.exports = fp(
 
       const user = await fastify.usersDataSource.readUserById(decoded.sub)
       if (!user) {
-        request.log.warn({ userId: decoded.sub }, 'User not found during refresh token verification')
+        request.log.warn(
+          { userId: decoded.sub },
+          'User not found during refresh token verification',
+        )
         throw fastify.httpErrors.unauthorized('Invalid refresh token')
       }
 

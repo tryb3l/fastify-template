@@ -12,7 +12,7 @@ function extractAccessToken(request) {
 }
 
 module.exports = fp(
-  async function rateLimitPlugin(fastify, opts) {
+  async function rateLimitPlugin(fastify) {
     fastify.log.info('Starting registration of rate-limit plugin')
 
     await fastify.register(rateLimit, {

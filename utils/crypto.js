@@ -13,7 +13,7 @@ const randomPrefetcher = {
   next() {
     const { buf, pos } = this
     let start = pos
-    if (start == buf.length) {
+    if (start === buf.length) {
       start = 0
       crypto.randomFillSync(buf)
     }

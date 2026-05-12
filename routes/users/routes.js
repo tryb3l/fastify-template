@@ -1,6 +1,6 @@
 'use strict'
 
-module.exports = async function userRoutes(fastify, options) {
+module.exports = async function userRoutes(fastify) {
   const selfUpdateableUserFields = new Set(['username', 'email', 'firstName', 'lastName'])
   const adminUpdateableUserFields = new Set([...selfUpdateableUserFields, 'role'])
 
@@ -10,8 +10,7 @@ module.exports = async function userRoutes(fastify, options) {
         return
       }
 
-      const forbiddenFields = Object.keys(request.body)
-        .filter((field) => !allowedFields.has(field))
+      const forbiddenFields = Object.keys(request.body).filter((field) => !allowedFields.has(field))
 
       if (forbiddenFields.length > 0) {
         throw fastify.httpErrors.badRequest(
@@ -39,7 +38,7 @@ module.exports = async function userRoutes(fastify, options) {
         },
       },
     },
-    handler: async function readProfile(request, reply) {
+    handler: async function readProfile(request) {
       const user = await fastify.usersDataSource.readUserDetails(request.user._id)
       if (!user) throw fastify.httpErrors.notFound('User not found')
       return { data: user }
@@ -58,7 +57,7 @@ module.exports = async function userRoutes(fastify, options) {
         200: { $ref: 'schema:user:list:response#' },
       },
     },
-    handler: async function listUsers(request, reply) {
+    handler: async function listUsers(request) {
       const { skip, limit, username } = request.query
       const filter = username ? { username } : {}
 
@@ -86,7 +85,7 @@ module.exports = async function userRoutes(fastify, options) {
         },
       },
     },
-    handler: async function readUser(request, reply) {
+    handler: async function readUser(request) {
       const user = await fastify.usersDataSource.readUserDetails(request.params.id)
       if (!user) throw fastify.httpErrors.notFound('User not found')
       return { data: user }
@@ -108,7 +107,7 @@ module.exports = async function userRoutes(fastify, options) {
         },
       },
     },
-    handler: async function updateSelf(request, reply) {
+    handler: async function updateSelf(request) {
       const id = request.user._id
       const res = await fastify.usersDataSource.updateUser(id, request.body)
       if (res.modifiedCount === 0) {

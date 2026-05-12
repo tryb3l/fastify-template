@@ -5,7 +5,7 @@ const fastifyWebsocket = require('@fastify/websocket')
 const { EventEmitter } = require('node:events')
 
 module.exports = fp(
-  async function websocketPlugin(fastify, opts) {
+  async function websocketPlugin(fastify) {
     fastify.log.info('Starting registration of websocket plugin')
 
     await fastify.register(fastifyWebsocket, {

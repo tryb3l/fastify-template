@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert')
-const { buildApp, getTestMongoUrl } = require('../../../helper')
+const { buildApp, getTestMongoUrl } = require('../../../test-setup')
 const { randomUsername, randomEmail, randomPassword } = require('../../../utils/data-creator')
 
 function replaceDatabaseName(mongoUrl, databaseName) {

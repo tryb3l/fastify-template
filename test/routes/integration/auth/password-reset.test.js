@@ -34,12 +34,7 @@ async function readAuditLogs(mongoUrl, filter) {
   await client.connect()
 
   try {
-    return await client
-      .db()
-      .collection('auditLogs')
-      .find(filter)
-      .sort({ createdAt: 1 })
-      .toArray()
+    return await client.db().collection('auditLogs').find(filter).sort({ createdAt: 1 }).toArray()
   } finally {
     await client.close()
   }
@@ -64,17 +59,20 @@ test('POST /auth/reset-password/request 200 - Triggers reset pipeline natively w
   // Arrange
   const { app, email } = await setup(t, 'user')
   mailerPlugin.clearTestMessages()
-  
+
   // Act
   const response = await app.inject({
     method: 'POST',
     url: '/auth/reset-password/request',
-    payload: { email }
+    payload: { email },
   })
 
   // Assert
   assert.strictEqual(response.statusCode, 200)
-  assert.strictEqual(response.json().message, 'If an account exists for that email, a password reset link has been sent.')
+  assert.strictEqual(
+    response.json().message,
+    'If an account exists for that email, a password reset link has been sent.',
+  )
   assert.strictEqual(mailerPlugin.getTestMessages().length, 1)
 })
 
@@ -82,17 +80,20 @@ test('POST /auth/reset-password/request 200 - Also returns 200 for unknown email
   // Arrange
   const { app } = await setup(t, 'user') // Just to get app
   mailerPlugin.clearTestMessages()
-  
+
   // Act
   const response = await app.inject({
     method: 'POST',
     url: '/auth/reset-password/request',
-    payload: { email: 'unknown_abcedfg12345@gmail.com' }
+    payload: { email: 'unknown_abcedfg12345@gmail.com' },
   })
 
   // Assert
   assert.strictEqual(response.statusCode, 200)
-  assert.strictEqual(response.json().message, 'If an account exists for that email, a password reset link has been sent.')
+  assert.strictEqual(
+    response.json().message,
+    'If an account exists for that email, a password reset link has been sent.',
+  )
   assert.strictEqual(mailerPlugin.getTestMessages().length, 0)
 })
 
@@ -100,28 +101,72 @@ test('POST /auth/reset-password/validate 200 - Validates correct token', async (
   // Arrange
   const { app, email } = await setup(t, 'user')
   mailerPlugin.clearTestMessages()
-  
+
   await app.inject({
     method: 'POST',
     url: '/auth/reset-password/request',
-    payload: { email }
+    payload: { email },
   })
 
   const messages = mailerPlugin.getTestMessages()
   assert.strictEqual(messages.length, 1)
 
   const { resetId, secret } = extractResetToken(messages[0].text)
-  
+
   // Act
   const response = await app.inject({
     method: 'POST',
     url: '/auth/reset-password/validate',
-    payload: { resetId, secret }
+    payload: { resetId, secret },
   })
 
   // Assert
   assert.strictEqual(response.statusCode, 200)
   assert.deepStrictEqual(response.json(), { valid: true })
+})
+
+test('POST /auth/reset-password/validate 401 - Rejects expired tokens', async (t) => {
+  // Arrange
+  const { app, email, userId, mongoUrl } = await setup(t, 'user')
+  mailerPlugin.clearTestMessages()
+
+  await app.inject({
+    method: 'POST',
+    url: '/auth/reset-password/request',
+    payload: { email },
+  })
+
+  const messages = mailerPlugin.getTestMessages()
+  assert.strictEqual(messages.length, 1)
+
+  const { resetId, secret } = extractResetToken(messages[0].text)
+
+  const client = new MongoClient(mongoUrl.replace(/\/test$/, ''))
+
+  await client.connect()
+
+  try {
+    await client
+      .db()
+      .collection('users')
+      .updateOne(
+        { _id: userId },
+        { $set: { 'passwordReset.expiresAt': new Date('2020-01-01T00:00:00.000Z') } },
+      )
+  } finally {
+    await client.close()
+  }
+
+  // Act
+  const response = await app.inject({
+    method: 'POST',
+    url: '/auth/reset-password/validate',
+    payload: { resetId, secret },
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 401)
+  assert.strictEqual(response.json().message, 'Invalid or expired reset token')
 })
 
 test('POST /auth/reset-password/confirm 200 - Resets password and invalidates prior sessions', async (t) => {
@@ -133,7 +178,7 @@ test('POST /auth/reset-password/confirm 200 - Resets password and invalidates pr
   const requestResponse = await app.inject({
     method: 'POST',
     url: '/auth/reset-password/request',
-    payload: { email }
+    payload: { email },
   })
 
   assert.strictEqual(requestResponse.statusCode, 200)
@@ -147,38 +192,41 @@ test('POST /auth/reset-password/confirm 200 - Resets password and invalidates pr
   const confirmResponse = await app.inject({
     method: 'POST',
     url: '/auth/reset-password/confirm',
-    payload: { resetId, secret, newPassword }
+    payload: { resetId, secret, newPassword },
   })
 
   // Assert
   assert.strictEqual(confirmResponse.statusCode, 200)
-  assert.strictEqual(confirmResponse.json().message, 'Password has been successfully reset. You may now log in.')
+  assert.strictEqual(
+    confirmResponse.json().message,
+    'Password has been successfully reset. You may now log in.',
+  )
 
   const oldPasswordLoginResponse = await app.inject({
     method: 'POST',
     url: '/auth/authenticate',
-    payload: { email, password }
+    payload: { email, password },
   })
   assert.strictEqual(oldPasswordLoginResponse.statusCode, 401)
 
   const newPasswordLoginResponse = await app.inject({
     method: 'POST',
     url: '/auth/authenticate',
-    payload: { email, password: newPassword }
+    payload: { email, password: newPassword },
   })
   assert.strictEqual(newPasswordLoginResponse.statusCode, 200)
 
   const sessionResponse = await app.inject({
     method: 'GET',
     url: '/users/me',
-    headers: { Authorization: `Bearer ${accessToken}` }
+    headers: { Authorization: `Bearer ${accessToken}` },
   })
   assert.strictEqual(sessionResponse.statusCode, 401)
   assert.strictEqual(sessionResponse.json().message, 'Session invalidated')
 
   const csrfResponse = await app.inject({
     method: 'GET',
-    url: '/auth/csrf'
+    url: '/auth/csrf',
   })
   assert.strictEqual(csrfResponse.statusCode, 200)
 
@@ -189,8 +237,8 @@ test('POST /auth/reset-password/confirm 200 - Resets password and invalidates pr
     url: '/auth/refresh',
     headers: {
       cookie: `refreshToken=${refreshToken}; ${Array.isArray(csrfCookie) ? csrfCookie[0] : csrfCookie}`,
-      'x-csrf-token': csrfToken
-    }
+      'x-csrf-token': csrfToken,
+    },
   })
   assert.strictEqual(oldRefreshResponse.statusCode, 401)
   assert.strictEqual(oldRefreshResponse.json().message, 'Refresh token session invalidated')
@@ -205,13 +253,13 @@ test('POST /auth/reset-password/request 200 - Suppresses repeat requests during 
   const firstResponse = await app.inject({
     method: 'POST',
     url: '/auth/reset-password/request',
-    payload: { email }
+    payload: { email },
   })
 
   const secondResponse = await app.inject({
     method: 'POST',
     url: '/auth/reset-password/request',
-    payload: { email }
+    payload: { email },
   })
 
   // Assert
@@ -219,12 +267,20 @@ test('POST /auth/reset-password/request 200 - Suppresses repeat requests during 
   assert.strictEqual(secondResponse.statusCode, 200)
   assert.strictEqual(mailerPlugin.getTestMessages().length, 1)
 
-  const requestedLogs = await waitForAuditLogs(mongoUrl, { action: 'auth_password_reset_requested', userId }, 1)
-  const ignoredLogs = await waitForAuditLogs(mongoUrl, {
-    action: 'auth_password_reset_request_ignored',
-    userId,
-    'details.reason': 'cooldown_active'
-  }, 1)
+  const requestedLogs = await waitForAuditLogs(
+    mongoUrl,
+    { action: 'auth_password_reset_requested', userId },
+    1,
+  )
+  const ignoredLogs = await waitForAuditLogs(
+    mongoUrl,
+    {
+      action: 'auth_password_reset_request_ignored',
+      userId,
+      'details.reason': 'cooldown_active',
+    },
+    1,
+  )
 
   assert.strictEqual(requestedLogs.length, 1)
   assert.strictEqual(ignoredLogs.length, 1)
@@ -240,7 +296,7 @@ test('POST /auth/reset-password/validate 401 - Locks the token after repeated in
   await app.inject({
     method: 'POST',
     url: '/auth/reset-password/request',
-    payload: { email }
+    payload: { email },
   })
 
   const messages = mailerPlugin.getTestMessages()
@@ -253,7 +309,7 @@ test('POST /auth/reset-password/validate 401 - Locks the token after repeated in
     const invalidResponse = await app.inject({
       method: 'POST',
       url: '/auth/reset-password/validate',
-      payload: { resetId, secret: invalidSecret }
+      payload: { resetId, secret: invalidSecret },
     })
 
     assert.strictEqual(invalidResponse.statusCode, 401)
@@ -263,7 +319,7 @@ test('POST /auth/reset-password/validate 401 - Locks the token after repeated in
   const lockedResponse = await app.inject({
     method: 'POST',
     url: '/auth/reset-password/validate',
-    payload: { resetId, secret }
+    payload: { resetId, secret },
   })
 
   // Assert
@@ -281,7 +337,7 @@ test('POST /auth/reset-password/confirm 401 - Rejects reused token after a succe
   await app.inject({
     method: 'POST',
     url: '/auth/reset-password/request',
-    payload: { email }
+    payload: { email },
   })
 
   const messages = mailerPlugin.getTestMessages()
@@ -292,7 +348,7 @@ test('POST /auth/reset-password/confirm 401 - Rejects reused token after a succe
   const firstConfirmResponse = await app.inject({
     method: 'POST',
     url: '/auth/reset-password/confirm',
-    payload: { resetId, secret, newPassword: firstPassword }
+    payload: { resetId, secret, newPassword: firstPassword },
   })
 
   assert.strictEqual(firstConfirmResponse.statusCode, 200)
@@ -301,7 +357,7 @@ test('POST /auth/reset-password/confirm 401 - Rejects reused token after a succe
   const secondConfirmResponse = await app.inject({
     method: 'POST',
     url: '/auth/reset-password/confirm',
-    payload: { resetId, secret, newPassword: secondPassword }
+    payload: { resetId, secret, newPassword: secondPassword },
   })
 
   // Assert
@@ -318,7 +374,7 @@ test('Password reset audit trail - Writes request, invalid confirm, and confirm 
   const requestResponse = await app.inject({
     method: 'POST',
     url: '/auth/reset-password/request',
-    payload: { email }
+    payload: { email },
   })
 
   assert.strictEqual(requestResponse.statusCode, 200)
@@ -332,7 +388,7 @@ test('Password reset audit trail - Writes request, invalid confirm, and confirm 
   const invalidConfirmResponse = await app.inject({
     method: 'POST',
     url: '/auth/reset-password/confirm',
-    payload: { resetId, secret: invalidSecret, newPassword }
+    payload: { resetId, secret: invalidSecret, newPassword },
   })
 
   assert.strictEqual(invalidConfirmResponse.statusCode, 401)
@@ -341,28 +397,40 @@ test('Password reset audit trail - Writes request, invalid confirm, and confirm 
   const confirmResponse = await app.inject({
     method: 'POST',
     url: '/auth/reset-password/confirm',
-    payload: { resetId, secret, newPassword }
+    payload: { resetId, secret, newPassword },
   })
 
   // Assert
   assert.strictEqual(confirmResponse.statusCode, 200)
 
-  const requestedLogs = await waitForAuditLogs(mongoUrl, {
-    action: 'auth_password_reset_requested',
-    userId,
-    resourceId: userId,
-  }, 1)
-  const invalidConfirmLogs = await waitForAuditLogs(mongoUrl, {
-    action: 'auth_password_reset_validation_failed',
-    resourceId: resetId,
-    'details.phase': 'confirm',
-    'details.reason': 'invalid_secret',
-  }, 1)
-  const confirmedLogs = await waitForAuditLogs(mongoUrl, {
-    action: 'auth_password_reset_confirmed',
-    userId,
-    resourceId: userId,
-  }, 1)
+  const requestedLogs = await waitForAuditLogs(
+    mongoUrl,
+    {
+      action: 'auth_password_reset_requested',
+      userId,
+      resourceId: userId,
+    },
+    1,
+  )
+  const invalidConfirmLogs = await waitForAuditLogs(
+    mongoUrl,
+    {
+      action: 'auth_password_reset_validation_failed',
+      resourceId: resetId,
+      'details.phase': 'confirm',
+      'details.reason': 'invalid_secret',
+    },
+    1,
+  )
+  const confirmedLogs = await waitForAuditLogs(
+    mongoUrl,
+    {
+      action: 'auth_password_reset_confirmed',
+      userId,
+      resourceId: userId,
+    },
+    1,
+  )
 
   assert.strictEqual(requestedLogs.length, 1)
   assert.strictEqual(invalidConfirmLogs.length, 1)

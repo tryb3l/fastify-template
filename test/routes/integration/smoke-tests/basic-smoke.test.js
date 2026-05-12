@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert')
-const { buildApp } = require('../../../helper')
+const { buildApp } = require('../../../test-setup')
 const { randomStringWithPrefix } = require('../../../utils/data-creator')
 
 test('GET random path 404 - not-found handler returns standard 404 JSON', async (t) => {

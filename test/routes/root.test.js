@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert')
-const { buildApp } = require('../helper')
+const { buildApp } = require('../test-setup')
 const { randomStringWithPrefix } = require('../utils/data-creator')
 
 test('GET / 200 - default root route', async (t) => {

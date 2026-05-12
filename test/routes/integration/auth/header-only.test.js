@@ -13,11 +13,15 @@ test('GET /users/me 401 - Rejects access tokens supplied via cookies', async (t)
   const response = await app.inject({
     method: 'GET',
     url: '/users/me',
-    headers: { cookie: maliciousCookieHeader }
+    headers: { cookie: maliciousCookieHeader },
   })
 
   // Assert
-  assert.strictEqual(response.statusCode, 401, 'API must reject accessTokens supplied via cookies to protect against CSRF architectures')
+  assert.strictEqual(
+    response.statusCode,
+    401,
+    'API must reject accessTokens supplied via cookies to protect against CSRF architectures',
+  )
 })
 
 test('GET /users/me 200 - Accepts access tokens in the Authorization header', async (t) => {
@@ -28,11 +32,15 @@ test('GET /users/me 200 - Accepts access tokens in the Authorization header', as
   const response = await app.inject({
     method: 'GET',
     url: '/users/me',
-    headers: { Authorization: `Bearer ${accessToken}` }
+    headers: { Authorization: `Bearer ${accessToken}` },
   })
 
   // Assert
-  assert.strictEqual(response.statusCode, 200, 'API must accept generic Bearer tokens inside the explicit Authorization header')
+  assert.strictEqual(
+    response.statusCode,
+    200,
+    'API must accept generic Bearer tokens inside the explicit Authorization header',
+  )
 })
 
 test('GET /users/me 401 - Rejects refresh tokens in the Authorization header', async (t) => {
@@ -43,9 +51,13 @@ test('GET /users/me 401 - Rejects refresh tokens in the Authorization header', a
   const response = await app.inject({
     method: 'GET',
     url: '/users/me',
-    headers: { Authorization: `Bearer ${refreshToken}` }
+    headers: { Authorization: `Bearer ${refreshToken}` },
   })
 
   // Assert
-  assert.strictEqual(response.statusCode, 401, 'API must reject refresh tokens supplied as Bearer credentials on protected routes')
+  assert.strictEqual(
+    response.statusCode,
+    401,
+    'API must reject refresh tokens supplied as Bearer credentials on protected routes',
+  )
 })

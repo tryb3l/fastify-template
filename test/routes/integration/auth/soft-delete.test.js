@@ -8,7 +8,7 @@ async function deleteUserAsAdmin(adminContext, userId) {
   const response = await adminContext.app.inject({
     method: 'DELETE',
     url: `/users/${userId}`,
-    headers: { Authorization: `Bearer ${adminContext.accessToken}` }
+    headers: { Authorization: `Bearer ${adminContext.accessToken}` },
   })
 
   assert.strictEqual(response.statusCode, 204, 'Admin successfully invokes soft-delete')
@@ -23,7 +23,7 @@ async function issueCsrfContext(app) {
     csrfToken: csrfResponse.json().csrfToken,
     csrfCookieHeader: Array.isArray(csrfResponse.headers['set-cookie'])
       ? csrfResponse.headers['set-cookie'][0]
-      : csrfResponse.headers['set-cookie']
+      : csrfResponse.headers['set-cookie'],
   }
 }
 
@@ -37,11 +37,15 @@ test('POST /auth/authenticate 401 - Soft-deleted users cannot log in again', asy
   const authResponse = await userContext.app.inject({
     method: 'POST',
     url: '/auth/authenticate',
-    payload: { username: userContext.username, password: userContext.password }
+    payload: { username: userContext.username, password: userContext.password },
   })
 
   // Assert
-  assert.strictEqual(authResponse.statusCode, 401, 'Deleted accounts cannot forge new authentications')
+  assert.strictEqual(
+    authResponse.statusCode,
+    401,
+    'Deleted accounts cannot forge new authentications',
+  )
 })
 
 test('POST /auth/refresh 401 - Soft-deleted users cannot refresh existing sessions', async (t) => {
@@ -59,9 +63,13 @@ test('POST /auth/refresh 401 - Soft-deleted users cannot refresh existing sessio
     url: '/auth/refresh',
     headers: {
       cookie: refreshCookie,
-      'x-csrf-token': csrfToken
-    }
+      'x-csrf-token': csrfToken,
+    },
   })
   // Assert
-  assert.strictEqual(refreshResponse.statusCode, 401, 'Deleted accounts cannot rotate existing ghost sessions natively')
+  assert.strictEqual(
+    refreshResponse.statusCode,
+    401,
+    'Deleted accounts cannot rotate existing ghost sessions natively',
+  )
 })

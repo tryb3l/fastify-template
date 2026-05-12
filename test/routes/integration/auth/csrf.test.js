@@ -13,7 +13,7 @@ test('POST /auth/refresh 403 - Requires a CSRF token', async (t) => {
   const response = await app.inject({
     method: 'POST',
     url: '/auth/refresh',
-    headers: { cookie: cookieHeader }
+    headers: { cookie: cookieHeader },
   })
 
   // Assert
@@ -29,7 +29,7 @@ test('POST /auth/logout 403 - Requires a CSRF token', async (t) => {
   const response = await app.inject({
     method: 'POST',
     url: '/auth/logout',
-    headers: { cookie: cookieHeader }
+    headers: { cookie: cookieHeader },
   })
 
   // Assert
@@ -43,7 +43,7 @@ test('GET /auth/csrf 200 - Issues a CSRF token', async (t) => {
   // Act
   const response = await app.inject({
     method: 'GET',
-    url: '/auth/csrf'
+    url: '/auth/csrf',
   })
 
   // Assert
@@ -62,8 +62,8 @@ test('POST /auth/refresh 403 - Rejects an invalid CSRF token', async (t) => {
     url: '/auth/refresh',
     headers: {
       cookie: cookieHeader,
-      'x-csrf-token': 'invalid-token-signature-attempt'
-    }
+      'x-csrf-token': 'invalid-token-signature-attempt',
+    },
   })
 
   // Assert

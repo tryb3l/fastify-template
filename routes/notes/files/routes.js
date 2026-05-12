@@ -15,7 +15,10 @@ const {
   buildNoteImportHeaders,
   mapNoteImportRow,
 } = require('../../../utils/notes-csv')
-const { ALLOWED_UPLOAD_MIME_TYPES, assertUploadedFileContent } = require('../../../utils/upload-verifier')
+const {
+  ALLOWED_UPLOAD_MIME_TYPES,
+  assertUploadedFileContent,
+} = require('../../../utils/upload-verifier')
 const { NOTE_EXPORT_PROJECTION } = require('../query-shapes')
 
 const DANGEROUS_CSV_PREFIX = /^[\t\r\n ]*[=+\-@]/
@@ -100,12 +103,6 @@ module.exports = async function fileRoutes(fastify) {
             await flushPendingNotes()
           }
         }
-
-        if (!headers) {
-          throw this.httpErrors.badRequest('CSV must include a header row')
-        }
-
-        await flushPendingNotes()
       } catch (err) {
         if (err.statusCode === 400 || err.code?.startsWith('CSV_')) {
           throw this.httpErrors.badRequest(err.message)
@@ -113,6 +110,12 @@ module.exports = async function fileRoutes(fastify) {
 
         throw err
       }
+
+      if (!headers) {
+        throw this.httpErrors.badRequest('CSV must include a header row')
+      }
+
+      await flushPendingNotes()
 
       return reply.code(201).send(insertedIds)
     },
@@ -278,7 +281,10 @@ module.exports = async function fileRoutes(fastify) {
             mimeType: part.mimetype,
           })
         } catch (err) {
-          request.log.warn({ err, filename: part.filename }, 'Uploaded file content verification failed')
+          request.log.warn(
+            { err, filename: part.filename },
+            'Uploaded file content verification failed',
+          )
           await cleanupUploadedFiles()
 
           if (err.statusCode === 400) {

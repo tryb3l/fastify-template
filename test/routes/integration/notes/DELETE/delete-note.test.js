@@ -19,7 +19,6 @@ test('DELETE /notes/:id 204 - Deletes the note', async (t) => {
   // Assert
   assert.strictEqual(response.statusCode, 204)
 
-
   const verify = await app.inject({
     method: 'GET',
     url: `/notes/${note.data.id}`,

@@ -27,10 +27,12 @@ test('POST /notes 201 - User can create a note', async (t) => {
 
   // Assert
   assert.strictEqual(response.statusCode, 201)
-  const body = response.json()
-  assert.strictEqual(typeof body, 'object')
-  assert.ok(body.data.id)
-  assert.strictEqual(body.data.title, noteTitle)
+  const payload = response.json()
+  assert.strictEqual(typeof payload, 'object')
+  assert.ok(payload.data.id)
+  assert.strictEqual(payload.data.title, noteTitle)
+  assert.strictEqual(payload.data.body, noteBody)
+  assert.deepStrictEqual(payload.data.tags, noteTags)
 })
 
 test('POST /notes 201 - User can create a large markdown note', async (t) => {
@@ -114,7 +116,7 @@ test('POST /notes 400 - Missing title', async (t) => {
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
     payload: {
       body: 'Some body text',
-      tags: ['tag1']
+      tags: ['tag1'],
       // title is omitted
     },
   })
@@ -126,7 +128,7 @@ test('POST /notes 400 - Missing title', async (t) => {
   assert.ok(responseBody.error || responseBody.message, 'Should return an error payload')
 })
 
-test('POST /notes 400 - Missing body', async (t) => {
+test('POST /notes 201 - Missing body defaults to an empty string', async (t) => {
   // Arrange
   const { app, accessToken } = await setup(t, 'user')
 
@@ -137,16 +139,43 @@ test('POST /notes 400 - Missing body', async (t) => {
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
     payload: {
       title: 'Valid Title',
-      tags: ['tag1']
+      tags: ['tag1'],
       // body is omitted
     },
   })
 
   // Assert
-  assert.strictEqual(response.statusCode, 400)
+  assert.strictEqual(response.statusCode, 201)
 
   const responseBody = response.json()
-  assert.ok(responseBody.error || responseBody.message, 'Should return an error payload')
+  assert.strictEqual(responseBody.data.title, 'Valid Title')
+  assert.strictEqual(responseBody.data.body, '')
+  assert.deepStrictEqual(responseBody.data.tags, ['tag1'])
+})
+
+test('POST /notes 201 - Accepts an explicitly empty body', async (t) => {
+  // Arrange
+  const { app, accessToken } = await setup(t, 'user')
+
+  // Act
+  const response = await app.inject({
+    method: 'POST',
+    url: '/notes',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    payload: {
+      title: 'Title Only Stub',
+      body: '',
+      tags: ['stub'],
+    },
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 201)
+
+  const responseBody = response.json()
+  assert.strictEqual(responseBody.data.title, 'Title Only Stub')
+  assert.strictEqual(responseBody.data.body, '')
+  assert.deepStrictEqual(responseBody.data.tags, ['stub'])
 })
 
 test('POST /notes 401 - Unauthorized', async (t) => {

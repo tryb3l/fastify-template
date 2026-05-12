@@ -17,10 +17,7 @@ module.exports = {
   childLoggerFactory(logger, bindings, opts, rawReq) {
     const traceId = extractTraceId(rawReq.headers?.traceparent)
 
-    return logger.child(
-      traceId ? { ...bindings, traceId } : bindings,
-      opts,
-    )
+    return logger.child(traceId ? { ...bindings, traceId } : bindings, opts)
   },
   requestIdLogLabel: 'requestId',
   requestIdHeader: false,
