@@ -4,7 +4,7 @@
   "description": "Fastify boilerplate for my REST projects with MongoDB, Swagger, CORS and more",
   "main": "app.js",
   "engines": {
-    "node": ">=25"
+    "node": ">=26"
   },
   "directories": {
     "test": "test",
@@ -12,13 +12,17 @@
   },
   "scripts": {
     "start": "fastify start -l info --options app.js",
-    "dev": "fastify start --watch --pretty-logs --debug --options app.js",
-    "dev:trace": "node --trace-warnings node_modules/.bin/fastify start --options app.js",
+    "dev": "node scripts/dev.js",
+    "dev:app": "fastify start --watch --pretty-logs --debug --options app.js",
+    "dev:trace": "node scripts/dev.js --trace",
+    "dev:trace:app": "node --trace-warnings node_modules/.bin/fastify start --options app.js",
     "test": "node test/run-tests.js",
     "test:ci": "node --test test/**/*.test.js",
     "test:makefile": "node --test test/makefile-bootstrap.test.js",
     "test:nostop": "node test/run-tests.js --nostop",
     "test:coverage": "node test/run-tests.js --coverage",
+    "runtime:status": "node scripts/runtime-cli.js status",
+    "runtime:cleanup": "node scripts/runtime-cli.js cleanup",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "migrate": "migrate-mongo up",
@@ -66,7 +70,7 @@
     "close-with-grace": "^2.5.0",
     "csv-parse": "^6.2.1",
     "csv-stringify": "^6.7.0",
-    "fast-json-stringify": "^6.3.0",
+    "fast-json-stringify": "^6.4.0",
     "fastify": "5.8.5",
     "fastify-cli": "^8.0.0",
     "fastify-metrics": "^13.2.0",

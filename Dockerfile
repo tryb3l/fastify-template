@@ -1,5 +1,5 @@
 # --- Stage 1 build ---
-FROM node:25-alpine AS builder
+FROM node:26.1.0-alpine AS builder
 
 WORKDIR /build
 
@@ -11,7 +11,7 @@ RUN if [ -n "$NPM_TOKEN" ]; then echo "//registry.npmjs.org/:_authToken=${NPM_TO
     rm -f .npmrc
 
 # --- Stage 2 Prod runner ---
-FROM platformatic/node-caged:25-alpine
+FROM platformatic/node-caged:26.1.0-alpine
 
 RUN apk update && apk add --no-cache dumb-init
 

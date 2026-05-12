@@ -62,3 +62,6 @@ profile*
 
 # uploads
 uploads/
+
+# local runtime state
+.runtime/

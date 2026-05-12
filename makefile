@@ -34,12 +34,12 @@ VALIDATE_REQUIRED_ENV = missing_vars=""; \
 DEV_ENV = env NODE_ENV="$${NODE_ENV:-$(DEV_NODE_ENV)}"
 
 .PHONY: check-env
-check-env:
+check-env: ## Validate required local secrets before running managed targets
 	@$(REQUIRE_ENV_FILE)
 	@$(VALIDATE_REQUIRED_ENV)
 
 .PHONY: init-env
-init-env:
+init-env: ## Create a local .env file with safe development defaults
 	@if [ -f "$(ENV_FILE)" ]; then \
 		echo "$(ENV_FILE) already exists; leaving it unchanged."; \
 		echo "Review the current values or rotate secrets manually if needed."; \
@@ -71,41 +71,53 @@ init-env:
 	@echo "Review the generated values and rotate secrets if you reuse this setup elsewhere."
 
 .PHONY: dev
-dev: check-env
-	@echo "Cleaning up old containers..."
-	docker rm -f $(DEV_MONGO_CONTAINER) $(DEV_MAILPIT_CONTAINER) 2>/dev/null || true
-	@echo "Starting MongoDB for local development..."
-	docker run -d -p 27017:27017 --rm --name $(DEV_MONGO_CONTAINER) mongo:8
-	@echo "Starting Mailpit for local email testing..."
-	docker run -d -p $(DEV_MAILPIT_SMTP_PORT):1025 -p $(DEV_MAILPIT_UI_PORT):8025 --rm --name $(DEV_MAILPIT_CONTAINER) axllent/mailpit:latest
-	@echo "Waiting for MongoDB to initialize..."
-	sleep 3
-	@echo "Running local database migrations..."
-	@$(LOAD_ENV) npm run migrate
-	@echo "Starting Fastify in dev mode..."
+dev: check-env ## Start the managed local backend runtime
+	@echo "Starting managed Fastify development runtime..."
 	@echo "Mailpit UI: http://localhost:$(DEV_MAILPIT_UI_PORT)"
 	@$(LOAD_ENV) $(DEV_ENV) npm run dev
 
-.PHONY: dev-stop
-dev-stop:
-	@echo "Stopping local MongoDB and Mailpit"
-	docker container stop $(DEV_MONGO_CONTAINER) $(DEV_MAILPIT_CONTAINER) 2>/dev/null || true
+.PHONY: dev-trace
+dev-trace: check-env ## Start the managed local backend runtime with trace warnings
+	@echo "Starting managed Fastify trace runtime..."
+	@echo "Mailpit UI: http://localhost:$(DEV_MAILPIT_UI_PORT)"
+	@$(LOAD_ENV) $(DEV_ENV) npm run dev:trace
 
 .PHONY: test
 test:
 	npm run test
+
+.PHONY: test-ci
+test-ci:
+	npm run test:ci
 
 .PHONY: test-cov
 test-cov:
 	npm run test:coverage
 
 .PHONY: migrate
-migrate: check-env
+migrate: check-env ## Apply db migrations with the selected env file loaded
 	@$(LOAD_ENV) npm run migrate
 
 .PHONY: lint
 lint:
 	npm run lint
+
+.PHONY: runtime-status
+runtime-status: ## Show human-readable status for managed local runtimes
+	npm run runtime:status
+
+.PHONY: runtime-status-json
+runtime-status-json: ## Emit machine-readable managed runtime status JSON
+	npm run runtime:status -- --json
+
+.PHONY: runtime-cleanup
+runtime-cleanup: ## Clean managed runtime state and owned stale processes
+	npm run runtime:cleanup
+
+.PHONY: verify
+verify: ## Run the main local verification checks
+	npm run lint
+	npm run test
 
 # --- Prod VPS ---
 .PHONY: up
@@ -129,6 +141,6 @@ shell:
 # --- Help ---
 .PHONY: help
 help:
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "%-20s %s\n", $$1, $$2}'
 
 .DEFAULT_GOAL := help
