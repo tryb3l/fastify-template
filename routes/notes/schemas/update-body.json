@@ -8,6 +8,7 @@
     "tags": {
       "type": "array",
       "items": { "type": "string", "minLength": 1, "maxLength": 10 }
-    }
+    },
+    "expectedModifiedAt": { "type": "string", "format": "date-time" }
   }
 }

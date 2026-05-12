@@ -2,6 +2,7 @@
 
 const fp = require('fastify-plugin')
 const { randomUUID } = require('node:crypto')
+const { instantToDate, nowInstant, parseIsoInstant } = require('../utils/time')
 
 const normalizeNoteBody = (body) => (typeof body === 'string' ? body : '')
 
@@ -120,8 +121,19 @@ module.exports = fp(
       },
 
       async updateNote(id, newNote, userId) {
+        const { expectedModifiedAt, ...rawUpdate } = newNote
         const normalizedUpdate = {
-          ...newNote,
+          ...rawUpdate,
+        }
+
+        let expectedModifiedAtDate = null
+
+        if (expectedModifiedAt !== undefined) {
+          try {
+            expectedModifiedAtDate = instantToDate(parseIsoInstant(expectedModifiedAt))
+          } catch {
+            throw fastify.httpErrors.badRequest('expectedModifiedAt must be a valid date-time')
+          }
         }
 
         if (Object.hasOwn(normalizedUpdate, 'body')) {
@@ -129,11 +141,13 @@ module.exports = fp(
         }
 
         const result = await notes.findOneAndUpdate(
-          { id, userId },
+          expectedModifiedAtDate
+            ? { id, userId, modifiedAt: expectedModifiedAtDate }
+            : { id, userId },
           {
             $set: {
               ...normalizedUpdate,
-              modifiedAt: new Date(),
+              modifiedAt: instantToDate(nowInstant()),
             },
           },
           { returnDocument: 'after' },
@@ -142,6 +156,29 @@ module.exports = fp(
         const updatedNote = result?.value ?? result
 
         if (!updatedNote) {
+          const existingNote = await notes.findOne(
+            { id, userId },
+            {
+              projection: {
+                _id: 0,
+                modifiedAt: 1,
+              },
+            },
+          )
+
+          if (!existingNote) {
+            throw fastify.httpErrors.notFound('Note not found')
+          }
+
+          if (expectedModifiedAtDate) {
+            const conflictError = fastify.httpErrors.conflict(
+              'Note was modified elsewhere. Reload the latest note before saving again.',
+            )
+            conflictError.conflictCode = 'NOTE_STALE_SAVE'
+            conflictError.currentModifiedAt = existingNote.modifiedAt
+            throw conflictError
+          }
+
           throw fastify.httpErrors.notFound('Note not found')
         }
 

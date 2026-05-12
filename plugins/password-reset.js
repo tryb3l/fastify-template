@@ -3,8 +3,15 @@
 const fp = require('fastify-plugin')
 const crypto = require('node:crypto')
 const { hashPassword } = require('../routes/auth/generate-hash')
+const {
+  addInstantDuration,
+  compareInstants,
+  instantFromDate,
+  instantToDate,
+  nowInstant,
+} = require('../utils/time')
 
-async function passwordResetPlugin(fastify, options) {
+async function passwordResetPlugin(fastify) {
   fastify.log.info('Starting registration of password-reset service plugin')
 
   const frontendBaseUrl = String(fastify.config.FRONTEND_URL || '')
@@ -39,7 +46,11 @@ async function passwordResetPlugin(fastify, options) {
       return 'not_found'
     }
 
-    if (resetData.passwordReset.expiresAt <= new Date()) {
+    if (
+      resetData.passwordReset.expiresAt instanceof Date &&
+      !Number.isNaN(resetData.passwordReset.expiresAt.getTime()) &&
+      compareInstants(instantFromDate(resetData.passwordReset.expiresAt), nowInstant()) <= 0
+    ) {
       return 'expired'
     }
 
@@ -94,24 +105,33 @@ async function passwordResetPlugin(fastify, options) {
       if (
         requestCooldownMs > 0 &&
         user.passwordReset?.requestedAt instanceof Date &&
-        user.passwordReset.requestedAt.getTime() > Date.now() - requestCooldownMs
+        !Number.isNaN(user.passwordReset.requestedAt.getTime())
       ) {
-        fastify.auditLog({
-          request,
-          action: 'auth_password_reset_request_ignored',
-          userId: user._id,
-          resourceType: 'user',
-          resourceId: user._id,
-          details: { reason: 'cooldown_active' },
+        const currentInstant = nowInstant()
+        const cooldownEndsAt = addInstantDuration(instantFromDate(user.passwordReset.requestedAt), {
+          milliseconds: requestCooldownMs,
         })
-        return false
+
+        if (compareInstants(cooldownEndsAt, currentInstant) > 0) {
+          fastify.auditLog({
+            request,
+            action: 'auth_password_reset_request_ignored',
+            userId: user._id,
+            resourceType: 'user',
+            resourceId: user._id,
+            details: { reason: 'cooldown_active' },
+          })
+          return false
+        }
       }
 
       // Generate secure atomic token
       const { id, secret } = generateOpaqueToken()
       const secretHash = hashSecret(secret)
-      const requestedAt = new Date()
-      const expiresAt = new Date(requestedAt.getTime() + ttlMinutes * 60 * 1000)
+      const requestedAtInstant = nowInstant()
+      const expiresAtInstant = addInstantDuration(requestedAtInstant, { minutes: ttlMinutes })
+      const requestedAt = instantToDate(requestedAtInstant)
+      const expiresAt = instantToDate(expiresAtInstant)
 
       // Atomically embed to User document
       const initiated = await fastify.usersDataSource.initiatePasswordReset(
