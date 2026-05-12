@@ -62,6 +62,21 @@ test('mapNoteImportRow enforces note field constraints', () => {
     )
 })
 
+test('mapNoteImportRow accepts empty note bodies', () => {
+    // Arrange
+    const headers = buildNoteImportHeaders(['title', 'body'])
+
+    // Act
+    const note = mapNoteImportRow(headers, ['Empty body note', ''], 3)
+
+    // Assert
+    assert.deepStrictEqual(note, {
+        title: 'Empty body note',
+        body: '',
+        tags: [],
+    })
+})
+
 test('mapNoteImportRow accepts note bodies up to the 50000 character ceiling', () => {
     const headers = buildNoteImportHeaders(['title', 'body'])
     const body = 'x'.repeat(50000)
@@ -78,7 +93,7 @@ test('mapNoteImportRow rejects note bodies above the 50000 character ceiling', (
 
     assert.throws(
         () => mapNoteImportRow(headers, ['Too large', 'x'.repeat(50001)], 5),
-        /Row 5: body must be a string between 1 and 50000 characters/,
+        /Row 5: body must be a string between 0 and 50000 characters/,
     )
 })
 

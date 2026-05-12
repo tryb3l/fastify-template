@@ -116,14 +116,42 @@ module.exports = async function noteRoutes(fastify, opts) {
           type: 'object',
           properties: { data: { $ref: 'schema:note#' } },
         },
+        409: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            message: { type: 'string' },
+            code: { type: 'string' },
+            currentModifiedAt: { type: 'string', format: 'date-time' },
+          },
+          required: ['message', 'code', 'currentModifiedAt'],
+        },
       },
     },
-    handler: async function updateNoteHandler(request) {
+    handler: async function updateNoteHandler(request, reply) {
       const { id } = request.params
       const userId = request.user._id || request.user.id
       const updateData = request.body
 
-      const updatedNote = await fastify.notesDataSource.updateNote(id, updateData, userId)
+      let updatedNote
+
+      try {
+        updatedNote = await fastify.notesDataSource.updateNote(id, updateData, userId)
+      } catch (error) {
+        if (error?.statusCode === 409 && error.conflictCode === 'NOTE_STALE_SAVE') {
+          reply.code(409)
+          return {
+            message: error.message,
+            code: error.conflictCode,
+            currentModifiedAt:
+              error.currentModifiedAt instanceof Date
+                ? error.currentModifiedAt.toISOString()
+                : error.currentModifiedAt,
+          }
+        }
+
+        throw error
+      }
 
       if (fastify.auditLog) {
         fastify.auditLog({

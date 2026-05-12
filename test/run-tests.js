@@ -1,12 +1,16 @@
 'use strict'
 
-const { execSync } = require('child_process')
 const path = require('node:path')
 const fs = require('node:fs')
+
+const { runManaged } = require('../scripts/managed-spawn')
+const { styles } = require('../scripts/colors')
+
 const args = process.argv.slice(2)
 const isCoverage = args.includes('--coverage')
 const isNoStop = args.includes('--nostop')
-const mongoUrl = process.env.MONGO_URL || 'mongodb://localhost:27017/test'
+const mongoUrl = process.env.MONGO_URL || 'mongodb://127.0.0.1:27018/test'
+const styledNodeTestReporterPath = path.join(__dirname, 'styled-node-test-reporter.js')
 
 function getTestFiles(dir, fileList = []) {
   const files = fs.readdirSync(dir)
@@ -15,45 +19,66 @@ function getTestFiles(dir, fileList = []) {
     if (fs.statSync(filePath).isDirectory()) {
       getTestFiles(filePath, fileList)
     } else if (filePath.endsWith('.test.js')) {
-      fileList.push(`"${filePath}"`)
+      fileList.push(filePath)
     }
   }
   return fileList
 }
 
-async function run() {
-  try {
-    console.log('⏳ Running global setup (Starting Docker)...')
-    execSync(`node "${path.join(__dirname, 'run-before.js')}"`, { stdio: 'inherit' })
-    execSync('npx migrate-mongo up', {
-      stdio: 'inherit',
-      env: { ...process.env, MONGO_URL: mongoUrl },
-    })
+if (require.main === module) {
+  const st = styles(process.stdout)
+  const testEnv = { ...process.env, MONGO_URL: mongoUrl }
 
-    console.log('\n🧪 Starting Node.js Native Tests...\n')
+  const nodeArgs = []
+  if (isCoverage) nodeArgs.push('--experimental-test-coverage')
+  nodeArgs.push(`--test-reporter=${styledNodeTestReporterPath}`)
+  nodeArgs.push('--test', ...getTestFiles(__dirname))
 
-    const testFiles = getTestFiles(__dirname)
-
-    let testCmd = 'node'
-    if (isCoverage) {
-      testCmd += ' --experimental-test-coverage'
-    }
-    testCmd += ` --test ${testFiles.join(' ')}`
-
-    execSync(testCmd, { stdio: 'inherit' })
-  } catch (err) {
-    console.error('\n❌ Tests failed!')
-    process.exitCode = 1
-  } finally {
-    if (isNoStop) {
-      console.log(
-        '\n⚠️ Skipping cleanup (--nostop). MongoDB Docker container remains running for debugging.',
-      )
-    } else {
-      console.log('\n🧹 Cleaning up (Stopping Docker)...')
-      execSync(`node "${path.join(__dirname, 'run-after.js')}"`, { stdio: 'inherit' })
-    }
+  if (isNoStop) {
+    console.log(`${st.warning('--nostop')} Docker containers will remain running after tests.`)
   }
+
+  console.log(
+    `${st.accent('Backend Test Runtime')} ${st.muted('(managed Docker + native Node runner)')}`,
+  )
+  
+  runManaged({
+    mode: isCoverage ? 'test-coverage' : 'test',
+    steps: [
+      {
+        label: 'test-setup',
+        command: 'node',
+        args: [path.join(__dirname, 'run-before.js'), '--mode=test'],
+        env: testEnv,
+        timeoutMs: 45_000,
+      },
+      {
+        label: 'test-migrate',
+        command: 'npx',
+        args: ['migrate-mongo', 'up'],
+        env: testEnv,
+        timeoutMs: 60_000,
+      },
+      {
+        label: 'test-run',
+        command: 'node',
+        args: nodeArgs,
+        env: testEnv,
+      },
+    ],
+    cleanup: isNoStop
+      ? null
+      : {
+          label: 'test-cleanup',
+          command: 'node',
+          args: [path.join(__dirname, 'run-after.js'), '--mode=test'],
+          env: testEnv,
+          timeoutMs: 30_000,
+        },
+  }).catch((err) => {
+    if (err?.message) console.error(err.message)
+    process.exitCode = 1
+  })
 }
 
-run()
+module.exports = { getTestFiles }

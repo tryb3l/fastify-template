@@ -4,7 +4,6 @@ const net = require('node:net')
 
 const { addInstantDuration, compareInstants, nowInstant } = require('../utils/time')
 
-
 const docker = new Docker()
 
 const DEFAULT_TIMEOUT_MS = 30_000

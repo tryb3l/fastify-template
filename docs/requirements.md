@@ -79,3 +79,55 @@
 - **Requirements:**
   - Users should be able to export their notes in a CSV format.
   - The exported file should include relevant note data (title, content, timestamps).
+
+## 4. Frontend Integration Notes
+
+### 4.1. Markdown Storage Contract
+
+- **Implementation Note:** The backend keeps Markdown as the single source of truth in the `body` field.
+- **Requirements:**
+  - Frontend editors should send Markdown text in `body` for note create and update requests.
+  - The backend stores and transmits Markdown source in `body`; it does not convert note content into rendered HTML before returning it.
+  - The backend does not store HTML, AST data, or editor-specific state for notes.
+  - Tags and attachments remain separate note fields rather than being embedded into the stored Markdown shape.
+
+### 4.2. Notes List vs Detail Contract
+
+- **Implementation Note:** The notes list endpoint is intentionally summary-only.
+- **Requirements:**
+  - `GET /notes` should stay summary-only metadata for browsing and pagination, not a source for full note content.
+  - `GET /notes` responses include summary fields only: `id`, `title`, `tags`, `createdAt`, and `modifiedAt`.
+  - `GET /notes/:id` remains the endpoint for the full Markdown source in `body` and any note attachments.
+
+### 4.3. List Payload Reduction Snapshot
+
+- **Validation Note:** On a validation dataset of 100 notes with large Markdown bodies around the current Milkdown target size, `GET /notes?limit=100` returned `16,827` bytes with the summary-only contract.
+- **Validation Note:** The equivalent simulated pre-split full-note payload on the same persisted dataset was `3,421,727` bytes, for a reduction of `3,404,900` bytes or `99.51%`.
+- **Methodology Note:** The "before" size is a simulation of the old full-note list contract built from the same stored notes, not a measurement from an old branch checkout.
+
+### 4.4. Autosave and Live Updates
+
+- **Implementation Note:** Note updates and live events still carry the full Markdown `body`.
+- **Requirements:**
+  - Frontend autosave should be debounced to avoid noisy full-body updates during active editing.
+  - `PUT /notes/:id` remains the canonical update path for Markdown note bodies.
+  - `NOTE_UPDATED` websocket payloads should be expected to include the full updated `body`, not a partial patch.
+
+### 4.5. Markdown Rendering Safety
+
+- **Implementation Note:** Markdown rendering safety is deferred to the frontend in this phase, and no frontend rendering code exists in this workspace.
+- **Requirements:**
+  - The Markdown `body` returned by `GET /notes/:id` is trusted storage, but it must be treated as untrusted display input by any frontend renderer.
+  - The default frontend rendering policy should disable raw HTML inside Markdown.
+  - If product requirements later allow raw HTML rendering, the frontend must first enforce an allowlist-based HTML sanitizer and add explicit XSS regression coverage for that path.
+  - The backend does not parse Markdown into HTML or sanitize rendered HTML in this phase.
+  - This backend repo defines the transport contract and rendering-safety handoff; actual renderer implementation is deferred until a frontend codebase is available.
+
+### 4.6. HTTP Compression Scope
+
+- **Implementation Note:** Response compression is existing backend infrastructure, not a transport fix for note writes or websocket sync.
+- **Requirements:**
+  - Global HTTP response compression should be treated as an optimization for large outbound responses such as `GET /notes/:id` and `GET /files/export`.
+  - Compression does not reduce inbound autosave payload size for `PUT /notes/:id`; those request bodies still contain the full Markdown source.
+  - Compression does not reduce websocket `NOTE_UPDATED` frame size; live update payloads still contain the full updated `body`.
+  - If autosave writes or websocket traffic later become a bandwidth problem, address that in a separate slice through debounce, payload diffs, batching, or websocket-specific transport tuning rather than expanding this HTTP compression work.

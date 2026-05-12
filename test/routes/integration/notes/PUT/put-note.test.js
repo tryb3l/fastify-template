@@ -38,6 +38,60 @@ test('PUT /notes/:id 200 - Update a note', async (t) => {
   assert.deepStrictEqual(payload.data.tags, updatedNote.tags)
 })
 
+test('PUT /notes/:id 409 - Rejects stale saves without overwriting the latest note', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+  const noteId = note.data.id
+  const initialModifiedAt = note.data.modifiedAt
+  const firstUpdate = {
+    title: 'First persisted edit',
+    body: 'First body change',
+    tags: ['first'],
+    expectedModifiedAt: initialModifiedAt,
+  }
+  const staleUpdate = {
+    title: 'Stale edit attempt',
+    body: 'Second body change',
+    tags: ['stale'],
+    expectedModifiedAt: initialModifiedAt,
+  }
+
+  // Act
+  const firstResponse = await app.inject({
+    method: 'PUT',
+    url: `/notes/${noteId}`,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    payload: firstUpdate,
+  })
+
+  const staleResponse = await app.inject({
+    method: 'PUT',
+    url: `/notes/${noteId}`,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    payload: staleUpdate,
+  })
+
+  const readResponse = await app.inject({
+    method: 'GET',
+    url: `/notes/${noteId}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  // Assert
+  assert.strictEqual(firstResponse.statusCode, 200)
+  assert.strictEqual(staleResponse.statusCode, 409)
+  assert.strictEqual(readResponse.statusCode, 200)
+  assert.strictEqual(staleResponse.json().code, 'NOTE_STALE_SAVE')
+  assert.strictEqual(
+    staleResponse.json().message,
+    'Note was modified elsewhere. Reload the latest note before saving again.',
+  )
+  assert.strictEqual(staleResponse.json().currentModifiedAt, firstResponse.json().data.modifiedAt)
+  assert.strictEqual(readResponse.json().data.title, firstUpdate.title)
+  assert.strictEqual(readResponse.json().data.body, firstUpdate.body)
+  assert.deepStrictEqual(readResponse.json().data.tags, firstUpdate.tags)
+})
+
 test('PUT /notes/:id 200 - Updates a note with a large markdown body', async (t) => {
   // Arrange
   const { app, accessToken, note } = await createNote(t)
@@ -239,20 +293,53 @@ test('PUT /notes/:id Partial Update - Valid Payload', async (t) => {
   // Arrange
   const { app, accessToken, note } = await createNote(t)
   const noteId = note.data.id
+  const renamedTitle = randomString(18)
 
   // Act
-  const response = await app.inject({
+  const updateResponse = await app.inject({
     method: 'PUT',
     url: `/notes/${noteId}`,
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-    payload: { body: randomString(25) },
+    payload: { title: renamedTitle },
+  })
+
+  const readResponse = await app.inject({
+    method: 'GET',
+    url: `/notes/${noteId}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
   })
 
   // Assert
-  assert.ok(
-    [200, 400].includes(response.statusCode),
-    `Expected 200 or 400, got ${response.statusCode}`
-  )
+  assert.strictEqual(updateResponse.statusCode, 200)
+  assert.strictEqual(readResponse.statusCode, 200)
+  assert.strictEqual(readResponse.json().data.title, renamedTitle)
+  assert.strictEqual(readResponse.json().data.body, note.data.body)
+})
+
+test('PUT /notes/:id 200 - Accepts an explicitly empty body', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+  const noteId = note.data.id
+
+  // Act
+  const updateResponse = await app.inject({
+    method: 'PUT',
+    url: `/notes/${noteId}`,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    payload: { body: '' },
+  })
+
+  const readResponse = await app.inject({
+    method: 'GET',
+    url: `/notes/${noteId}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  // Assert
+  assert.strictEqual(updateResponse.statusCode, 200)
+  assert.strictEqual(readResponse.statusCode, 200)
+  assert.strictEqual(updateResponse.json().data.body, '')
+  assert.strictEqual(readResponse.json().data.body, '')
 })
 
 test('PUT /notes/:id 401 - Unauthorized', async (t) => {
@@ -265,7 +352,7 @@ test('PUT /notes/:id 401 - Unauthorized', async (t) => {
     method: 'PUT',
     url: `/notes/${noteId}`,
     headers: { 'Content-Type': 'application/json' },
-    payload: { title: randomString(10), body: randomString(20) }
+    payload: { title: randomString(10), body: randomString(20) },
   })
 
   // Assert
