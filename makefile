@@ -76,6 +76,14 @@ dev: check-env ## Start the managed local backend runtime
 	@echo "Mailpit UI: http://localhost:$(DEV_MAILPIT_UI_PORT)"
 	@$(LOAD_ENV) $(DEV_ENV) npm run dev
 
+.PHONY: dev-app
+dev-app: check-env ## Start both backend and frontend in dev mode
+	@echo "Starting backend and frontend..."
+	@echo "Mailpit UI: http://localhost:$(DEV_MAILPIT_UI_PORT)"
+	@$(LOAD_ENV) $(DEV_ENV) npm run dev & \
+	npm --prefix ../note-explorer run dev & \
+	wait
+
 .PHONY: dev-trace
 dev-trace: check-env ## Start the managed local backend runtime with trace warnings
 	@echo "Starting managed Fastify trace runtime..."
