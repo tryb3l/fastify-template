@@ -1,7 +1,8 @@
 'use strict'
 
 const fp = require('fastify-plugin')
-const { randomUUID } = require('node:crypto')
+const { randomUUIDv7 } = require('node:crypto')
+const { instantToDate, nowInstant } = require('../utils/time')
 
 async function usersPlugin(fastify) {
   const users = fastify.mongo.db.collection('users')
@@ -13,9 +14,9 @@ async function usersPlugin(fastify) {
   const usersDataSource = {
     async createUser(userData) {
       fastify.log.info('Entering createUser method')
-      userData._id = randomUUID()
-      userData.createdAt = new Date()
-      userData.modifiedAt = new Date()
+      userData._id = randomUUIDv7()
+      userData.createdAt = instantToDate(nowInstant())
+      userData.modifiedAt = instantToDate(nowInstant())
       userData.role = userData.role || 'user'
       userData.credentialsVersion = 0
       try {
@@ -201,7 +202,7 @@ async function usersPlugin(fastify) {
           {
             $set: {
               ...newUser,
-              modifiedAt: new Date(),
+              modifiedAt: instantToDate(nowInstant()),
             },
           },
         )
@@ -217,7 +218,7 @@ async function usersPlugin(fastify) {
       try {
         const res = await users.updateOne(
           { _id: id, deleted: { $ne: true } },
-          { $set: { deleted: true, deletedAt: new Date() } },
+          { $set: { deleted: true, deletedAt: instantToDate(nowInstant()) } },
         )
 
         if (res.modifiedCount === 0) {
@@ -340,7 +341,7 @@ async function usersPlugin(fastify) {
     async verifyAndExecutePasswordReset(resetId, secretHash, newHash, maxAttempts) {
       fastify.log.info({ resetId }, 'Entering verifyAndExecutePasswordReset method')
 
-      const now = new Date()
+      const now = instantToDate(nowInstant())
       const result = await users.findOneAndUpdate(
         {
           'passwordReset.id': resetId,
@@ -376,7 +377,7 @@ async function usersPlugin(fastify) {
     async incrementPasswordResetFailedAttempts(resetId, maxAttempts) {
       fastify.log.info({ resetId }, 'Entering incrementPasswordResetFailedAttempts method')
 
-      const now = new Date()
+      const now = instantToDate(nowInstant())
       const result = await users.findOneAndUpdate(
         {
           'passwordReset.id': resetId,
@@ -412,7 +413,7 @@ async function usersPlugin(fastify) {
       await users.updateOne(
         { 'passwordReset.id': resetId },
         {
-          $set: { modifiedAt: new Date() },
+          $set: { modifiedAt: instantToDate(nowInstant()) },
           $unset: { passwordReset: '' },
         },
       )

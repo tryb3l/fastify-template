@@ -1,7 +1,7 @@
 'use strict'
 
 const fp = require('fastify-plugin')
-const { randomUUID } = require('node:crypto')
+const { randomUUIDv7 } = require('node:crypto')
 const { instantToDate, nowInstant, parseIsoInstant } = require('../utils/time')
 
 const normalizeNoteBody = (body) => (typeof body === 'string' ? body : '')
@@ -56,9 +56,10 @@ module.exports = fp(
 
       async createNote({ title, body, tags }, userId) {
         fastify.log.info('Entering createNote method')
-        const _id = randomUUID()
-        const now = new Date()
+        const _id = randomUUIDv7()
+        const now = instantToDate(nowInstant())
         const note = {
+          _id,
           userId,
           title,
           body: normalizeNoteBody(body),
@@ -75,9 +76,9 @@ module.exports = fp(
 
       async createNotes(noteList, userId) {
         fastify.log.info('Entering createNotes method')
-        const now = new Date()
+        const now = instantToDate(nowInstant())
         const toInsert = noteList.map((rawNote) => {
-          const _id = randomUUID()
+          const _id = randomUUIDv7()
           return {
             _id,
             userId,
@@ -204,7 +205,7 @@ module.exports = fp(
           { id, userId },
           {
             $push: { attachments: { $each: attachments } },
-            $set: { modifiedAt: new Date() },
+            $set: { modifiedAt: instantToDate(nowInstant()) },
           },
           { returnDocument: 'after' },
         )

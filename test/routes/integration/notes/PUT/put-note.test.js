@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert')
-const { randomUUID } = require('node:crypto')
+const { randomUUIDv7 } = require('node:crypto')
 const { createNote } = require('../../../../utils/note-creator')
 const { randomString } = require('../../../../utils/data-creator')
 const { setup } = require('../../../../utils/setup-user')
@@ -229,7 +229,7 @@ test('PUT /notes/:id 200 - Invalidates cached note reads after update', async (t
 test('PUT /notes/:id 404 - Note not found', async (t) => {
   // Arrange
   const { app, accessToken } = await createNote(t)
-  const nonExistentNoteId = randomUUID()
+  const nonExistentNoteId = randomUUIDv7()
 
   // Act
   const response = await app.inject({

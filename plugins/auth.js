@@ -2,7 +2,7 @@
 
 const fp = require('fastify-plugin')
 const fastifyJwt = require('@fastify/jwt')
-const { randomUUID } = require('node:crypto')
+const { randomUUIDv7 } = require('node:crypto')
 
 module.exports = fp(
   async function (fastify) {
@@ -100,7 +100,7 @@ module.exports = fp(
       const accessToken = fastify.jwt.sign(
         { ...payload, type: 'access' },
         {
-          jti: randomUUID(),
+          jti: randomUUIDv7(),
           expiresIn: fastify.config.jwt.accessExpireIn || '1h',
         },
       )
@@ -108,7 +108,7 @@ module.exports = fp(
       const refreshToken = fastify.jwt.sign(
         { ...payload, type: 'refresh' },
         {
-          jti: randomUUID(),
+          jti: randomUUIDv7(),
           expiresIn: fastify.config.jwt.refreshExpireIn || '30d',
         },
       )

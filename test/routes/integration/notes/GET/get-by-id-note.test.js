@@ -4,7 +4,7 @@ const test = require('node:test')
 const assert = require('node:assert')
 const { createNote } = require('../../../../utils/note-creator')
 const { randomString } = require('../../../../utils/data-creator')
-const { randomUUID } = require('node:crypto')
+const { randomUUIDv7 } = require('node:crypto')
 const { setup } = require('../../../../utils/setup-user')
 const { buildMarkdownNote } = require('../../../../utils/markdown-note')
 const {
@@ -139,7 +139,7 @@ test('GET by id /notes/:id 200 - Compresses large markdown responses over HTTP w
 test('GET by id /notes/:id 404 - Note not found', async (t) => {
   // Arrange
   const { app, accessToken } = await createNote(t)
-  const nonExistentNoteId = randomUUID()
+  const nonExistentNoteId = randomUUIDv7()
 
   // Act
   const response = await app.inject({

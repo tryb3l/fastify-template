@@ -24,7 +24,7 @@ async function passwordResetPlugin(fastify) {
   const maxAttempts = Math.max(1, Number(fastify.config.passwordReset?.maxAttempts || 5))
 
   const generateOpaqueToken = () => {
-    const id = crypto.randomUUID()
+    const id = crypto.randomUUIDv7()
     const secret = crypto.randomBytes(32).toString('hex')
     return { id, secret }
   }

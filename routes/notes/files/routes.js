@@ -9,7 +9,7 @@ const fastifyMultipart = require('@fastify/multipart')
 const path = require('node:path')
 const { parse: csvParse } = require('csv-parse')
 const { stringify: csvStringify } = require('csv-stringify')
-const { randomUUID } = require('node:crypto')
+const { randomUUIDv7 } = require('node:crypto')
 const {
   CSV_IMPORT_BATCH_SIZE,
   buildNoteImportHeaders,
@@ -245,7 +245,7 @@ module.exports = async function fileRoutes(fastify) {
           )
         }
 
-        const safeFilename = randomUUID() + ext
+        const safeFilename = randomUUIDv7() + ext
         const filePath = path.join(uploadDir, safeFilename)
         const fileId = safeFilename.slice(0, safeFilename.lastIndexOf('.'))
         const uploadedAt = new Date().toISOString()

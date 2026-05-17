@@ -3,7 +3,7 @@
 const test = require('node:test')
 const assert = require('node:assert')
 const { setup } = require('../../../utils/setup-user')
-const { randomUUID } = require('node:crypto')
+const { randomUUIDv7 } = require('node:crypto')
 const { generateMalformedUUIDs } = require('../../../utils/data-creator')
 
 test('GET /users/:id 200 - Admin can fetch user details', async (t) => {
@@ -25,7 +25,7 @@ test('GET /users/:id 200 - Admin can fetch user details', async (t) => {
 test('GET /users/:id 404 - User not found', async (t) => {
   // Arrange
   const { app, accessToken } = await setup(t, 'admin')
-  const nonExistentUserId = randomUUID()
+  const nonExistentUserId = randomUUIDv7()
 
   // Act
   const response = await app.inject({

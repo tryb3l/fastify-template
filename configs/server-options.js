@@ -23,7 +23,7 @@ module.exports = {
   requestIdHeader: false,
   pluginTimeout: 20000,
   genReqId() {
-    return crypto.randomUUID()
+    return crypto.randomUUIDv7()
   },
   ajv: {
     customOptions: {
