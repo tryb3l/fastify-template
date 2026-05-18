@@ -19,16 +19,31 @@ The backend now uses the built-in Temporal API available in Node.js 26. Keep Tem
 
 ### Running the Project Using Docker
 
-1. **Build the Docker Image:**
+There are two Docker compose paths.
 
-   ```sh
-   docker build -t fastify-boilerplate .
-   ```
+**Local Docker stack (Mailpit included, no real SMTP needed)**
 
-2. **Start the Docker Containers:**
-   ```sh
-   docker compose -f docker-compose.yml up
-   ```
+```sh
+make dev-compose
+```
+
+This builds the image and starts Mongo, the app in development mode, and Mailpit for SMTP capture. Open `http://localhost:8025` to inspect captured mail. No SMTP credentials are required.
+
+**Production Docker stack (real SMTP required)**
+
+Ensure `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, and `SMTP_PASS` are set in `.env`, then:
+
+```sh
+docker compose -f docker-compose.yml up
+```
+
+or the makefile alias:
+
+```sh
+make up
+```
+
+The app boots in production mode and fails fast at startup if SMTP is not configured. That behavior is intentional.
 
 ### Running the Project Locally
 
@@ -112,7 +127,13 @@ Outside `development` and `test`, the app now fails fast during boot if SMTP is 
    make init-env
   ```
 
-- **Start local MongoDB + Mailpit + app:**
+- **Start the local Docker app stack with Mailpit:**
+
+  ```sh
+   make dev-compose
+  ```
+
+- **Start local MongoDB + Mailpit + app:\*\***
 
   ```sh
    make dev

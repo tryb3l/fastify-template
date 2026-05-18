@@ -1,0 +1,26 @@
+# Local development overlay run with: make dev-compose
+# docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
+# Differences from the production base:
+#   - Sets NODE_ENV=development so the app accepts the local Mailpit SMTP host.
+#   - Overrides SMTP_* vars to point at the mailpit service inside the compose network.
+#   - Exposes Mailpit UI on localhost:8025.
+
+services:
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+  app_be:
+    environment:
+      - NODE_ENV=development
+      - SMTP_HOST=mailpit
+      - SMTP_PORT=1025
+      - SMTP_SECURE=false
+      - MAIL_FROM=no-reply@notes.local
+    depends_on:
+      mailpit:
+        condition: service_started

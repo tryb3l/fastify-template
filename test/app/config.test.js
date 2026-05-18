@@ -40,14 +40,13 @@ test('mailer plugin requires SMTP outside development and test', async (t) => {
     await app.close().catch(() => {})
   })
 
-  await app.register(configPlugin, {
+  app.register(configPlugin, {
     configData: buildConfigData({ NODE_ENV: 'production' }),
   })
+  app.register(mailerPlugin)
 
   await assert.rejects(
-    async () => {
-      await app.register(mailerPlugin)
-    },
+    () => app.ready(),
     (err) => err.code === 'SMTP_CONFIG_REQUIRED',
   )
 })

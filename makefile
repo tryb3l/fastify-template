@@ -1,4 +1,5 @@
 DOCKER_COMPOSE = docker compose -f docker-compose.yml
+LOCAL_DOCKER_COMPOSE = docker compose -f docker-compose.yml -f docker-compose.local.yml
 APP_NAME = fastify-app
 ENV_FILE ?= .env
 DEV_MONGO_CONTAINER ?= fastify-mongo
@@ -76,13 +77,28 @@ dev: check-env ## Start the managed local backend runtime
 	@echo "Mailpit UI: http://localhost:$(DEV_MAILPIT_UI_PORT)"
 	@$(LOAD_ENV) $(DEV_ENV) npm run dev
 
+.PHONY: start-docker
+start-docker: check-env
+	@if ! docker info > /dev/null 2>&1; then \
+		echo "Docker is not running. Starting Docker Desktop..."; \
+		open -a Docker; \
+		echo "Waiting for Docker engine to be ready..."; \
+		while ! docker info > /dev/null 2>&1; do sleep 1; done; \
+		echo "Docker is ready."; \
+	fi
+
 .PHONY: dev-app
-dev-app: check-env ## Start both backend and frontend in dev mode
+dev-app: check-env start-docker ## Start both backend and frontend in dev mode
 	@echo "Starting backend and frontend..."
 	@echo "Mailpit UI: http://localhost:$(DEV_MAILPIT_UI_PORT)"
+	@$(LOCAL_DOCKER_COMPOSE) up -d mongo mailpit
 	@$(LOAD_ENV) $(DEV_ENV) npm run dev & \
 	npm --prefix ../note-explorer run dev & \
 	wait
+
+.PHONY: dev-compose
+dev-compose: ## Start the local Docker app stack with Mailpit (no real SMTP required)
+	$(LOCAL_DOCKER_COMPOSE) up -d --build
 
 .PHONY: dev-trace
 dev-trace: check-env ## Start the managed local backend runtime with trace warnings
@@ -91,11 +107,11 @@ dev-trace: check-env ## Start the managed local backend runtime with trace warni
 	@$(LOAD_ENV) $(DEV_ENV) npm run dev:trace
 
 .PHONY: test
-test:
+test: start-docker
 	npm run test
 
 .PHONY: test-ci
-test-ci:
+test-ci: ## Run tests in CI mode (no Docker, no managed runtime)
 	npm run test:ci
 
 .PHONY: test-cov
