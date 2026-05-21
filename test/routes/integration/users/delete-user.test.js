@@ -4,18 +4,14 @@ const test = require('node:test')
 const assert = require('node:assert')
 const { MongoClient } = require('mongodb')
 const { setup } = require('../../../utils/setup-user')
+const { flushAuditLogs } = require('../../../utils/audit')
 
 async function readAuditLogs(mongoUrl, filter) {
   const client = new MongoClient(mongoUrl)
   await client.connect()
 
   try {
-    return await client
-      .db()
-      .collection('auditLogs')
-      .find(filter)
-      .sort({ createdAt: 1 })
-      .toArray()
+    return await client.db().collection('auditLogs').find(filter).sort({ createdAt: 1 }).toArray()
   } finally {
     await client.close()
   }
@@ -85,6 +81,7 @@ test('DELETE /users/me 204 - Writes an audit log for self delete', async (t) => 
 
   // Assert
   assert.strictEqual(response.statusCode, 204)
+  await flushAuditLogs()
 
   const auditLogs = await waitForAuditLogs(mongoUrl, {
     action: 'user_soft_deleted',

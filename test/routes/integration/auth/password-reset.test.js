@@ -5,6 +5,8 @@ const assert = require('node:assert')
 const { MongoClient } = require('mongodb')
 const { setup } = require('../../../utils/setup-user')
 const { randomPassword } = require('../../../utils/data-creator')
+const { buildRefreshTokenCookieHeader, issueCsrfContext } = require('../../../utils/csrf')
+const { flushAuditLogs } = require('../../../utils/audit')
 const mailerPlugin = require('../../../../plugins/mailer')
 
 function extractResetToken(messageText) {
@@ -224,19 +226,12 @@ test('POST /auth/reset-password/confirm 200 - Resets password and invalidates pr
   assert.strictEqual(sessionResponse.statusCode, 401)
   assert.strictEqual(sessionResponse.json().message, 'Session invalidated')
 
-  const csrfResponse = await app.inject({
-    method: 'GET',
-    url: '/auth/csrf',
-  })
-  assert.strictEqual(csrfResponse.statusCode, 200)
-
-  const csrfToken = csrfResponse.json().csrfToken
-  const csrfCookie = csrfResponse.headers['set-cookie']
+  const { csrfToken, csrfCookieHeader } = await issueCsrfContext(app)
   const oldRefreshResponse = await app.inject({
     method: 'POST',
     url: '/auth/refresh',
     headers: {
-      cookie: `refreshToken=${refreshToken}; ${Array.isArray(csrfCookie) ? csrfCookie[0] : csrfCookie}`,
+      cookie: buildRefreshTokenCookieHeader(refreshToken, csrfCookieHeader),
       'x-csrf-token': csrfToken,
     },
   })
@@ -266,6 +261,7 @@ test('POST /auth/reset-password/request 200 - Suppresses repeat requests during 
   assert.strictEqual(firstResponse.statusCode, 200)
   assert.strictEqual(secondResponse.statusCode, 200)
   assert.strictEqual(mailerPlugin.getTestMessages().length, 1)
+  await flushAuditLogs()
 
   const requestedLogs = await waitForAuditLogs(
     mongoUrl,
@@ -402,6 +398,7 @@ test('Password reset audit trail - Writes request, invalid confirm, and confirm 
 
   // Assert
   assert.strictEqual(confirmResponse.statusCode, 200)
+  await flushAuditLogs()
 
   const requestedLogs = await waitForAuditLogs(
     mongoUrl,

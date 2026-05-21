@@ -3,33 +3,18 @@
 const test = require('node:test')
 const assert = require('node:assert')
 const { setup } = require('../../../utils/setup-user')
+const { buildRefreshTokenCookieHeader, issueCsrfContext } = require('../../../utils/csrf')
 
 function findRefreshCookie(setCookieHeader) {
   const cookies = Array.isArray(setCookieHeader) ? setCookieHeader : [setCookieHeader]
   return cookies.find((cookie) => cookie && cookie.startsWith('refreshToken='))
 }
 
-async function issueCsrfContext(app) {
-  const csrfResponse = await app.inject({
-    method: 'GET',
-    url: '/auth/csrf',
-  })
-
-  assert.strictEqual(csrfResponse.statusCode, 200)
-
-  return {
-    csrfToken: csrfResponse.json().csrfToken,
-    csrfCookieHeader: Array.isArray(csrfResponse.headers['set-cookie'])
-      ? csrfResponse.headers['set-cookie'][0]
-      : csrfResponse.headers['set-cookie'],
-  }
-}
-
 test('POST /auth/logout 204 - Successfully clears token session', async (t) => {
   // Arrange
   const { app, refreshToken } = await setup(t, 'user')
   const { csrfToken, csrfCookieHeader } = await issueCsrfContext(app)
-  const cookieHeader = `refreshToken=${refreshToken}; ${csrfCookieHeader}`
+  const cookieHeader = buildRefreshTokenCookieHeader(refreshToken, csrfCookieHeader)
 
   // Act
   const logoutResponse = await app.inject({
@@ -74,7 +59,7 @@ test('POST /auth/logout 401 - Rejects access tokens supplied via the refreshToke
   // Arrange
   const { app, accessToken } = await setup(t, 'user')
   const { csrfToken, csrfCookieHeader } = await issueCsrfContext(app)
-  const cookieHeader = `refreshToken=${accessToken}; ${csrfCookieHeader}`
+  const cookieHeader = buildRefreshTokenCookieHeader(accessToken, csrfCookieHeader)
 
   // Act
   const response = await app.inject({

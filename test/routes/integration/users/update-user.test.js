@@ -5,18 +5,14 @@ const assert = require('node:assert')
 const { MongoClient } = require('mongodb')
 const { setup } = require('../../../utils/setup-user')
 const { randomUsername } = require('../../../utils/data-creator')
+const { flushAuditLogs } = require('../../../utils/audit')
 
 async function readAuditLogs(mongoUrl, filter) {
   const client = new MongoClient(mongoUrl)
   await client.connect()
 
   try {
-    return await client
-      .db()
-      .collection('auditLogs')
-      .find(filter)
-      .sort({ createdAt: 1 })
-      .toArray()
+    return await client.db().collection('auditLogs').find(filter).sort({ createdAt: 1 }).toArray()
   } finally {
     await client.close()
   }
@@ -45,7 +41,7 @@ test('PUT /users/me 200 - Updates self username', async (t) => {
     method: 'PUT',
     url: `/users/me`,
     headers: { Authorization: `Bearer ${accessToken}` },
-    payload: { username: newUsername }
+    payload: { username: newUsername },
   })
 
   // Assert
@@ -68,7 +64,7 @@ test('PUT /users/me 400 - Rejects attacker-controlled identity fields', async (t
       username: attemptedUsername,
       role: 'admin',
       userId: target.userId,
-    }
+    },
   })
 
   // Assert
@@ -102,7 +98,7 @@ test('PUT /users/me 400 - Rejects role updates', async (t) => {
     headers: { Authorization: `Bearer ${actor.accessToken}` },
     payload: {
       role: 'admin',
-    }
+    },
   })
 
   // Assert
@@ -129,7 +125,7 @@ test('PUT /users/:id 204 - Admin updates another user', async (t) => {
     method: 'PUT',
     url: `/users/${targetUser.userId}`,
     headers: { Authorization: `Bearer ${adminToken}` },
-    payload: { username: newUsername }
+    payload: { username: newUsername },
   })
 
   // Assert
@@ -156,7 +152,7 @@ test('PUT /users/:id 204 - Admin updates another user role', async (t) => {
     method: 'PUT',
     url: `/users/${targetUser.userId}`,
     headers: { Authorization: `Bearer ${adminToken}` },
-    payload: { role: 'admin' }
+    payload: { role: 'admin' },
   })
 
   // Assert
@@ -183,11 +179,12 @@ test('PUT /users/:id 204 - Admin role change writes an audit log', async (t) => 
     method: 'PUT',
     url: `/users/${targetUser.userId}`,
     headers: { Authorization: `Bearer ${adminToken}` },
-    payload: { role: 'admin' }
+    payload: { role: 'admin' },
   })
 
   // Assert
   assert.strictEqual(response.statusCode, 204)
+  await flushAuditLogs()
 
   const auditLogs = await waitForAuditLogs(mongoUrl, {
     action: 'user_role_changed',
@@ -218,7 +215,7 @@ test('PUT /users/:id 400 - Admin cannot update deleted field', async (t) => {
     method: 'PUT',
     url: `/users/${targetUser.userId}`,
     headers: { Authorization: `Bearer ${adminToken}` },
-    payload: { deleted: true }
+    payload: { deleted: true },
   })
 
   // Assert
@@ -245,7 +242,7 @@ test('PUT /users/:id 403 - Block user from updating other users', async (t) => {
     method: 'PUT',
     url: `/users/${targetUser.userId}`,
     headers: { Authorization: `Bearer ${accessToken}` },
-    payload: { username: attemptedUsername }
+    payload: { username: attemptedUsername },
   })
 
   // Assert
@@ -260,4 +257,3 @@ test('PUT /users/:id 403 - Block user from updating other users', async (t) => {
   assert.strictEqual(verifyResponse.statusCode, 200)
   assert.strictEqual(verifyResponse.json().data.username, targetUser.username)
 })
-

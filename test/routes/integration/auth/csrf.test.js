@@ -3,6 +3,11 @@
 const test = require('node:test')
 const assert = require('node:assert')
 const { setup } = require('../../../utils/setup-user')
+const {
+  buildRefreshTokenCookieHeader,
+  getCookiePair,
+  issueCsrfContext,
+} = require('../../../utils/csrf')
 
 test('POST /auth/refresh 403 - Requires a CSRF token', async (t) => {
   // Arrange
@@ -49,12 +54,14 @@ test('GET /auth/csrf 200 - Issues a CSRF token', async (t) => {
   // Assert
   assert.strictEqual(response.statusCode, 200)
   assert.ok(response.json().csrfToken, 'Should successfully issue a CSRF generation payload')
+  assert.ok(getCookiePair(response.headers['set-cookie']))
 })
 
 test('POST /auth/refresh 403 - Rejects an invalid CSRF token', async (t) => {
   // Arrange
   const { app, refreshToken } = await setup(t, 'user')
-  const cookieHeader = `refreshToken=${refreshToken}`
+  const { csrfCookieHeader } = await issueCsrfContext(app)
+  const cookieHeader = buildRefreshTokenCookieHeader(refreshToken, csrfCookieHeader)
 
   // Act
   const response = await app.inject({

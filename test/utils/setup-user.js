@@ -21,21 +21,15 @@ async function setup(t, role = 'user', env = {}) {
   assert.strictEqual(registerResponse.statusCode, 201)
 
   if (role !== 'user') {
-    const client = new MongoClient(mongoUrl.replace(/\/test$/, ''))
+    const client = new MongoClient(mongoUrl)
     await client.connect()
 
-    const adminDb = client.db().admin()
-    const { databases } = await adminDb.listDatabases()
-
-    for (const dbInfo of databases) {
-      const db = client.db(dbInfo.name)
-      await db.collection('users').updateOne(
-        { username: username },
-        { $set: { role: role } }
-      )
+    try {
+      const db = client.db()
+      await db.collection('users').updateOne({ username: username }, { $set: { role: role } })
+    } finally {
+      await client.close()
     }
-
-    await client.close()
   }
 
   const loginResponse = await app.inject({
@@ -49,7 +43,7 @@ async function setup(t, role = 'user', env = {}) {
   const accessToken = responseData.access_token
   const setCookie = loginResponse.headers['set-cookie'] || []
   const cookies = Array.isArray(setCookie) ? setCookie : [setCookie]
-  const refreshCookieStr = cookies.find(c => c && c.startsWith('refreshToken=')) || ''
+  const refreshCookieStr = cookies.find((c) => c && c.startsWith('refreshToken=')) || ''
   const refreshToken = refreshCookieStr.split(';')[0].split('=')[1]
   const userId = responseData.user.id
 

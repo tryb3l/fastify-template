@@ -5,6 +5,7 @@ const assert = require('node:assert')
 const fs = require('node:fs/promises')
 const path = require('node:path')
 const FormData = require('form-data')
+const { MongoClient } = require('mongodb')
 const { createNote } = require('../../../../utils/note-creator')
 const { setup } = require('../../../../utils/setup-user')
 const { buildMarkdownNote } = require('../../../../utils/markdown-note')
@@ -81,6 +82,23 @@ async function importNotesFile(app, accessToken, csvContent, filename = 'import.
     },
     payload: form,
   })
+}
+
+async function updateAttachmentOriginalFilename(mongoUrl, noteId, fileId, originalFilename) {
+  const client = new MongoClient(mongoUrl)
+  await client.connect()
+
+  try {
+    const db = client.db()
+    await db
+      .collection('notes')
+      .updateOne(
+        { id: noteId, 'attachments.fileId': fileId },
+        { $set: { 'attachments.$.originalFilename': originalFilename } },
+      )
+  } finally {
+    await client.close()
+  }
 }
 
 test('POST /files/import 201 - Successfully parses and imports CSV', async (t) => {
@@ -774,4 +792,216 @@ test('GET /files/:fileId 404 - Different user cannot download another users file
 
   // Assert
   assert.strictEqual(response.statusCode, 404)
+})
+
+test('GET /files/:fileId 200 - Returns ETag and Last-Modified caching headers', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+  const form = new FormData()
+  const fileName = 'etag-file.txt'
+  form.append('file', Buffer.from('etag-content'), {
+    filename: fileName,
+    contentType: 'text/plain',
+  })
+  const uploadRes = await uploadNoteFile(app, accessToken, note.data.id, form)
+  assert.strictEqual(uploadRes.statusCode, 201)
+  const fileId = uploadRes.json().files[0].fileId
+  registerFileCleanup(t, fileId, fileName)
+
+  // Act
+  const response = await app.inject({
+    method: 'GET',
+    url: `${ROUTE_PREFIX}/${fileId}?noteId=${note.data.id}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 200)
+  assert.ok(response.headers['etag'], 'ETag header should be present')
+  assert.match(response.headers['etag'], /^W\/"/, 'ETag should be a weak ETag')
+  assert.ok(response.headers['last-modified'], 'Last-Modified header should be present')
+  assert.strictEqual(response.headers['cache-control'], 'private, no-cache')
+  assert.ok(
+    !Number.isNaN(Date.parse(response.headers['last-modified'])),
+    'Last-Modified should be a valid HTTP date',
+  )
+})
+
+test('GET /files/:fileId 304 - Returns 304 on matching If-None-Match', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+  const form = new FormData()
+  const fileName = 'conditional-etag.txt'
+  form.append('file', Buffer.from('conditional-content'), {
+    filename: fileName,
+    contentType: 'text/plain',
+  })
+  const uploadRes = await uploadNoteFile(app, accessToken, note.data.id, form)
+  assert.strictEqual(uploadRes.statusCode, 201)
+  const fileId = uploadRes.json().files[0].fileId
+  registerFileCleanup(t, fileId, fileName)
+
+  const firstResponse = await app.inject({
+    method: 'GET',
+    url: `${ROUTE_PREFIX}/${fileId}?noteId=${note.data.id}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  assert.strictEqual(firstResponse.statusCode, 200)
+  const etag = firstResponse.headers['etag']
+  const lastModified = firstResponse.headers['last-modified']
+
+  // Act
+  const conditionalResponse = await app.inject({
+    method: 'GET',
+    url: `${ROUTE_PREFIX}/${fileId}?noteId=${note.data.id}`,
+    headers: { Authorization: `Bearer ${accessToken}`, 'if-none-match': etag },
+  })
+
+  // Assert
+  assert.strictEqual(conditionalResponse.statusCode, 304)
+  assert.strictEqual(conditionalResponse.headers['etag'], etag)
+  assert.strictEqual(conditionalResponse.headers['last-modified'], lastModified)
+  assert.strictEqual(conditionalResponse.headers['cache-control'], 'private, no-cache')
+  assert.strictEqual(conditionalResponse.body, '')
+})
+
+test('GET /files/:fileId 304 - Returns 304 on matching If-Modified-Since', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+  const form = new FormData()
+  const fileName = 'conditional-ims.txt'
+  form.append('file', Buffer.from('ims-content'), {
+    filename: fileName,
+    contentType: 'text/plain',
+  })
+  const uploadRes = await uploadNoteFile(app, accessToken, note.data.id, form)
+  assert.strictEqual(uploadRes.statusCode, 201)
+  const fileId = uploadRes.json().files[0].fileId
+  registerFileCleanup(t, fileId, fileName)
+
+  const firstResponse = await app.inject({
+    method: 'GET',
+    url: `${ROUTE_PREFIX}/${fileId}?noteId=${note.data.id}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  assert.strictEqual(firstResponse.statusCode, 200)
+  const lastModified = firstResponse.headers['last-modified']
+
+  // Act
+  const conditionalResponse = await app.inject({
+    method: 'GET',
+    url: `${ROUTE_PREFIX}/${fileId}?noteId=${note.data.id}`,
+    headers: { Authorization: `Bearer ${accessToken}`, 'if-modified-since': lastModified },
+  })
+
+  // Assert
+  assert.strictEqual(conditionalResponse.statusCode, 304)
+  assert.strictEqual(conditionalResponse.headers['last-modified'], lastModified)
+  assert.strictEqual(conditionalResponse.headers['cache-control'], 'private, no-cache')
+  assert.strictEqual(conditionalResponse.body, '')
+})
+
+test('GET /files/:fileId 200 - Prefers If-None-Match over If-Modified-Since', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+  const form = new FormData()
+  const fileName = 'conditional-precedence.txt'
+  const fileContent = 'precedence-content'
+  form.append('file', Buffer.from(fileContent), {
+    filename: fileName,
+    contentType: 'text/plain',
+  })
+  const uploadRes = await uploadNoteFile(app, accessToken, note.data.id, form)
+  assert.strictEqual(uploadRes.statusCode, 201)
+  const fileId = uploadRes.json().files[0].fileId
+  registerFileCleanup(t, fileId, fileName)
+
+  const firstResponse = await app.inject({
+    method: 'GET',
+    url: `${ROUTE_PREFIX}/${fileId}?noteId=${note.data.id}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  assert.strictEqual(firstResponse.statusCode, 200)
+  const lastModified = firstResponse.headers['last-modified']
+
+  // Act
+  const conditionalResponse = await app.inject({
+    method: 'GET',
+    url: `${ROUTE_PREFIX}/${fileId}?noteId=${note.data.id}`,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'if-none-match': 'W/"not-the-current-etag"',
+      'if-modified-since': lastModified,
+    },
+  })
+
+  // Assert
+  assert.strictEqual(conditionalResponse.statusCode, 200)
+  assert.strictEqual(conditionalResponse.body, fileContent)
+})
+
+test('GET /files/:fileId 200 - Sanitizes unsafe characters from Content-Disposition filename', async (t) => {
+  // Arrange
+  const { app, accessToken, note, mongoUrl } = await createNote(t)
+  const form = new FormData()
+  const uploadedFileName = 'sanitize-source.txt'
+  const unsafeFileName = 'folder\\report"2026\r\nevil.txt'
+  form.append('file', Buffer.from('sanitized-name-test'), {
+    filename: uploadedFileName,
+    contentType: 'text/plain',
+  })
+  const uploadRes = await uploadNoteFile(app, accessToken, note.data.id, form)
+  assert.strictEqual(uploadRes.statusCode, 201)
+  const fileId = uploadRes.json().files[0].fileId
+  registerFileCleanup(t, fileId, uploadedFileName)
+  await updateAttachmentOriginalFilename(mongoUrl, note.data.id, fileId, unsafeFileName)
+
+  // Act
+  const response = await app.inject({
+    method: 'GET',
+    url: `${ROUTE_PREFIX}/${fileId}?noteId=${note.data.id}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 200)
+  const disposition = response.headers['content-disposition']
+  const filename = disposition.match(/^attachment; filename="(.+)"$/)?.[1]
+  assert.ok(filename, 'Sanitized filename should be present')
+  assert.ok(!filename.includes('"'), 'Double-quote should be replaced in filename')
+  assert.ok(!filename.includes('\\'), 'Backslash should be replaced in filename')
+  assert.ok(!filename.includes('\r'), 'CR should be replaced in filename')
+  assert.ok(!filename.includes('\n'), 'LF should be replaced in filename')
+})
+
+test('GET /files/:fileId 200 - Falls back for unsafe-only Content-Disposition filename', async (t) => {
+  // Arrange
+  const { app, accessToken, note, mongoUrl } = await createNote(t)
+  const form = new FormData()
+  const uploadedFileName = 'blank-fallback-source.txt'
+  form.append('file', Buffer.from('fallback-name-test'), {
+    filename: uploadedFileName,
+    contentType: 'text/plain',
+  })
+  const uploadRes = await uploadNoteFile(app, accessToken, note.data.id, form)
+  assert.strictEqual(uploadRes.statusCode, 201)
+  const fileId = uploadRes.json().files[0].fileId
+  const sourcePath = registerFileCleanup(t, fileId, uploadedFileName)
+  const extensionlessPath = path.join(process.cwd(), 'uploads', fileId)
+  await fs.copyFile(sourcePath, extensionlessPath)
+  t.after(async () => {
+    await fs.unlink(extensionlessPath).catch(() => {})
+  })
+  await updateAttachmentOriginalFilename(mongoUrl, note.data.id, fileId, '\\\r\n"   ')
+
+  // Act
+  const response = await app.inject({
+    method: 'GET',
+    url: `${ROUTE_PREFIX}/${fileId}?noteId=${note.data.id}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 200)
+  assert.strictEqual(response.headers['content-disposition'], 'attachment; filename="attachment"')
 })

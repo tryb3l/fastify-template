@@ -5,7 +5,7 @@ const { randomString } = require('./data-creator')
 const { setup } = require('./setup-user')
 
 async function createNote(t, noteData = {}) {
-  const { app, accessToken, refreshToken } = await setup(t)
+  const { app, accessToken, refreshToken, mongoUrl } = await setup(t)
 
   const defaultNoteData = {
     title: randomString(10),
@@ -20,18 +20,18 @@ async function createNote(t, noteData = {}) {
     url: '/notes',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${accessToken}`,
+      Authorization: `Bearer ${accessToken}`,
     },
     payload: payload,
   })
 
   assert.strictEqual(
-    response.statusCode, 
-    201, 
-    `Failed to create note: ${response.statusCode} - ${response.payload}`
+    response.statusCode,
+    201,
+    `Failed to create note: ${response.statusCode} - ${response.payload}`,
   )
 
-  return { note: response.json(), app, accessToken, refreshToken }
+  return { note: response.json(), app, accessToken, refreshToken, mongoUrl }
 }
 
 module.exports = { createNote }
