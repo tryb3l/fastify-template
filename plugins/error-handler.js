@@ -14,9 +14,11 @@ module.exports = fp(
     })
 
     fastify.setErrorHandler((err, req, reply) => {
-      req.log.error({ req, res: reply, err }, err.message)
+      const statusCode = err.statusCode || (reply.statusCode >= 400 ? reply.statusCode : 500)
+      reply.code(statusCode)
 
-      const statusCode = err.statusCode || reply.statusCode || 500
+      const logLevel = statusCode >= 500 ? 'error' : 'warn'
+      req.log[logLevel]({ req, res: reply, err }, err.message)
 
       const errorResponse = {
         statusCode,
@@ -34,7 +36,7 @@ module.exports = fp(
         errorResponse.details = err.validation
       }
 
-      reply.code(statusCode).send(errorResponse)
+      reply.send(errorResponse)
     })
 
     fastify.setNotFoundHandler((req, reply) => {

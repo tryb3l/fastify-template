@@ -91,7 +91,6 @@ start-docker: check-env
 dev-app: check-env start-docker ## Start both backend and frontend in dev mode
 	@echo "Starting backend and frontend..."
 	@echo "Mailpit UI: http://localhost:$(DEV_MAILPIT_UI_PORT)"
-	@$(LOCAL_DOCKER_COMPOSE) up -d mongo mailpit
 	@$(LOAD_ENV) $(DEV_ENV) npm run dev & \
 	npm --prefix ../note-explorer run dev & \
 	wait

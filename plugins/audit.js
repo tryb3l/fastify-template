@@ -2,11 +2,30 @@
 
 const fp = require('fastify-plugin')
 
-module.exports = fp(
+const pendingAuditWrites = new Set()
+
+async function flushAuditLogs() {
+  while (pendingAuditWrites.size > 0) {
+    await Promise.allSettled(Array.from(pendingAuditWrites))
+  }
+}
+
+function trackAuditWrite(auditWrite) {
+  pendingAuditWrites.add(auditWrite)
+  auditWrite.finally(() => pendingAuditWrites.delete(auditWrite))
+}
+
+const auditPlugin = fp(
   async function auditPlugin(fastify) {
     fastify.log.info('Starting registration of audit plugin')
 
     const auditLogs = fastify.mongo.db.collection('auditLogs')
+
+    fastify.decorate('flushAuditLogs', flushAuditLogs)
+
+    fastify.addHook('onClose', async function closeAuditPlugin() {
+      await flushAuditLogs()
+    })
 
     fastify.decorate(
       'auditLog',
@@ -39,15 +58,22 @@ module.exports = fp(
           payload.details = boundedDetails
         }
 
-        // Best-effort background write: preserve API latency and surface failures in logs.
-        setImmediate(() => {
-          auditLogs.insertOne(payload).catch((err) => {
-            request?.log?.warn(
-              { err, action, resourceType, resourceId },
-              'Failed to write audit event',
-            )
+        const auditWrite = new Promise((resolve) => {
+          setImmediate(async () => {
+            try {
+              await auditLogs.insertOne(payload)
+            } catch (err) {
+              request?.log?.warn(
+                { err, action, resourceType, resourceId },
+                'Failed to write audit event',
+              )
+            } finally {
+              resolve()
+            }
           })
         })
+
+        trackAuditWrite(auditWrite)
       },
     )
 
@@ -61,3 +87,7 @@ module.exports = fp(
     },
   },
 )
+
+module.exports = Object.assign(auditPlugin, {
+  flushAuditLogs,
+})

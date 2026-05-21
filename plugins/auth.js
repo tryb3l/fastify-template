@@ -8,6 +8,15 @@ module.exports = fp(
   async function (fastify) {
     fastify.log.info('Starting registration of auth plugin')
 
+    const clearRefreshTokenCookie = (reply) => {
+      reply.clearCookie('refreshToken', { path: '/auth' })
+    }
+
+    const rejectRefreshToken = (reply, message = 'Invalid refresh token') => {
+      clearRefreshTokenCookie(reply)
+      throw fastify.httpErrors.unauthorized(message)
+    }
+
     const jwtConfig = {
       secret: fastify.config.jwt.secret,
       sign: {
@@ -123,21 +132,21 @@ module.exports = fp(
       fastify.log.info({ jti }, 'Token revoked successfully')
     })
 
-    fastify.decorate('verifyRefreshToken', async function (request) {
+    fastify.decorate('verifyRefreshToken', async function (request, reply) {
       fastify.log.info('Entering verifyRefreshToken method')
       const token = request.cookies?.refreshToken
 
       if (!token) {
         request.log.warn('Missing refresh token cookie')
-        throw fastify.httpErrors.unauthorized('Invalid refresh token')
+        rejectRefreshToken(reply)
       }
 
       let decoded
       try {
         decoded = await fastify.jwt.verify(token)
       } catch (err) {
-        request.log.error({ err }, 'Verify refresh token failed')
-        throw fastify.httpErrors.unauthorized('Invalid refresh token')
+        request.log.warn({ err }, 'Verify refresh token failed')
+        rejectRefreshToken(reply)
       }
 
       if (decoded.type !== 'refresh') {
@@ -145,7 +154,7 @@ module.exports = fp(
           { tokenType: decoded.type },
           'Rejecting token with invalid refresh token type',
         )
-        throw fastify.httpErrors.unauthorized('Invalid refresh token')
+        rejectRefreshToken(reply)
       }
 
       const isRevoked = await fastify.usersDataSource.checkIfRevoked(decoded.jti)
@@ -160,14 +169,14 @@ module.exports = fp(
           { userId: decoded.sub },
           'User not found during refresh token verification',
         )
-        throw fastify.httpErrors.unauthorized('Invalid refresh token')
+        rejectRefreshToken(reply)
       }
 
       const userCredentialsVersion = user.credentialsVersion ?? 0
       const tokenCredentialsVersion = decoded.cv ?? 0
 
       if (userCredentialsVersion !== tokenCredentialsVersion) {
-        throw fastify.httpErrors.unauthorized('Refresh token session invalidated')
+        rejectRefreshToken(reply, 'Refresh token session invalidated')
       }
 
       request.user = user
