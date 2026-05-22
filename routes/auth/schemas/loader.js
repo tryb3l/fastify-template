@@ -18,7 +18,7 @@ async function authSchemasLoader(fastify) {
     './token-header.json',
     './token.json',
     './username.json',
-    './user.json'
+    './user.json',
   ]
 
   try {

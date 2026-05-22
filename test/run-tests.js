@@ -41,7 +41,7 @@ if (require.main === module) {
   console.log(
     `${st.accent('Backend Test Runtime')} ${st.muted('(managed Docker + native Node runner)')}`,
   )
-  
+
   runManaged({
     mode: isCoverage ? 'test-coverage' : 'test',
     steps: [

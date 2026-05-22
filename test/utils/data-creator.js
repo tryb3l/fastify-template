@@ -32,13 +32,13 @@ function randomPassword(length = 12) {
   const digits = '0123456789'
   const special = '!@#$%^&*'
   const all = lower + upper + digits + special
-  
+
   let result = fastGenerate(1, lower)
   result += fastGenerate(1, upper)
   result += fastGenerate(1, digits)
   result += fastGenerate(1, special)
   result += fastGenerate(length - 4, all)
-  
+
   return result
 }
 
@@ -97,7 +97,7 @@ function generateMalformedUUIDs() {
     invalidHexChar: validUUID.replace(/[a-f]/, 'Z'),
     missingDashes: validUUID.replace(/-/g, ''),
     wrongSeparators: validUUID.replace(/-/g, '_'),
-    emptyString: ''
+    emptyString: '',
   }
 }
 
@@ -116,5 +116,5 @@ module.exports = {
   randomStringWithPrefix,
   generateMathematicallyInvalidUUID,
   generateMalformedUUIDs,
-  generateTamperedToken
+  generateTamperedToken,
 }

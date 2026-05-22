@@ -22,7 +22,7 @@ module.exports = async function infrastructure(fastify) {
         },
       },
     },
-    handler: async function readyHandler(request, reply) {
+    handler: async function readyHandler() {
       return { status: 'ok' }
     },
   })

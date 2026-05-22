@@ -32,7 +32,7 @@ function clearTestMessages() {
  *   rawResetUrl: 'https://frontend.url/reset-password?token=...'
  * })
  */
-async function mailerPlugin(fastify, options) {
+async function mailerPlugin(fastify) {
   fastify.log.info('Starting registration of mailer plugin')
 
   const { smtp, fromEmail } = fastify.config.mailer || {}

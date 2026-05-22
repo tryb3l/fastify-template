@@ -46,7 +46,7 @@ function formatFailureDetails(error, indent, styles) {
     .join('\n')
 }
 
-function formatOutcomeSymbol(eventType, data, styles) {
+function formatOutcomeSymbol(eventType, data) {
   if (data.skip) {
     return '○'
   }
@@ -153,7 +153,7 @@ function renderLabeledMessageBlock({
 
 function renderTestOutcome(eventType, data, seenFiles, styles, cwd) {
   const fileHeading = maybeRenderFileHeading(data.file, seenFiles, styles, cwd)
-  const symbol = formatOutcomeSymbol(eventType, data, styles)
+  const symbol = formatOutcomeSymbol(eventType, data)
   const styleOutcomeText = getOutcomeTextStyler(eventType, data, styles)
   const indent = '  '.repeat(Math.max(0, data.nesting || 0))
   const detailIndent = `${indent}    `

@@ -18,7 +18,7 @@ const {
   md5,
 } = require('../../utils/crypto')
 
-test('cryptoRandom generates floats between 0 and 1', (t) => {
+test('cryptoRandom generates floats between 0 and 1', () => {
   const val = cryptoRandom()
   assert.ok(typeof val === 'number')
   assert.ok(val >= 0 && val < 1, 'Value should be between 0 and 1')
@@ -28,7 +28,7 @@ test('cryptoRandom generates floats between 0 and 1', (t) => {
   assert.notStrictEqual(val, val2, 'Consecutive calls should be random')
 })
 
-test('generateUUID returns a valid v4 UUID', (t) => {
+test('generateUUID returns a valid v4 UUID', () => {
   const uuid = generateUUID()
   assert.strictEqual(typeof uuid, 'string')
   assert.strictEqual(uuid.length, 36)
@@ -38,18 +38,18 @@ test('generateUUID returns a valid v4 UUID', (t) => {
   assert.match(uuid, v4Regex, 'UUID should strictly match v4 format')
 })
 
-test('generateKey generates string of correct length using only allowed characters', (t) => {
+test('generateKey generates string of correct length using only allowed characters', () => {
   const chars = 'ABC'
   const length = 10
   const key = generateKey(length, chars)
 
   assert.strictEqual(key.length, length)
   // Ensure every character in the generated key exists in 'chars' string
-  const isOnlyAllowedChars = key.split('').every(char => chars.includes(char))
+  const isOnlyAllowedChars = key.split('').every((char) => chars.includes(char))
   assert.ok(isOnlyAllowedChars, 'Key contains invalid characters')
 })
 
-test('Token generation and validation lifecycle', (t) => {
+test('Token generation and validation lifecycle', () => {
   const secret = 'my-super-secret-key'
   const allowedChars = 'abcdefghijklmnopqrstuvwxyz'
   const tokenLength = 16
@@ -73,7 +73,7 @@ test('Token generation and validation lifecycle', (t) => {
   assert.strictEqual(validateToken(secret, 'abc'), false, 'Too short token should fail')
 })
 
-test('crcToken generates correct length hex string', (t) => {
+test('crcToken generates correct length hex string', () => {
   const secret = 'my-secret'
   const key = 'my-key'
   const token = crcToken(secret, key)
@@ -83,7 +83,7 @@ test('crcToken generates correct length hex string', (t) => {
   assert.match(token, /^[0-9a-f]{4}$/, 'CRC token should be a valid hex string')
 })
 
-test('serializeHash formats the PHC string correctly', (t) => {
+test('serializeHash formats the PHC string correctly', () => {
   const dummySalt = Buffer.from('somesalt')
   const dummyHash = Buffer.from('somehash')
 
@@ -94,7 +94,7 @@ test('serializeHash formats the PHC string correctly', (t) => {
   assert.ok(serialized.includes(dummyHash.toString('base64').replace(/=/g, '')))
 })
 
-test('Password hashing and validation lifecycle', async (t) => {
+test('Password hashing and validation lifecycle', async () => {
   const password = 'my-secure-password!123'
 
   const serializedHash = await hashPassword(password)
@@ -108,16 +108,16 @@ test('Password hashing and validation lifecycle', async (t) => {
   assert.strictEqual(isInvalid, false, 'Incorrect password should fail validation')
 })
 
-test('Hash serialization and deserialization formatting', (t) => {
+test('Hash serialization and deserialization formatting', () => {
   const badAlgorithmHash = '$argon2i$v=19$m=4096,t=3,p=1$c29tZXNhbHQ$c29tZWhhc2g'
   assert.throws(
     () => deserializeHash(badAlgorithmHash),
     /Unsupported hash algorithm/,
-    'Should throw if algorithm is not scrypt'
+    'Should throw if algorithm is not scrypt',
   )
 })
 
-test('MD5 file hashing creates correct hash from streams', async (t) => {
+test('MD5 file hashing creates correct hash from streams', async () => {
   const tempFilePath = path.join(__dirname, 'test-temp-file.txt')
   const fileContent = 'hello world'
   const expectedMd5 = '5eb63bbbe01eeed093cb22bb8f5acdc3'
@@ -126,7 +126,6 @@ test('MD5 file hashing creates correct hash from streams', async (t) => {
     await fs.writeFile(tempFilePath, fileContent)
     const fileHash = await md5(tempFilePath)
     assert.strictEqual(fileHash, expectedMd5, 'MD5 hash of file content should match known value')
-
   } finally {
     await fs.unlink(tempFilePath).catch(() => {})
   }

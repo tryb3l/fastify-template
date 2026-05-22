@@ -11,15 +11,15 @@ async function noteSchemasLoader(fastify) {
     './update-body.json',
     '../../../schemas/limit.json',
     '../../../schemas/skip.json',
-  ];
+  ]
   for (const schemaPath of schemas) {
-    const schema = require(schemaPath);
-    fastify.addSchema(schema);
-    fastify.log.debug(`Note schema added: ${schema.$id}`);
+    const schema = require(schemaPath)
+    fastify.addSchema(schema)
+    fastify.log.debug(`Note schema added: ${schema.$id}`)
   }
-  fastify.log.debug('Note schemas loaded');
+  fastify.log.debug('Note schemas loaded')
 }
 
 module.exports = {
-  noteSchemasLoader
-};
+  noteSchemasLoader,
+}

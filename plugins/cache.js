@@ -5,7 +5,7 @@ const fastifyCaching = require('@fastify/caching')
 const { promisify } = require('node:util')
 
 module.exports = fp(
-  async function cachePlugin(fastify, opts) {
+  async function cachePlugin(fastify) {
     fastify.log.info('Starting registration of cache plugin')
 
     await fastify.register(fastifyCaching)

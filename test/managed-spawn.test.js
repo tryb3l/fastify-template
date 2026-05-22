@@ -75,7 +75,7 @@ test('modeKey passes through unrecognised strings unchanged', () => {
 
 // -- getRuntimeStatus --------------------------------------------------------
 
-test('getRuntimeStatus returns clean status for both modes when no pid files exist', (t) => {
+test('getRuntimeStatus returns clean status for both modes when no pid files exist', () => {
   // Arrange
   clearPidFile('dev')
   clearPidFile('test')

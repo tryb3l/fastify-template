@@ -63,10 +63,7 @@ async function runRuntimeOpsCli({
           : entry.status === 'stale'
             ? st.warning('stale')
             : st.muted('clean')
-      const detail =
-        entry.status !== 'clean'
-          ? ` ${st.muted(`pid=${entry.pid}`)}`
-          : ''
+      const detail = entry.status !== 'clean' ? ` ${st.muted(`pid=${entry.pid}`)}` : ''
       stdout.write(`  ${st.strong(entry.mode.padEnd(6))} ${statusLabel}${detail}\n`)
     }
     return 0
@@ -100,4 +97,3 @@ module.exports = {
   parseRuntimeCliArgs,
   runRuntimeOpsCli,
 }
-

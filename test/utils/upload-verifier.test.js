@@ -28,22 +28,29 @@ async function createSampleFile(t, filename, content) {
 test('assertUploadedFileContent accepts valid PNG content', async (t) => {
   const filePath = await createSampleFile(t, 'pixel.png', PNG_SAMPLE)
 
-  await assert.doesNotReject(() => assertUploadedFileContent({
-    filePath,
-    filename: 'pixel.png',
-    mimeType: 'image/png',
-  }))
+  await assert.doesNotReject(() =>
+    assertUploadedFileContent({
+      filePath,
+      filename: 'pixel.png',
+      mimeType: 'image/png',
+    }),
+  )
 })
 
 test('assertUploadedFileContent rejects random bytes masquerading as PNG', async (t) => {
-  const filePath = await createSampleFile(t, 'fake.png', Buffer.from([0x4d, 0x5a, 0x90, 0x00, 0x03]))
+  const filePath = await createSampleFile(
+    t,
+    'fake.png',
+    Buffer.from([0x4d, 0x5a, 0x90, 0x00, 0x03]),
+  )
 
   await assert.rejects(
-    () => assertUploadedFileContent({
-      filePath,
-      filename: 'fake.png',
-      mimeType: 'image/png',
-    }),
+    () =>
+      assertUploadedFileContent({
+        filePath,
+        filename: 'fake.png',
+        mimeType: 'image/png',
+      }),
     (error) => error.statusCode === 415,
   )
 })
@@ -51,22 +58,25 @@ test('assertUploadedFileContent rejects random bytes masquerading as PNG', async
 test('assertUploadedFileContent accepts UTF-8 CSV content', async (t) => {
   const filePath = await createSampleFile(t, 'notes.csv', 'title,body\nSafe Title,Safe Body\n')
 
-  await assert.doesNotReject(() => assertUploadedFileContent({
-    filePath,
-    filename: 'notes.csv',
-    mimeType: 'text/csv',
-  }))
+  await assert.doesNotReject(() =>
+    assertUploadedFileContent({
+      filePath,
+      filename: 'notes.csv',
+      mimeType: 'text/csv',
+    }),
+  )
 })
 
 test('assertUploadedFileContent rejects binary bytes declared as text/plain', async (t) => {
   const filePath = await createSampleFile(t, 'binary.txt', PNG_SAMPLE)
 
   await assert.rejects(
-    () => assertUploadedFileContent({
-      filePath,
-      filename: 'binary.txt',
-      mimeType: 'text/plain',
-    }),
+    () =>
+      assertUploadedFileContent({
+        filePath,
+        filename: 'binary.txt',
+        mimeType: 'text/plain',
+      }),
     (error) => error.statusCode === 415,
   )
 })

@@ -274,7 +274,7 @@ module.exports = async function authRoutes(fastify) {
         },
       },
     },
-    handler: async function resetRequestHandler(request, reply) {
+    handler: async function resetRequestHandler(request) {
       await fastify.passwordResetService.requestReset({
         request,
         email: request.body.email,
@@ -298,7 +298,7 @@ module.exports = async function authRoutes(fastify) {
         },
       },
     },
-    handler: async function resetValidateHandler(request, reply) {
+    handler: async function resetValidateHandler(request) {
       const isValid = await fastify.passwordResetService.validateToken({
         request,
         resetId: request.body.resetId,
@@ -324,7 +324,7 @@ module.exports = async function authRoutes(fastify) {
         },
       },
     },
-    handler: async function resetConfirmHandler(request, reply) {
+    handler: async function resetConfirmHandler(request) {
       const success = await fastify.passwordResetService.executeReset({
         request,
         resetId: request.body.resetId,

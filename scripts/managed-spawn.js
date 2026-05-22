@@ -71,7 +71,9 @@ function killGroup(pid, signal) {
   if (!Number.isInteger(pid) || pid <= 0) return
   try {
     process.kill(-pid, signal)
-  } catch {}
+  } catch {
+    // ignore
+  }
 }
 
 async function killWithGrace(pid, graceMs = GRACE_MS) {
