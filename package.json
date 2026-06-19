@@ -79,7 +79,7 @@
     "file-type": "^22.0.1",
     "fluent-json-schema": "^6.0.0",
     "migrate-mongo": "^14.0.7",
-    "nodemailer": "^8.0.7",
+    "nodemailer": "^9.0.1",
     "split2": "^4.2.0"
   },
   "devDependencies": {
