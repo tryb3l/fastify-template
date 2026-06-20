@@ -1,6 +1,7 @@
 'use strict'
 
 const fp = require('fastify-plugin')
+const { instantToDate, nowInstant } = require('../utils/time')
 
 const pendingAuditWrites = new Set()
 
@@ -51,7 +52,7 @@ const auditPlugin = fp(
           resourceId,
           requestId: request?.id || null,
           ipAddress: request?.ip || null,
-          createdAt: new Date(),
+          createdAt: instantToDate(nowInstant()),
         }
 
         if (boundedDetails !== undefined) {
