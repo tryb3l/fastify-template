@@ -1,5 +1,6 @@
 'use strict'
 const crypto = require('node:crypto')
+const { LogController } = require('fastify')
 const loggerOptions = require('./logger-options')
 
 // W3C Trace Context: version(2)-trace_id(32)-parent_id(16)-flags(2)
@@ -12,14 +13,16 @@ function extractTraceId(raw) {
 }
 
 module.exports = {
-  disableRequestLogging: true,
   logger: loggerOptions,
   childLoggerFactory(logger, bindings, opts, rawReq) {
     const traceId = extractTraceId(rawReq.headers?.traceparent)
 
     return logger.child(traceId ? { ...bindings, traceId } : bindings, opts)
   },
-  requestIdLogLabel: 'requestId',
+  logController: new LogController({
+    disableRequestLogging: true,
+    requestIdLogLabel: 'requestId',
+  }),
   requestIdHeader: false,
   pluginTimeout: 20000,
   genReqId() {
