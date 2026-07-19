@@ -1,7 +1,7 @@
 const { hashPassword } = require('../routes/auth/generate-hash')
 
 module.exports = {
-  async up(db, client) {
+  async up(db) {
     const users = db.collection('users')
     const revokedTokens = db.collection('revokedTokens')
 
@@ -48,7 +48,7 @@ module.exports = {
     }
   },
 
-  async down(db, client) {
+  async down(db) {
     console.log('Reverting indexes natively...')
     await db.collection('users').dropIndex('username_1')
     await db.collection('users').dropIndex('email_1')
