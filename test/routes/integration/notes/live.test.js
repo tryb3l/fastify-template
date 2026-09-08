@@ -251,6 +251,7 @@ test('WS /notes/:id/live broadcasts NOTE_UPDATED payload after note change', asy
     title: 'Updated Live Note',
     body: markdownBody,
     tags: ['live', 'update'],
+    expectedRevision: 1,
   }
   const ws = new WebSocket(`ws://localhost:${port}/notes/live/${noteId}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -279,6 +280,7 @@ test('WS /notes/:id/live broadcasts NOTE_UPDATED payload after note change', asy
       title: updatedNote.title,
       body: updatedNote.body,
       tags: updatedNote.tags,
+      revision: updatedNote.revision,
       modifiedAt: updatedNote.modifiedAt,
     },
   })
@@ -313,6 +315,7 @@ test('WS /notes/:id/live ignores updates for a different users different note', 
       title: 'Unrelated Note Updated',
       body: 'still do not broadcast',
       tags: ['other-user'],
+      expectedRevision: 1,
     },
   })
 

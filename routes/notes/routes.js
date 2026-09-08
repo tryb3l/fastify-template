@@ -122,9 +122,10 @@ module.exports = async function noteRoutes(fastify, opts) {
           properties: {
             message: { type: 'string' },
             code: { type: 'string' },
+            currentRevision: { type: 'integer' },
             currentModifiedAt: { type: 'string', format: 'date-time' },
           },
-          required: ['message', 'code', 'currentModifiedAt'],
+          required: ['message', 'code', 'currentRevision', 'currentModifiedAt'],
         },
       },
     },
@@ -143,6 +144,7 @@ module.exports = async function noteRoutes(fastify, opts) {
           return {
             message: error.message,
             code: error.conflictCode,
+            currentRevision: error.currentRevision,
             currentModifiedAt:
               error.currentModifiedAt instanceof Date
                 ? error.currentModifiedAt.toISOString()
@@ -169,6 +171,7 @@ module.exports = async function noteRoutes(fastify, opts) {
           title: updatedNote.title,
           body: updatedNote.body,
           tags: updatedNote.tags,
+          revision: updatedNote.revision,
           modifiedAt: updatedNote.modifiedAt,
         }
         fastify.eventBus.emit(`note_updated:${id}`, {
@@ -191,12 +194,44 @@ module.exports = async function noteRoutes(fastify, opts) {
       tags: ['notes'],
       summary: 'Delete a note by id',
       params: { $ref: 'schema:note:read:params#' },
+      querystring: { $ref: 'schema:note:delete:query#' },
+      response: {
+        409: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            message: { type: 'string' },
+            code: { type: 'string' },
+            currentRevision: { type: 'integer' },
+            currentModifiedAt: { type: 'string', format: 'date-time' },
+          },
+          required: ['message', 'code', 'currentRevision', 'currentModifiedAt'],
+        },
+      },
     },
     handler: async function deleteNoteHandler(request, reply) {
       const { id } = request.params
+      const { expectedRevision } = request.query
       const userId = request.user._id || request.user.id
 
-      await fastify.notesDataSource.deleteNote(id, userId)
+      try {
+        await fastify.notesDataSource.deleteNote(id, userId, expectedRevision)
+      } catch (error) {
+        if (error?.statusCode === 409 && error.conflictCode === 'NOTE_STALE_DELETE') {
+          reply.code(409)
+          return {
+            message: error.message,
+            code: error.conflictCode,
+            currentRevision: error.currentRevision,
+            currentModifiedAt:
+              error.currentModifiedAt instanceof Date
+                ? error.currentModifiedAt.toISOString()
+                : error.currentModifiedAt,
+          }
+        }
+
+        throw error
+      }
 
       if (fastify.auditLog) {
         fastify.auditLog({

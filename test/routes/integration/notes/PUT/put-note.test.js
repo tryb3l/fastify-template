@@ -17,6 +17,7 @@ test('PUT /notes/:id 200 - Update a note', async (t) => {
     title: randomString(15),
     body: randomString(30),
     tags: [randomString(5), randomString(5)],
+    expectedRevision: note.data.revision,
   }
 
   // Act
@@ -36,24 +37,25 @@ test('PUT /notes/:id 200 - Update a note', async (t) => {
   assert.strictEqual(payload.data.title, updatedNote.title)
   assert.strictEqual(payload.data.body, updatedNote.body)
   assert.deepStrictEqual(payload.data.tags, updatedNote.tags)
+  assert.strictEqual(payload.data.revision, note.data.revision + 1)
 })
 
 test('PUT /notes/:id 409 - Rejects stale saves without overwriting the latest note', async (t) => {
   // Arrange
   const { app, accessToken, note } = await createNote(t)
   const noteId = note.data.id
-  const initialModifiedAt = note.data.modifiedAt
+  const initialRevision = note.data.revision
   const firstUpdate = {
     title: 'First persisted edit',
     body: 'First body change',
     tags: ['first'],
-    expectedModifiedAt: initialModifiedAt,
+    expectedRevision: initialRevision,
   }
   const staleUpdate = {
     title: 'Stale edit attempt',
     body: 'Second body change',
     tags: ['stale'],
-    expectedModifiedAt: initialModifiedAt,
+    expectedRevision: initialRevision,
   }
 
   // Act
@@ -86,10 +88,12 @@ test('PUT /notes/:id 409 - Rejects stale saves without overwriting the latest no
     staleResponse.json().message,
     'Note was modified elsewhere. Reload the latest note before saving again.',
   )
+  assert.strictEqual(staleResponse.json().currentRevision, firstResponse.json().data.revision)
   assert.strictEqual(staleResponse.json().currentModifiedAt, firstResponse.json().data.modifiedAt)
   assert.strictEqual(readResponse.json().data.title, firstUpdate.title)
   assert.strictEqual(readResponse.json().data.body, firstUpdate.body)
   assert.deepStrictEqual(readResponse.json().data.tags, firstUpdate.tags)
+  assert.strictEqual(readResponse.json().data.revision, initialRevision + 1)
 })
 
 test('PUT /notes/:id 200 - Updates a note with a large markdown body', async (t) => {
@@ -101,6 +105,7 @@ test('PUT /notes/:id 200 - Updates a note with a large markdown body', async (t)
     title: 'Milkdown updated note',
     body: markdownBody,
     tags: ['markdown', 'updated'],
+    expectedRevision: note.data.revision,
   }
 
   // Act
@@ -140,6 +145,7 @@ test('PUT /notes/:id 200 - Accepts a note body at the 50000 character limit', as
       title: 'Boundary update accepted',
       body: updatedBody,
       tags: ['boundary', 'accepted'],
+      expectedRevision: note.data.revision,
     },
   })
 
@@ -170,6 +176,7 @@ test('PUT /notes/:id 400 - Rejects a note body above the 50000 character limit w
       title: 'Boundary update rejected',
       body: 'b'.repeat(50001),
       tags: ['boundary', 'rejected'],
+      expectedRevision: note.data.revision,
     },
   })
 
@@ -193,6 +200,7 @@ test('PUT /notes/:id 200 - Invalidates cached note reads after update', async (t
     title: randomString(15),
     body: randomString(30),
     tags: [randomString(5), randomString(5)],
+    expectedRevision: note.data.revision,
   }
 
   const cachedReadResponse = await app.inject({
@@ -236,7 +244,7 @@ test('PUT /notes/:id 404 - Note not found', async (t) => {
     method: 'PUT',
     url: `/notes/${nonExistentNoteId}`,
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-    payload: { title: randomString(10), body: randomString(20) },
+    payload: { title: randomString(10), body: randomString(20), expectedRevision: 1 },
   })
 
   // Assert
@@ -257,7 +265,7 @@ test('PUT /notes/:id 404 - Different user cannot update another users note', asy
       'Content-Type': 'application/json',
       Authorization: `Bearer ${intruder.accessToken}`,
     },
-    payload: { title: 'intruder-update-attempt' },
+    payload: { title: 'intruder-update-attempt', expectedRevision: owner.note.data.revision },
   })
 
   // Assert
@@ -275,14 +283,18 @@ test('PUT /notes/:id 404 - Different user cannot update another users note', asy
 
 test('PUT /notes/:id 400 - Invalid id format', async (t) => {
   // Arrange
-  const { app, accessToken } = await createNote(t)
+  const { app, accessToken, note } = await createNote(t)
 
   // Act
   const response = await app.inject({
     method: 'PUT',
     url: `/notes/invalid-id-format`,
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-    payload: { title: randomString(10), body: randomString(20) },
+    payload: {
+      title: randomString(10),
+      body: randomString(20),
+      expectedRevision: note.data.revision,
+    },
   })
 
   // Assert
@@ -300,7 +312,7 @@ test('PUT /notes/:id Partial Update - Valid Payload', async (t) => {
     method: 'PUT',
     url: `/notes/${noteId}`,
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-    payload: { title: renamedTitle },
+    payload: { title: renamedTitle, expectedRevision: note.data.revision },
   })
 
   const readResponse = await app.inject({
@@ -326,7 +338,7 @@ test('PUT /notes/:id 200 - Accepts an explicitly empty body', async (t) => {
     method: 'PUT',
     url: `/notes/${noteId}`,
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-    payload: { body: '' },
+    payload: { body: '', expectedRevision: note.data.revision },
   })
 
   const readResponse = await app.inject({
@@ -357,4 +369,85 @@ test('PUT /notes/:id 401 - Unauthorized', async (t) => {
 
   // Assert
   assert.strictEqual(response.statusCode, 401)
+})
+
+test('PUT /notes/:id 400 - Rejects updates missing expectedRevision', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+  const noteId = note.data.id
+
+  // Act
+  const response = await app.inject({
+    method: 'PUT',
+    url: `/notes/${noteId}`,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    payload: { title: randomString(10), body: randomString(20) },
+  })
+
+  const readResponse = await app.inject({
+    method: 'GET',
+    url: `/notes/${noteId}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 400)
+  assert.strictEqual(readResponse.statusCode, 200)
+  assert.strictEqual(readResponse.json().data.title, note.data.title)
+})
+
+test('PUT /notes/:id concurrent updates - exactly one write wins and revision increments once', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+  const noteId = note.data.id
+  const initialRevision = note.data.revision
+  const updateA = {
+    title: 'Concurrent update A',
+    body: 'Body from writer A',
+    tags: ['writer-a'],
+    expectedRevision: initialRevision,
+  }
+  const updateB = {
+    title: 'Concurrent update B',
+    body: 'Body from writer B',
+    tags: ['writer-b'],
+    expectedRevision: initialRevision,
+  }
+
+  // Act
+  const [responseA, responseB] = await Promise.all([
+    app.inject({
+      method: 'PUT',
+      url: `/notes/${noteId}`,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      payload: updateA,
+    }),
+    app.inject({
+      method: 'PUT',
+      url: `/notes/${noteId}`,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      payload: updateB,
+    }),
+  ])
+
+  const readResponse = await app.inject({
+    method: 'GET',
+    url: `/notes/${noteId}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  // Assert
+  const statusCodes = [responseA.statusCode, responseB.statusCode].sort()
+  assert.deepStrictEqual(statusCodes, [200, 409])
+
+  const [winningResponse, losingResponse] =
+    responseA.statusCode === 200 ? [responseA, responseB] : [responseB, responseA]
+  const winningUpdate = responseA.statusCode === 200 ? updateA : updateB
+
+  assert.strictEqual(losingResponse.json().code, 'NOTE_STALE_SAVE')
+  assert.strictEqual(losingResponse.json().currentRevision, winningResponse.json().data.revision)
+  assert.strictEqual(winningResponse.json().data.revision, initialRevision + 1)
+  assert.strictEqual(readResponse.json().data.revision, initialRevision + 1)
+  assert.strictEqual(readResponse.json().data.title, winningUpdate.title)
+  assert.strictEqual(readResponse.json().data.body, winningUpdate.body)
 })

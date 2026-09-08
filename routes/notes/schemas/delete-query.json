@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "$id": "schema:note:delete:query",
+  "additionalProperties": false,
+  "required": ["expectedRevision"],
+  "properties": {
+    "expectedRevision": { "type": "integer", "minimum": 1 }
+  }
+}

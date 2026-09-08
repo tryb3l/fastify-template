@@ -4,6 +4,7 @@ const NOTE_LIST_PROJECTION = Object.freeze({
   id: 1,
   title: 1,
   tags: 1,
+  revision: 1,
   createdAt: 1,
   modifiedAt: 1,
 })

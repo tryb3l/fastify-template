@@ -2,7 +2,7 @@
 
 const fp = require('fastify-plugin')
 const { randomUUIDv7 } = require('node:crypto')
-const { instantToDate, nowInstant, parseIsoInstant } = require('../utils/time')
+const { instantToDate, nowInstant } = require('../utils/time')
 
 const normalizeNoteBody = (body) => (typeof body === 'string' ? body : '')
 
@@ -66,6 +66,7 @@ module.exports = fp(
           tags,
           attachments: [],
           id: _id,
+          revision: 1,
           createdAt: now,
           modifiedAt: now,
         }
@@ -86,6 +87,7 @@ module.exports = fp(
             body: normalizeNoteBody(rawNote.body),
             attachments: rawNote.attachments || [],
             id: _id,
+            revision: 1,
             createdAt: now,
             modifiedAt: now,
           }
@@ -107,6 +109,7 @@ module.exports = fp(
               body: 1,
               tags: 1,
               attachments: 1,
+              revision: 1,
               createdAt: 1,
               modifiedAt: 1,
               ...projection,
@@ -122,19 +125,9 @@ module.exports = fp(
       },
 
       async updateNote(id, newNote, userId) {
-        const { expectedModifiedAt, ...rawUpdate } = newNote
+        const { expectedRevision, ...rawUpdate } = newNote
         const normalizedUpdate = {
           ...rawUpdate,
-        }
-
-        let expectedModifiedAtDate = null
-
-        if (expectedModifiedAt !== undefined) {
-          try {
-            expectedModifiedAtDate = instantToDate(parseIsoInstant(expectedModifiedAt))
-          } catch {
-            throw fastify.httpErrors.badRequest('expectedModifiedAt must be a valid date-time')
-          }
         }
 
         if (Object.hasOwn(normalizedUpdate, 'body')) {
@@ -142,14 +135,13 @@ module.exports = fp(
         }
 
         const result = await notes.findOneAndUpdate(
-          expectedModifiedAtDate
-            ? { id, userId, modifiedAt: expectedModifiedAtDate }
-            : { id, userId },
+          { id, userId, revision: expectedRevision },
           {
             $set: {
               ...normalizedUpdate,
               modifiedAt: instantToDate(nowInstant()),
             },
+            $inc: { revision: 1 },
           },
           { returnDocument: 'after' },
         )
@@ -162,6 +154,7 @@ module.exports = fp(
             {
               projection: {
                 _id: 0,
+                revision: 1,
                 modifiedAt: 1,
               },
             },
@@ -171,31 +164,50 @@ module.exports = fp(
             throw fastify.httpErrors.notFound('Note not found')
           }
 
-          if (expectedModifiedAtDate) {
-            const conflictError = fastify.httpErrors.conflict(
-              'Note was modified elsewhere. Reload the latest note before saving again.',
-            )
-            conflictError.conflictCode = 'NOTE_STALE_SAVE'
-            conflictError.currentModifiedAt = existingNote.modifiedAt
-            throw conflictError
-          }
-
-          throw fastify.httpErrors.notFound('Note not found')
+          const conflictError = fastify.httpErrors.conflict(
+            'Note was modified elsewhere. Reload the latest note before saving again.',
+          )
+          conflictError.conflictCode = 'NOTE_STALE_SAVE'
+          conflictError.currentRevision = existingNote.revision
+          conflictError.currentModifiedAt = existingNote.modifiedAt
+          throw conflictError
         }
 
         return normalizePersistedNote(updatedNote)
       },
 
-      async deleteNote(id, userId) {
+      async deleteNote(id, userId, expectedRevision) {
         fastify.log.info('Entering deleteNote method')
         const result = await notes.deleteOne({
-          id: id,
-          userId: userId,
+          id,
+          userId,
+          revision: expectedRevision,
         })
 
         if (result.deletedCount === 0) {
-          fastify.log.info(`Note not found for ID: ${id} and User ID: ${userId}`)
-          throw fastify.httpErrors.notFound('Note not found')
+          const existingNote = await notes.findOne(
+            { id, userId },
+            {
+              projection: {
+                _id: 0,
+                revision: 1,
+                modifiedAt: 1,
+              },
+            },
+          )
+
+          if (!existingNote) {
+            fastify.log.info(`Note not found for ID: ${id} and User ID: ${userId}`)
+            throw fastify.httpErrors.notFound('Note not found')
+          }
+
+          const conflictError = fastify.httpErrors.conflict(
+            'Note was modified elsewhere. Reload the latest note before deleting.',
+          )
+          conflictError.conflictCode = 'NOTE_STALE_DELETE'
+          conflictError.currentRevision = existingNote.revision
+          conflictError.currentModifiedAt = existingNote.modifiedAt
+          throw conflictError
         }
         fastify.log.info('Exiting deleteNote method')
       },

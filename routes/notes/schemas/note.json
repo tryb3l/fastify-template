@@ -2,10 +2,15 @@
   "type": "object",
   "$id": "schema:note",
   "additionalProperties": false,
+  "required": ["revision"],
   "properties": {
     "id": {
       "type": "string",
       "format": "uuid"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
     },
     "title": {
       "type": "string",

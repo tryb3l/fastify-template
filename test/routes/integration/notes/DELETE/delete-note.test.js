@@ -12,7 +12,7 @@ test('DELETE /notes/:id 204 - Deletes the note', async (t) => {
   // Act
   const response = await app.inject({
     method: 'DELETE',
-    url: `/notes/${note.data.id}`,
+    url: `/notes/${note.data.id}?expectedRevision=${note.data.revision}`,
     headers: { Authorization: `Bearer ${accessToken}` },
   })
 
@@ -43,7 +43,7 @@ test('DELETE /notes/:id 204 - Invalidates cached note reads after delete', async
   // Act
   const deleteResponse = await app.inject({
     method: 'DELETE',
-    url: `/notes/${note.data.id}`,
+    url: `/notes/${note.data.id}?expectedRevision=${note.data.revision}`,
     headers: { Authorization: `Bearer ${accessToken}` },
   })
 
@@ -66,7 +66,7 @@ test('DELETE /notes/:id 404 - Returns 404 if not found', async (t) => {
   // Act
   const response = await app.inject({
     method: 'DELETE',
-    url: `/notes/${fakeId}`,
+    url: `/notes/${fakeId}?expectedRevision=1`,
     headers: { Authorization: `Bearer ${accessToken}` },
   })
 
@@ -82,7 +82,7 @@ test('DELETE /notes/:id 404 - Different user cannot delete another users note', 
   // Act
   const response = await intruder.app.inject({
     method: 'DELETE',
-    url: `/notes/${owner.note.data.id}`,
+    url: `/notes/${owner.note.data.id}?expectedRevision=${owner.note.data.revision}`,
     headers: { Authorization: `Bearer ${intruder.accessToken}` },
   })
 
@@ -105,9 +105,67 @@ test('DELETE /notes/:id 401 - Unauthorized', async (t) => {
   // Act
   const response = await app.inject({
     method: 'DELETE',
-    url: `/notes/${note.data.id}`,
+    url: `/notes/${note.data.id}?expectedRevision=${note.data.revision}`,
   })
 
   // Assert
   assert.strictEqual(response.statusCode, 401)
+})
+
+test('DELETE /notes/:id 400 - Rejects deletes missing expectedRevision', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+
+  // Act
+  const response = await app.inject({
+    method: 'DELETE',
+    url: `/notes/${note.data.id}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  const verifyResponse = await app.inject({
+    method: 'GET',
+    url: `/notes/${note.data.id}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 400)
+  assert.strictEqual(verifyResponse.statusCode, 200)
+})
+
+test('DELETE /notes/:id 409 - Rejects a stale delete without removing the latest note', async (t) => {
+  // Arrange
+  const { app, accessToken, note } = await createNote(t)
+  const noteId = note.data.id
+  const staleRevision = note.data.revision
+
+  const updateResponse = await app.inject({
+    method: 'PUT',
+    url: `/notes/${noteId}`,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    payload: { title: 'Updated elsewhere', expectedRevision: staleRevision },
+  })
+
+  assert.strictEqual(updateResponse.statusCode, 200)
+
+  // Act
+  const deleteResponse = await app.inject({
+    method: 'DELETE',
+    url: `/notes/${noteId}?expectedRevision=${staleRevision}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  const verifyResponse = await app.inject({
+    method: 'GET',
+    url: `/notes/${noteId}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  // Assert
+  assert.strictEqual(deleteResponse.statusCode, 409)
+  assert.strictEqual(deleteResponse.json().code, 'NOTE_STALE_DELETE')
+  assert.strictEqual(deleteResponse.json().currentRevision, updateResponse.json().data.revision)
+  assert.strictEqual(verifyResponse.statusCode, 200)
+  assert.strictEqual(verifyResponse.json().data.title, 'Updated elsewhere')
 })

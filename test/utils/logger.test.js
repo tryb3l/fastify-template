@@ -2,7 +2,8 @@
 
 const test = require('node:test')
 const assert = require('node:assert')
-const split = require('split2')
+const { createInterface } = require('node:readline/promises')
+const { PassThrough } = require('node:stream')
 const Fastify = require('fastify')
 const serverOptions = require('../../configs/server-options')
 const errorHandlerPlugin = require('../../plugins/error-handler')
@@ -28,18 +29,18 @@ async function buildLoggedApp(t, stream) {
 }
 
 test('logger must redact sensitive authorization headers', async (t) => {
+  // Arrange
   const logs = []
-  const stream = split((line) => {
-    try {
-      return JSON.parse(line)
-    } catch {
-      return null
-    }
-  })
+  const stream = new PassThrough()
+  const rl = createInterface({ input: stream, crlfDelay: Infinity })
 
   const logCollection = (async () => {
-    for await (const log of stream) {
-      if (log) logs.push(log)
+    for await (const line of rl) {
+      try {
+        logs.push(JSON.parse(line))
+      } catch {
+        // ignore non-JSON lines
+      }
     }
   })()
 
@@ -89,18 +90,18 @@ test('logger must redact sensitive authorization headers', async (t) => {
 })
 
 test('logger emits a top-level canonical requestId field for request logs', async (t) => {
+  // Arrange
   const logs = []
-  const stream = split((line) => {
-    try {
-      return JSON.parse(line)
-    } catch {
-      return null
-    }
-  })
+  const stream = new PassThrough()
+  const rl = createInterface({ input: stream, crlfDelay: Infinity })
 
   const logCollection = (async () => {
-    for await (const log of stream) {
-      if (log) logs.push(log)
+    for await (const line of rl) {
+      try {
+        logs.push(JSON.parse(line))
+      } catch {
+        // ignore non-JSON lines
+      }
     }
   })()
 
@@ -108,6 +109,7 @@ test('logger emits a top-level canonical requestId field for request logs', asyn
 
   const spoofedRequestId = 'user-supplied-request-id'
 
+  // Act
   const response = await app.inject({
     method: 'GET',
     url: '/definitely-missing-route',
@@ -116,6 +118,7 @@ test('logger emits a top-level canonical requestId field for request logs', asyn
     },
   })
 
+  // Assert
   assert.strictEqual(response.statusCode, 404)
 
   const responseRequestId = response.json().requestId
@@ -140,17 +143,16 @@ test('logger emits a top-level canonical requestId field for request logs', asyn
 test('logger records handled client errors as warnings with final status code', async (t) => {
   // Arrange
   const logs = []
-  const stream = split((line) => {
-    try {
-      return JSON.parse(line)
-    } catch {
-      return null
-    }
-  })
+  const stream = new PassThrough()
+  const rl = createInterface({ input: stream, crlfDelay: Infinity })
 
   const logCollection = (async () => {
-    for await (const log of stream) {
-      if (log) logs.push(log)
+    for await (const line of rl) {
+      try {
+        logs.push(JSON.parse(line))
+      } catch {
+        // ignore non-JSON lines
+      }
     }
   })()
 

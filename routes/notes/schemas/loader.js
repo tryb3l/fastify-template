@@ -9,6 +9,7 @@ async function noteSchemasLoader(fastify) {
     './note.json',
     './read-params.json',
     './update-body.json',
+    './delete-query.json',
     '../../../schemas/limit.json',
     '../../../schemas/skip.json',
   ]
