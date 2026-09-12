@@ -68,13 +68,13 @@
     "close-with-grace": "^2.5.0",
     "csv-parse": "^7.0.2",
     "csv-stringify": "^6.8.3",
-    "fastify": "5.12.3",
+    "fastify": "5.12.4",
     "fastify-cli": "^8.0.1",
-    "fastify-metrics": "^13.2.1",
+    "fastify-metrics": "^14.1.0",
     "fastify-plugin": "^6.0.0",
-    "file-type": "^22.0.2",
+    "file-type": "^22.1.0",
     "migrate-mongo": "^14.0.7",
-    "nodemailer": "^10.0.1"
+    "nodemailer": "^10.0.9"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
