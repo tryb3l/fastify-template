@@ -1,6 +1,6 @@
 services:
   mongo:
-    image: mongo:8
+    image: mongo:7
     container_name: DB
     restart: unless-stopped
     command: ["mongod", "--wiredTigerCacheSizeGB", "1.0"]

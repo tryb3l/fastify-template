@@ -2,7 +2,12 @@
 
 const { parseArgs } = require('node:util')
 
-const { cleanupAll, getRuntimeStatus, runtimeDir } = require('./managed-spawn')
+const {
+  cleanupAll,
+  getManagedContainerStatus,
+  getRuntimeStatus,
+  runtimeDir,
+} = require('./managed-spawn')
 const { styles } = require('./colors')
 
 function parseRuntimeCliArgs(argv) {
@@ -49,9 +54,18 @@ async function runRuntimeOpsCli({
 
   if (action === 'status') {
     const statuses = getRuntimeStatus()
+    let containerStatuses = null
+    let dockerError = null
+    try {
+      containerStatuses = await getManagedContainerStatus()
+    } catch (error) {
+      dockerError = error?.message || String(error)
+    }
 
     if (json) {
-      stdout.write(`${JSON.stringify({ runtimeDir, statuses }, null, 2)}\n`)
+      stdout.write(
+        `${JSON.stringify({ runtimeDir, statuses, containers: containerStatuses, dockerError }, null, 2)}\n`,
+      )
       return 0
     }
 
@@ -66,18 +80,45 @@ async function runRuntimeOpsCli({
       const detail = entry.status !== 'clean' ? ` ${st.muted(`pid=${entry.pid}`)}` : ''
       stdout.write(`  ${st.strong(entry.mode.padEnd(6))} ${statusLabel}${detail}\n`)
     }
+
+    stdout.write(`${st.accent('Docker Containers')}\n`)
+    if (dockerError) {
+      stdout.write(`  ${st.warning('unavailable')} ${st.muted(dockerError)}\n`)
+      return 0
+    }
+    const activeModes = new Set(statuses.filter((s) => s.status === 'active').map((s) => s.mode))
+    for (const entry of containerStatuses) {
+      const statusLabel =
+        entry.status !== 'running'
+          ? st.muted('stopped')
+          : activeModes.has(entry.mode)
+            ? st.success('running')
+            : st.warning('leaked')
+      stdout.write(`  ${st.strong(entry.name.padEnd(20))} ${statusLabel}\n`)
+    }
     return 0
   }
 
   if (action === 'cleanup') {
-    const anyClean = await cleanupAll()
+    let anyClean
+    try {
+      anyClean = await cleanupAll()
+    } catch (error) {
+      const message = error?.message || String(error)
+      if (json) {
+        stdout.write(`${JSON.stringify({ ok: false, error: message })}\n`)
+      } else {
+        stderr.write(`Runtime cleanup could not reach Docker: ${message}\n`)
+      }
+      return 1
+    }
 
     if (json) {
       stdout.write(`${JSON.stringify({ ok: true, anyClean })}\n`)
       return 0
     }
 
-    stdout.write('Cleaned backend-owned stale processes and runtime state.\n')
+    stdout.write('Cleaned backend-owned stale processes, runtime state, and managed containers.\n')
     return 0
   }
 

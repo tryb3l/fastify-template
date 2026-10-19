@@ -1,6 +1,7 @@
 'use strict'
 const Docker = require('dockerode')
 const net = require('node:net')
+const { setTimeout: delay } = require('node:timers/promises')
 
 const { addInstantDuration, compareInstants, nowInstant } = require('../utils/time')
 
@@ -11,7 +12,7 @@ const DEFAULT_TIMEOUT_MS = 30_000
 const Containers = {
   testMongo: {
     name: 'fastify-test-mongo',
-    Image: 'mongo:8',
+    Image: 'mongo:7',
     Tty: false,
     Labels: {
       'notes.project': 'fastify-template',
@@ -27,7 +28,7 @@ const Containers = {
   },
   devMongo: {
     name: 'fastify-mongo',
-    Image: 'mongo:8',
+    Image: 'mongo:7',
     Tty: false,
     Labels: {
       'notes.project': 'fastify-template',
@@ -142,17 +143,26 @@ function dockerConsole() {
     })
   }
 
+  async function findContainerByName(container, { all = false } = {}) {
+    const containers = await withTimeout(() => docker.listContainers({ all }))
+    return containers.find((entry) => entry.Names.some((name) => name === `/${container.name}`))
+  }
+
   return {
     async getRunningContainer(container) {
-      const containers = await withTimeout(() => docker.listContainers())
-      return containers.find((running) => {
-        return running.Names.some((name) => name === `/${container.name}`)
-      })
+      return findContainerByName(container)
     },
     async startContainer(container, options = {}) {
       const { timeoutMs = DEFAULT_TIMEOUT_MS, waitForPort } = options
       const run = await this.getRunningContainer(container)
       if (!run) {
+        // A stopped container can linger under the same name (daemon hiccup, crash before
+        // AutoRemove fires) and would otherwise 409-conflict the create call below.
+        const stale = await findContainerByName(container, { all: true })
+        if (stale) {
+          await withTimeout(() => docker.getContainer(stale.Id).remove({ force: true }), timeoutMs)
+        }
+
         await pullImage(container, timeoutMs)
         const containerObj = await withTimeout(() => docker.createContainer(container), timeoutMs)
         await withTimeout(() => containerObj.start(), timeoutMs)
@@ -160,6 +170,14 @@ function dockerConsole() {
 
       if (waitForPort) {
         await waitForTcpPort({ port: waitForPort, timeoutMs })
+
+        await delay(750)
+        const stillRunning = await this.getRunningContainer(container)
+        if (!stillRunning) {
+          throw new Error(
+            `${container.name} exited shortly after reporting ready on port ${waitForPort}`,
+          )
+        }
       }
     },
     async stopContainer(container, timeoutMs = DEFAULT_TIMEOUT_MS) {

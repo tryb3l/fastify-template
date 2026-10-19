@@ -102,10 +102,6 @@ function checkConflict(mode) {
 
 // -- step runner -------------------------------------------------------------
 
-// Each step: { label, command, args?, cwd?, env?, stdio?, timeoutMs? }
-// stdio defaults to 'inherit' so the child shares the parent TTY — this means
-// the test reporter's process.stdout.isTTY is true and colours work natively
-// without FORCE_COLOR.
 function spawnStep(step, setChild) {
   const {
     label,
@@ -252,12 +248,48 @@ async function cleanupRuntime(mode) {
 
 async function cleanupAll() {
   const results = await Promise.all(['dev', 'test'].map(cleanupRuntime))
+  const containersStopped = await cleanupManagedContainers()
+  return results.some(Boolean) || containersStopped
+}
+
+// -- Docker-owned resource tracking ------------------------------------------
+
+function loadDockerHelpers() {
+  const dockerConsole = require('../test/test-setup-docker')
+  return { helpers: dockerConsole(), Containers: dockerConsole.Containers }
+}
+
+async function getManagedContainerStatus() {
+  const { helpers, Containers } = loadDockerHelpers()
+  return Promise.all(
+    Object.values(Containers).map(async (container) => {
+      const running = await helpers.getRunningContainer(container)
+      return {
+        name: container.name,
+        mode: container.Labels?.['notes.mode'] ?? 'unknown',
+        status: running ? 'running' : 'stopped',
+      }
+    }),
+  )
+}
+
+async function cleanupManagedContainers() {
+  const { helpers, Containers } = loadDockerHelpers()
+  const results = await Promise.all(
+    Object.values(Containers).map(async (container) => {
+      const running = await helpers.getRunningContainer(container)
+      if (!running) return false
+      await helpers.stopContainer(container)
+      return true
+    }),
+  )
   return results.some(Boolean)
 }
 
 module.exports = {
   cleanupAll,
   cleanupRuntime,
+  getManagedContainerStatus,
   getRuntimeStatus,
   modeKey,
   repoRoot,
