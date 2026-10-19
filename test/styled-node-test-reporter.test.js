@@ -404,6 +404,45 @@ test('createStyledNodeTestReporter renders labeled stdout and stderr blocks', as
   assert.match(renderedOutput, /\n\s+at runtime-guard\.test\.js:348:11/)
 })
 
+test('createStyledNodeTestReporter renders test:log events even when streams are suppressed', async (t) => {
+  // Arrange
+  restoreColorEnv(t)
+  delete process.env.NO_COLOR
+  delete process.env.FORCE_COLOR
+  const filePath = path.join(process.cwd(), 'test', 'sample.test.js')
+  const reporter = createStyledNodeTestReporter({
+    stream: { isTTY: false },
+    cwd: process.cwd(),
+  })
+
+  // Act
+  const output = await collectReporterOutput(reporter, [
+    {
+      type: 'test:log',
+      data: {
+        file: filePath,
+        message: 'context log message',
+      },
+    },
+    {
+      type: 'test:pass',
+      data: {
+        file: filePath,
+        name: 'logs context message',
+        nesting: 0,
+        details: { duration_ms: 1 },
+      },
+    },
+  ])
+
+  // Assert
+  const renderedOutput = stripAnsi(output)
+
+  assert.match(renderedOutput, /test\/sample\.test\.js/)
+  assert.match(renderedOutput, /› log context log message/)
+  assert.match(renderedOutput, /✔ logs context message \(1ms\)/)
+})
+
 test('createStyledNodeTestReporter renders readable coverage output in plain text for non-interactive streams', async (t) => {
   // Arrange
   restoreColorEnv(t)

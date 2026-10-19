@@ -17,7 +17,7 @@
     "dev:trace": "node scripts/dev.js --trace",
     "dev:trace:app": "node --trace-warnings node_modules/.bin/fastify start --options app.js",
     "test": "node test/run-tests.js",
-    "test:ci": "node --test test/**/*.test.js",
+    "test:ci": "node --experimental-vfs --test test/**/*.test.js",
     "test:makefile": "node --test test/makefile-bootstrap.test.js",
     "test:nostop": "node test/run-tests.js --nostop",
     "test:coverage": "node test/run-tests.js --coverage",

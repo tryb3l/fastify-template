@@ -16,23 +16,19 @@ function padNumber(value, length = 2) {
 }
 
 function instantToTemporalInstant(value) {
+  const Temporal = getTemporalApi()
+  if (value instanceof Temporal.Instant) {
+    return value
+  }
   if (!value || !Number.isFinite(value.epochMilliseconds)) {
     throw new TypeError('Expected an instant-like value')
   }
 
-  return getTemporalApi().Instant.fromEpochMilliseconds(Math.trunc(value.epochMilliseconds))
-}
-
-function createInstant(epochMilliseconds) {
-  if (!Number.isFinite(epochMilliseconds)) {
-    throw new TypeError('Expected a finite epoch millisecond value')
-  }
-
-  return { epochMilliseconds }
+  return Temporal.Instant.fromEpochMilliseconds(Math.trunc(value.epochMilliseconds))
 }
 
 function nowInstant() {
-  return createInstant(Number(getTemporalApi().Now.instant().epochMilliseconds))
+  return getTemporalApi().Now.instant()
 }
 
 function parseIsoInstant(value) {
@@ -44,13 +40,11 @@ function parseIsoInstant(value) {
     throw new RangeError('Expected a valid ISO 8601 date-time string with an explicit offset')
   }
 
-  const epochMilliseconds = Date.parse(value)
-
-  if (Number.isNaN(epochMilliseconds)) {
+  try {
+    return getTemporalApi().Instant.from(value)
+  } catch {
     throw new RangeError('Expected a valid ISO 8601 date-time string with an explicit offset')
   }
-
-  return createInstant(epochMilliseconds)
 }
 
 function instantFromDate(value) {
@@ -58,15 +52,11 @@ function instantFromDate(value) {
     throw new TypeError('Expected a valid Date instance')
   }
 
-  return createInstant(value.getTime())
+  return getTemporalApi().Instant.fromEpochMilliseconds(value.getTime())
 }
 
 function instantToDate(value) {
-  if (!value || !Number.isFinite(value.epochMilliseconds)) {
-    throw new TypeError('Expected an instant-like value')
-  }
-
-  return new Date(value.epochMilliseconds)
+  return new Date(instantToTemporalInstant(value).epochMilliseconds)
 }
 
 function instantToIsoString(value) {
@@ -107,20 +97,19 @@ function addInstantDuration(value, duration) {
     throw new TypeError('Expected a duration object')
   }
 
-  const milliseconds =
-    (duration.days ?? 0) * 24 * 60 * 60 * 1000 +
-    (duration.hours ?? 0) * 60 * 60 * 1000 +
-    (duration.minutes ?? 0) * 60 * 1000 +
-    (duration.seconds ?? 0) * 1000 +
-    (duration.milliseconds ?? 0)
-
-  return createInstant(instantToDate(value).getTime() + milliseconds)
+  return instantToTemporalInstant(value).add({
+    hours: (duration.days ?? 0) * 24 + (duration.hours ?? 0),
+    minutes: duration.minutes ?? 0,
+    seconds: duration.seconds ?? 0,
+    milliseconds: duration.milliseconds ?? 0,
+  })
 }
 
 function compareInstants(left, right) {
-  const delta = instantToDate(left).getTime() - instantToDate(right).getTime()
-
-  return delta === 0 ? 0 : delta > 0 ? 1 : -1
+  return getTemporalApi().Instant.compare(
+    instantToTemporalInstant(left),
+    instantToTemporalInstant(right),
+  )
 }
 
 module.exports = {

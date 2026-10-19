@@ -29,8 +29,10 @@ if (require.main === module) {
   const st = styles(process.stdout)
   const testEnv = { ...process.env, MONGO_URL: mongoUrl }
 
-  const nodeArgs = []
-  if (isCoverage) nodeArgs.push('--experimental-test-coverage')
+  const nodeArgs = ['--experimental-vfs']
+  if (isCoverage) {
+    nodeArgs.push('--experimental-test-coverage', '--test-coverage-include-all')
+  }
   nodeArgs.push(`--test-reporter=${styledNodeTestReporterPath}`)
   nodeArgs.push('--test', ...getTestFiles(__dirname))
 

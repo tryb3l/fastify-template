@@ -48,15 +48,10 @@ async function loadFileTypeModule() {
 }
 
 async function readFileSample(filePath, bytesToRead = TEXT_SAMPLE_SIZE) {
-  const fileHandle = await open(filePath, 'r')
-
-  try {
-    const buffer = Buffer.alloc(bytesToRead)
-    const { bytesRead } = await fileHandle.read(buffer, 0, bytesToRead, 0)
-    return buffer.subarray(0, bytesRead)
-  } finally {
-    await fileHandle.close()
-  }
+  await using fileHandle = await open(filePath, 'r')
+  const buffer = Buffer.allocUnsafe(bytesToRead)
+  const { bytesRead } = await fileHandle.read(buffer, 0, bytesToRead, 0)
+  return buffer.subarray(0, bytesRead)
 }
 
 function hasSuspiciousControlCharacters(sample) {

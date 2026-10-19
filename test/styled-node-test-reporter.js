@@ -231,6 +231,16 @@ function createStyledNodeTestReporter({
 } = {}) {
   const styles = createTextStyles(stream)
   const seenFiles = new Set()
+  const renderEventMessage = (label, labelStyle, event) =>
+    renderLabeledMessageBlock({
+      label,
+      labelStyle,
+      message: event.data.message,
+      filePath: event.data.file,
+      seenFiles,
+      styles,
+      cwd,
+    })
 
   return async function* styledNodeTestReporter(source) {
     for await (const event of source) {
@@ -265,30 +275,17 @@ function createStyledNodeTestReporter({
 
           yield `${styles.muted('  ›')} ${event.data.message}\n`
           break
+        case 'test:log':
+          yield renderEventMessage('log', styles.info, event)
+          break
         case 'test:stdout':
           if (showStreams) {
-            yield renderLabeledMessageBlock({
-              label: 'stdout',
-              labelStyle: styles.info,
-              message: event.data.message,
-              filePath: event.data.file,
-              seenFiles,
-              styles,
-              cwd,
-            })
+            yield renderEventMessage('stdout', styles.info, event)
           }
           break
         case 'test:stderr':
           if (showStreams) {
-            yield renderLabeledMessageBlock({
-              label: 'stderr',
-              labelStyle: styles.danger,
-              message: event.data.message,
-              filePath: event.data.file,
-              seenFiles,
-              styles,
-              cwd,
-            })
+            yield renderEventMessage('stderr', styles.danger, event)
           }
           break
         default:
