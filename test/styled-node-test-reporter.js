@@ -229,7 +229,7 @@ function createStyledNodeTestReporter({
   cwd = process.cwd(),
   showStreams = isStreamOutputEnabled(),
 } = {}) {
-  const styles = createTextStyles({ stream })
+  const styles = createTextStyles(stream)
   const seenFiles = new Set()
 
   return async function* styledNodeTestReporter(source) {

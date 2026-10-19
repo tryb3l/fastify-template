@@ -4,6 +4,17 @@ const { styleText } = require('node:util')
 
 // -- color enablement --------------------------------------------------------
 
+function resolveStream(streamOrOptions = process.stdout) {
+  if (
+    streamOrOptions &&
+    typeof streamOrOptions === 'object' &&
+    Object.prototype.hasOwnProperty.call(streamOrOptions, 'stream')
+  ) {
+    return streamOrOptions.stream ?? process.stdout
+  }
+  return streamOrOptions ?? process.stdout
+}
+
 function isColorEnabled(stream = process.stdout) {
   if (
     Object.prototype.hasOwnProperty.call(process.env, 'NO_COLOR') ||
@@ -31,8 +42,10 @@ function paint(format, text, stream = process.stdout) {
 // -- semantic styles factory -------------------------------------------------
 
 // Returns an object of named style helpers bound to `stream`.
-// Call as  styles()  or  styles(process.stderr)  or  styles({ isTTY: true }).
-function styles(stream = process.stdout) {
+// Call as  styles()  or  styles(process.stderr)  or  styles({ isTTY: true })
+// or  styles({ stream: process.stdout }).
+function styles(streamOrOptions = process.stdout) {
+  const stream = resolveStream(streamOrOptions)
   return {
     accent: (v) => paint(['bold', 'cyanBright'], v, stream),
     danger: (v) => paint(['bold', 'redBright'], v, stream),

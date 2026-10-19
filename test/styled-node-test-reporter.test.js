@@ -4,6 +4,7 @@ const test = require('node:test')
 const assert = require('node:assert')
 const path = require('node:path')
 const ansiPattern = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g')
+const EXPECTED_STYLED_PASS = '\u001b[1m\u001b[92m✔ passes\u001b[39m\u001b[22m'
 
 const { styles: createTextStyles } = require('../scripts/colors')
 const { createStyledNodeTestReporter } = require('./styled-node-test-reporter')
@@ -127,8 +128,7 @@ test('createStyledNodeTestReporter applies ANSI styling for interactive streams'
   restoreColorEnv(t)
   delete process.env.NO_COLOR
   delete process.env.NODE_DISABLE_COLORS
-  process.env.FORCE_COLOR = '1'
-  const styles = createTextStyles({ stream: { isTTY: true } })
+  delete process.env.FORCE_COLOR
   const reporter = createStyledNodeTestReporter({
     stream: { isTTY: true },
     cwd: process.cwd(),
@@ -149,7 +149,7 @@ test('createStyledNodeTestReporter applies ANSI styling for interactive streams'
 
   // Assert
   assert.ok(output.includes(String.fromCharCode(27)))
-  assert.ok(output.includes(styles.success('✔ passes')))
+  assert.ok(output.includes(EXPECTED_STYLED_PASS))
 })
 
 test('createStyledNodeTestReporter styles summary values for interactive streams', async (t) => {
@@ -157,7 +157,7 @@ test('createStyledNodeTestReporter styles summary values for interactive streams
   restoreColorEnv(t)
   delete process.env.NO_COLOR
   delete process.env.NODE_DISABLE_COLORS
-  process.env.FORCE_COLOR = '1'
+  delete process.env.FORCE_COLOR
   const styles = createTextStyles({ stream: { isTTY: true } })
   const reporter = createStyledNodeTestReporter({
     stream: { isTTY: true },
@@ -535,8 +535,8 @@ test('createStyledNodeTestReporter styles coverage values by threshold for inter
   restoreColorEnv(t)
   delete process.env.NO_COLOR
   delete process.env.NODE_DISABLE_COLORS
-  process.env.FORCE_COLOR = '1'
-  const styles = createTextStyles({ stream: { isTTY: true } })
+  delete process.env.FORCE_COLOR
+  const styles = createTextStyles({ isTTY: true })
   const reporter = createStyledNodeTestReporter({
     stream: { isTTY: true },
     cwd: process.cwd(),
@@ -569,4 +569,44 @@ test('createStyledNodeTestReporter styles coverage values by threshold for inter
   assert.ok(output.includes(styles.success('92.0% (92/100)')))
   assert.ok(output.includes(styles.warning('70.0% (14/20)')))
   assert.ok(output.includes(styles.danger('50.0% (5/10)')))
+})
+
+test('createStyledNodeTestReporter respects NO_COLOR, NODE_DISABLE_COLORS, and FORCE_COLOR overrides', async (t) => {
+  // Arrange
+  restoreColorEnv(t)
+  const passEvent = {
+    type: 'test:pass',
+    data: {
+      file: path.join(process.cwd(), 'test', 'sample.test.js'),
+      name: 'passes',
+      nesting: 0,
+      details: { duration_ms: 5 },
+    },
+  }
+  const cases = [
+    { env: { FORCE_COLOR: '1', NO_COLOR: '1' }, expectAnsi: false },
+    { env: { FORCE_COLOR: '1', NODE_DISABLE_COLORS: '1' }, expectAnsi: false },
+    { env: { FORCE_COLOR: '1' }, expectAnsi: true },
+    { env: { FORCE_COLOR: '0' }, expectAnsi: false },
+  ]
+
+  // Act & Assert
+  for (const { env, expectAnsi } of cases) {
+    delete process.env.NO_COLOR
+    delete process.env.NODE_DISABLE_COLORS
+    delete process.env.FORCE_COLOR
+    Object.assign(process.env, env)
+
+    for (const isTTY of [true, false]) {
+      const output = await collectReporterOutput(
+        createStyledNodeTestReporter({ stream: { isTTY }, cwd: process.cwd() }),
+        [passEvent],
+      )
+      if (expectAnsi) {
+        assert.ok(output.includes(EXPECTED_STYLED_PASS))
+      } else {
+        assert.ok(!output.includes(String.fromCharCode(27)))
+      }
+    }
+  }
 })
