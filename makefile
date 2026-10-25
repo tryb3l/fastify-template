@@ -11,7 +11,83 @@ DEV_FRONTEND_URL ?= http://localhost:5173
 DEV_MAIL_FROM ?= no-reply@notes.local
 DEV_MAILPIT_SMTP_PORT ?= 1025
 DEV_MAILPIT_UI_PORT ?= 8025
+DOCKER_BIN ?= docker
+DOCKER_WAIT_TIMEOUT ?= 60
+DOCKER_POLL_INTERVAL ?= 1
 REQUIRED_ENV_VARS = JWT_SECRET COOKIE_SECRET
+ENSURE_DOCKER = if ! command -v "$(DOCKER_BIN)" >/dev/null 2>&1; then \
+		echo ""; \
+		echo "======================================================================"; \
+		echo " ERROR: Docker is not installed!"; \
+		echo "----------------------------------------------------------------------"; \
+		echo " Docker is a must for this app to run (it powers local MongoDB,"; \
+		echo " Mailpit, and container services)."; \
+		echo " Please install Docker Desktop (macOS / Windows / Linux) or Docker"; \
+		echo " Engine (Linux) and try again:"; \
+		echo "   https://docs.docker.com/get-docker/"; \
+		echo "======================================================================"; \
+		echo ""; \
+		exit 1; \
+	fi; \
+	if ! "$(DOCKER_BIN)" info >/dev/null 2>&1; then \
+		os_name="$${DOCKER_OS:-$$(uname -s 2>/dev/null || echo Unknown)}"; \
+		echo "Docker is not running. Attempting to start Docker service ($$os_name)..."; \
+		case "$$os_name" in \
+			Darwin*) \
+				if command -v open >/dev/null 2>&1 && open -a Docker >/dev/null 2>&1; then \
+					true; \
+				elif command -v orbctl >/dev/null 2>&1 && orbctl start >/dev/null 2>&1; then \
+					true; \
+				elif command -v colima >/dev/null 2>&1 && colima start >/dev/null 2>&1; then \
+					true; \
+				else \
+					echo "Could not start Docker automatically on macOS. Please launch Docker Desktop manually and try again."; \
+					exit 1; \
+				fi \
+				;; \
+			Linux*) \
+				if command -v systemctl >/dev/null 2>&1 && (systemctl start docker >/dev/null 2>&1 || systemctl --user start docker-desktop >/dev/null 2>&1 || sudo systemctl start docker >/dev/null 2>&1); then \
+					true; \
+				elif command -v service >/dev/null 2>&1 && (service docker start >/dev/null 2>&1 || sudo service docker start >/dev/null 2>&1); then \
+					true; \
+				elif command -v powershell.exe >/dev/null 2>&1 && powershell.exe -NoProfile -NonInteractive -Command "Start-Process 'C:\Program Files\Docker\Docker\Docker Desktop.exe'" >/dev/null 2>&1; then \
+					true; \
+				else \
+					echo "Could not start Docker service automatically on Linux. Please run 'sudo systemctl start docker' (or start Docker Desktop) and try again."; \
+					exit 1; \
+				fi \
+				;; \
+			MINGW*|MSYS*|CYGWIN*|Windows_NT*) \
+				if [ -x "/c/Program Files/Docker/Docker/Docker Desktop.exe" ]; then \
+					"/c/Program Files/Docker/Docker/Docker Desktop.exe" >/dev/null 2>&1 & \
+				elif command -v powershell.exe >/dev/null 2>&1 && powershell.exe -NoProfile -NonInteractive -Command "if (Test-Path 'C:\Program Files\Docker\Docker\Docker Desktop.exe') { Start-Process 'C:\Program Files\Docker\Docker\Docker Desktop.exe' } else { Start-Service *docker* }" >/dev/null 2>&1; then \
+					true; \
+				elif command -v cmd.exe >/dev/null 2>&1 && cmd.exe /c "start \"\" \"C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe\"" >/dev/null 2>&1; then \
+					true; \
+				elif command -v net >/dev/null 2>&1 && (net start com.docker.service >/dev/null 2>&1 || net start docker >/dev/null 2>&1); then \
+					true; \
+				else \
+					echo "Could not start Docker automatically on Windows. Please launch Docker Desktop manually and try again."; \
+					exit 1; \
+				fi \
+				;; \
+			*) \
+				echo "Unsupported OS ($$os_name) for automatic Docker startup. Please start Docker manually and try again."; \
+				exit 1 \
+				;; \
+		esac; \
+		echo "Waiting for Docker engine to be ready..."; \
+		elapsed=0; \
+		while ! "$(DOCKER_BIN)" info >/dev/null 2>&1; do \
+			if [ "$$elapsed" -ge "$(DOCKER_WAIT_TIMEOUT)" ]; then \
+				echo "Timed out after $(DOCKER_WAIT_TIMEOUT)s waiting for Docker engine to become ready. Please ensure Docker is running and try again."; \
+				exit 1; \
+			fi; \
+			sleep $(DOCKER_POLL_INTERVAL); \
+			elapsed=$$((elapsed + 1)); \
+		done; \
+		echo "Docker is ready."; \
+	fi;
 REQUIRE_ENV_FILE = if [ ! -f "$(ENV_FILE)" ]; then \
 		echo "$(ENV_FILE) is missing. Run 'make init-env' to create it before using this target."; \
 		exit 1; \
@@ -71,21 +147,15 @@ init-env: ## Create a local .env file with safe development defaults
 	@echo "Created $(ENV_FILE) for local development."
 	@echo "Review the generated values and rotate secrets if you reuse this setup elsewhere."
 
+.PHONY: start-docker
+start-docker: ## Ensure Docker is installed and start the Docker service if stopped
+	@$(ENSURE_DOCKER)
+
 .PHONY: dev
-dev: check-env ## Start the managed local backend runtime
+dev: check-env start-docker ## Start the managed local backend runtime
 	@echo "Starting managed Fastify development runtime..."
 	@echo "Mailpit UI: http://localhost:$(DEV_MAILPIT_UI_PORT)"
 	@$(LOAD_ENV) $(DEV_ENV) npm run dev
-
-.PHONY: start-docker
-start-docker: check-env
-	@if ! docker info > /dev/null 2>&1; then \
-		echo "Docker is not running. Starting Docker Desktop..."; \
-		open -a Docker; \
-		echo "Waiting for Docker engine to be ready..."; \
-		while ! docker info > /dev/null 2>&1; do sleep 1; done; \
-		echo "Docker is ready."; \
-	fi
 
 .PHONY: dev-app
 dev-app: check-env start-docker ## Start both backend and frontend in dev mode
@@ -96,17 +166,17 @@ dev-app: check-env start-docker ## Start both backend and frontend in dev mode
 	wait
 
 .PHONY: dev-compose
-dev-compose: ## Start the local Docker app stack with Mailpit (no real SMTP required)
+dev-compose: start-docker ## Start the local Docker app stack with Mailpit (no real SMTP required)
 	$(LOCAL_DOCKER_COMPOSE) up -d --build
 
 .PHONY: dev-trace
-dev-trace: check-env ## Start the managed local backend runtime with trace warnings
+dev-trace: check-env start-docker ## Start the managed local backend runtime with trace warnings
 	@echo "Starting managed Fastify trace runtime..."
 	@echo "Mailpit UI: http://localhost:$(DEV_MAILPIT_UI_PORT)"
 	@$(LOAD_ENV) $(DEV_ENV) npm run dev:trace
 
 .PHONY: test
-test: start-docker
+test: start-docker ## Run the managed local test suite
 	npm run test
 
 .PHONY: test-ci
@@ -114,7 +184,7 @@ test-ci: ## Run tests in CI mode (no Docker, no managed runtime)
 	npm run test:ci
 
 .PHONY: test-cov
-test-cov:
+test-cov: start-docker ## Run the managed local test suite with coverage
 	npm run test:coverage
 
 .PHONY: migrate
@@ -138,27 +208,27 @@ runtime-cleanup: ## Clean managed runtime state and owned stale processes
 	npm run runtime:cleanup
 
 .PHONY: verify
-verify: ## Run the main local verification checks
+verify: start-docker ## Run the main local verification checks
 	npm run lint
 	npm run test
 
 # --- Prod VPS ---
 .PHONY: up
-up:
+up: start-docker
 	@echo "Starting production stack..."
 	$(DOCKER_COMPOSE) up -d --build
 
 .PHONY: down
-down:
+down: start-docker
 	@echo "Stopping production stack..."
 	$(DOCKER_COMPOSE) down
 
 .PHONY: logs
-logs:
+logs: start-docker
 	$(DOCKER_COMPOSE) logs -f app
 
 .PHONY: shell
-shell:
+shell: start-docker
 	docker exec -it $(APP_NAME) sh
 
 # --- Help ---

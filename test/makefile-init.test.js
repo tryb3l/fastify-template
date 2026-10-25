@@ -200,3 +200,126 @@ test('make runtime-status-json forwards the constrained JSON status args', (t) =
   assert.strictEqual(result.status, 0, result.output)
   assert.ok(result.output.includes('ARGV:run runtime:status -- --json'), result.output)
 })
+
+test('make start-docker prints a friendly message when docker is not installed', () => {
+  const result = runMake(['DOCKER_BIN=__missing_docker_binary__', 'start-docker'])
+
+  assert.notStrictEqual(result.status, 0)
+  assert.ok(result.output.includes('ERROR: Docker is not installed!'), result.output)
+  assert.ok(result.output.includes('Docker is a must for this app to run'), result.output)
+  assert.ok(result.output.includes('https://docs.docker.com/get-docker/'), result.output)
+})
+
+test('make start-docker auto-starts Docker service on macOS, Linux, and Windows when stopped', (t) => {
+  const platforms = [
+    {
+      os: 'Darwin',
+      starterCmd: 'open',
+      expectedStarterArg: '-a Docker',
+    },
+    {
+      os: 'Linux',
+      starterCmd: 'systemctl',
+      expectedStarterArg: 'start docker',
+    },
+    {
+      os: 'MINGW64_NT-10.0',
+      starterCmd: 'powershell.exe',
+      expectedStarterArg: 'Docker Desktop.exe',
+    },
+  ]
+
+  for (const platform of platforms) {
+    const tempDir = createTempDir(t)
+    const binDir = path.join(tempDir, 'bin')
+    const stateFile = path.join(tempDir, 'docker-started')
+    const logFile = path.join(tempDir, 'starter.log')
+
+    fs.mkdirSync(binDir)
+
+    fs.writeFileSync(
+      path.join(binDir, 'docker'),
+      [
+        '#!/bin/sh',
+        'if [ "$1" = "info" ]; then',
+        `  if [ -f "${stateFile}" ]; then`,
+        '    exit 0',
+        '  fi',
+        '  exit 1',
+        'fi',
+        'exit 0',
+      ].join('\n'),
+      { mode: 0o755 },
+    )
+
+    fs.writeFileSync(
+      path.join(binDir, platform.starterCmd),
+      ['#!/bin/sh', `printf "%s\\n" "$*" >> "${logFile}"`, `touch "${stateFile}"`, 'exit 0'].join(
+        '\n',
+      ),
+      { mode: 0o755 },
+    )
+
+    const result = runMake(['DOCKER_POLL_INTERVAL=0', 'DOCKER_WAIT_TIMEOUT=5', 'start-docker'], {
+      env: {
+        DOCKER_OS: platform.os,
+        PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+      },
+    })
+
+    assert.strictEqual(result.status, 0, `${platform.os}: ${result.output}`)
+    assert.ok(
+      result.output.includes(
+        `Docker is not running. Attempting to start Docker service (${platform.os})...`,
+      ),
+      result.output,
+    )
+    assert.ok(result.output.includes('Docker is ready.'), result.output)
+
+    const starterInvocations = fs.readFileSync(logFile, 'utf8')
+    assert.ok(starterInvocations.includes(platform.expectedStarterArg), starterInvocations)
+  }
+})
+
+test('make dev ensures docker is running before starting the backend runtime', (t) => {
+  const tempDir = createTempDir(t)
+  const envFile = path.join(tempDir, 'dev.env')
+  const binDir = path.join(tempDir, 'bin')
+  const stateFile = path.join(tempDir, 'docker-started')
+
+  fs.writeFileSync(
+    envFile,
+    ['JWT_SECRET=test-jwt-secret', 'COOKIE_SECRET=test-cookie-secret', ''].join('\n'),
+  )
+
+  fs.mkdirSync(binDir)
+  fs.writeFileSync(
+    path.join(binDir, 'docker'),
+    ['#!/bin/sh', `if [ -f "${stateFile}" ]; then exit 0; fi`, 'exit 1'].join('\n'),
+    { mode: 0o755 },
+  )
+  fs.writeFileSync(
+    path.join(binDir, 'open'),
+    ['#!/bin/sh', `touch "${stateFile}"`, 'exit 0'].join('\n'),
+    { mode: 0o755 },
+  )
+  fs.writeFileSync(
+    path.join(binDir, 'npm'),
+    ['#!/bin/sh', 'printf "NPM_ARGV:%s\\n" "$*"'].join('\n'),
+    { mode: 0o755 },
+  )
+
+  const result = runMake(
+    [`ENV_FILE=${envFile}`, 'DOCKER_POLL_INTERVAL=0', 'DOCKER_WAIT_TIMEOUT=5', 'dev'],
+    {
+      env: {
+        DOCKER_OS: 'Darwin',
+        PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+      },
+    },
+  )
+
+  assert.strictEqual(result.status, 0, result.output)
+  assert.ok(result.output.includes('Docker is ready.'), result.output)
+  assert.ok(result.output.includes('NPM_ARGV:run dev'), result.output)
+})
