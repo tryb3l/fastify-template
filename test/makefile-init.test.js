@@ -96,7 +96,7 @@ test('make init-env creates local defaults once and does not overwrite existing 
   assert.strictEqual(fs.readFileSync(envFile, 'utf8'), initialContents)
 })
 
-test('make migrate reports every missing required env variable before running npm', (t) => {
+test('make migrate reports every missing required env variable before running node task runner', (t) => {
   const tempDir = createTempDir(t)
   const envFile = path.join(tempDir, 'incomplete.env')
 
@@ -123,7 +123,7 @@ test('make migrate loads runtime values from the selected env file', (t) => {
   const tempDir = createTempDir(t)
   const envFile = path.join(tempDir, 'runtime.env')
   const binDir = path.join(tempDir, 'bin')
-  const npmShim = path.join(binDir, 'npm')
+  const nodeShim = path.join(binDir, 'node')
 
   fs.writeFileSync(
     envFile,
@@ -140,7 +140,7 @@ test('make migrate loads runtime values from the selected env file', (t) => {
 
   fs.mkdirSync(binDir)
   fs.writeFileSync(
-    npmShim,
+    nodeShim,
     [
       '#!/bin/sh',
       'printf "ARGV:%s\\n" "$*"',
@@ -161,7 +161,7 @@ test('make migrate loads runtime values from the selected env file', (t) => {
   })
 
   assert.strictEqual(result.status, 0, result.output)
-  assert.ok(result.output.includes('ARGV:run migrate'), result.output)
+  assert.ok(result.output.includes('ARGV:--run migrate'), result.output)
   assert.ok(result.output.includes('JWT_SECRET:test-jwt-secret'), result.output)
   assert.ok(result.output.includes('COOKIE_SECRET:test-cookie-secret'), result.output)
   assert.ok(
@@ -186,10 +186,10 @@ test('make help lists canonical targets', () => {
 test('make runtime-status-json forwards the constrained JSON status args', (t) => {
   const tempDir = createTempDir(t)
   const binDir = path.join(tempDir, 'bin')
-  const npmShim = path.join(binDir, 'npm')
+  const nodeShim = path.join(binDir, 'node')
 
   fs.mkdirSync(binDir)
-  fs.writeFileSync(npmShim, ['#!/bin/sh', 'printf "ARGV:%s\\n" "$*"'].join('\n'), { mode: 0o755 })
+  fs.writeFileSync(nodeShim, ['#!/bin/sh', 'printf "ARGV:%s\\n" "$*"'].join('\n'), { mode: 0o755 })
 
   const result = runMake(['runtime-status-json'], {
     env: {
@@ -198,7 +198,7 @@ test('make runtime-status-json forwards the constrained JSON status args', (t) =
   })
 
   assert.strictEqual(result.status, 0, result.output)
-  assert.ok(result.output.includes('ARGV:run runtime:status -- --json'), result.output)
+  assert.ok(result.output.includes('ARGV:--run runtime:status -- --json'), result.output)
 })
 
 test('make start-docker prints a friendly message when docker is not installed', () => {
@@ -304,8 +304,8 @@ test('make dev ensures docker is running before starting the backend runtime', (
     { mode: 0o755 },
   )
   fs.writeFileSync(
-    path.join(binDir, 'npm'),
-    ['#!/bin/sh', 'printf "NPM_ARGV:%s\\n" "$*"'].join('\n'),
+    path.join(binDir, 'node'),
+    ['#!/bin/sh', 'printf "NODE_ARGV:%s\\n" "$*"'].join('\n'),
     { mode: 0o755 },
   )
 
@@ -321,5 +321,5 @@ test('make dev ensures docker is running before starting the backend runtime', (
 
   assert.strictEqual(result.status, 0, result.output)
   assert.ok(result.output.includes('Docker is ready.'), result.output)
-  assert.ok(result.output.includes('NPM_ARGV:run dev'), result.output)
+  assert.ok(result.output.includes('NODE_ARGV:--run dev'), result.output)
 })

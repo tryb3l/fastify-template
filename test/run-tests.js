@@ -3,7 +3,7 @@
 const path = require('node:path')
 const fs = require('node:fs')
 
-const { runManaged } = require('../scripts/managed-spawn')
+const { runManaged, repoRoot } = require('../scripts/managed-spawn')
 const { styles } = require('../scripts/colors')
 
 const args = process.argv.slice(2)
@@ -11,18 +11,13 @@ const isCoverage = args.includes('--coverage')
 const isNoStop = args.includes('--nostop')
 const mongoUrl = process.env.MONGO_URL || 'mongodb://127.0.0.1:27018/test'
 const styledNodeTestReporterPath = path.join(__dirname, 'styled-node-test-reporter.js')
+const migrateMongoBin = path.join(repoRoot, 'node_modules', '.bin', 'migrate-mongo')
 
-function getTestFiles(dir, fileList = []) {
-  const files = fs.readdirSync(dir)
-  for (const file of files) {
-    const filePath = path.join(dir, file)
-    if (fs.statSync(filePath).isDirectory()) {
-      getTestFiles(filePath, fileList)
-    } else if (filePath.endsWith('.test.js')) {
-      fileList.push(filePath)
-    }
-  }
-  return fileList
+function getTestFiles(dir) {
+  return fs
+    .globSync('**/*.test.js', { cwd: dir })
+    .map((relativePath) => path.join(dir, relativePath))
+    .sort()
 }
 
 if (require.main === module) {
@@ -49,21 +44,21 @@ if (require.main === module) {
     steps: [
       {
         label: 'test-setup',
-        command: 'node',
+        command: process.execPath,
         args: [path.join(__dirname, 'run-before.js'), '--mode=test'],
         env: testEnv,
         timeoutMs: 45_000,
       },
       {
         label: 'test-migrate',
-        command: 'npx',
-        args: ['migrate-mongo', 'up'],
+        command: process.execPath,
+        args: [migrateMongoBin, 'up'],
         env: testEnv,
         timeoutMs: 60_000,
       },
       {
         label: 'test-run',
-        command: 'node',
+        command: process.execPath,
         args: nodeArgs,
         env: testEnv,
       },
@@ -72,7 +67,7 @@ if (require.main === module) {
       ? null
       : {
           label: 'test-cleanup',
-          command: 'node',
+          command: process.execPath,
           args: [path.join(__dirname, 'run-after.js'), '--mode=test'],
           env: testEnv,
           timeoutMs: 30_000,

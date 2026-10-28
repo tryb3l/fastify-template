@@ -4,23 +4,19 @@ const path = require('node:path')
 const { runManaged, repoRoot } = require('./managed-spawn')
 
 const isTrace = process.argv.includes('--trace')
+const fastifyBin = path.join(repoRoot, 'node_modules', '.bin', 'fastify')
+const migrateMongoBin = path.join(repoRoot, 'node_modules', '.bin', 'migrate-mongo')
 
 const appStep = isTrace
   ? {
       label: 'dev-trace-app',
-      command: 'node',
-      args: [
-        '--trace-warnings',
-        path.join(repoRoot, 'node_modules', '.bin', 'fastify'),
-        'start',
-        '--options',
-        'app.js',
-      ],
+      command: process.execPath,
+      args: ['--trace-warnings', fastifyBin, 'start', '--options', 'app.js'],
     }
   : {
       label: 'dev-app',
-      command: 'npx',
-      args: ['fastify', 'start', '--watch', '--pretty-logs', '--debug', '--options', 'app.js'],
+      command: process.execPath,
+      args: [fastifyBin, 'start', '--watch', '--pretty-logs', '--debug', '--options', 'app.js'],
     }
 
 if (require.main === module) {
@@ -29,21 +25,21 @@ if (require.main === module) {
     steps: [
       {
         label: 'dev-setup',
-        command: 'node',
+        command: process.execPath,
         args: [path.join(repoRoot, 'test', 'run-before.js'), '--mode=dev'],
         timeoutMs: 45_000,
       },
       {
         label: 'dev-migrate',
-        command: 'npx',
-        args: ['migrate-mongo', 'up'],
+        command: process.execPath,
+        args: [migrateMongoBin, 'up'],
         timeoutMs: 60_000,
       },
       appStep,
     ],
     cleanup: {
       label: 'dev-cleanup',
-      command: 'node',
+      command: process.execPath,
       args: [path.join(repoRoot, 'test', 'run-after.js'), '--mode=dev'],
       timeoutMs: 30_000,
     },

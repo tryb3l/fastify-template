@@ -12,6 +12,7 @@ DEV_MAIL_FROM ?= no-reply@notes.local
 DEV_MAILPIT_SMTP_PORT ?= 1025
 DEV_MAILPIT_UI_PORT ?= 8025
 DOCKER_BIN ?= docker
+NODE ?= node
 DOCKER_WAIT_TIMEOUT ?= 60
 DOCKER_POLL_INTERVAL ?= 1
 REQUIRED_ENV_VARS = JWT_SECRET COOKIE_SECRET
@@ -155,14 +156,14 @@ start-docker: ## Ensure Docker is installed and start the Docker service if stop
 dev: check-env start-docker ## Start the managed local backend runtime
 	@echo "Starting managed Fastify development runtime..."
 	@echo "Mailpit UI: http://localhost:$(DEV_MAILPIT_UI_PORT)"
-	@$(LOAD_ENV) $(DEV_ENV) npm run dev
+	@$(LOAD_ENV) $(DEV_ENV) $(NODE) --run dev
 
 .PHONY: dev-app
 dev-app: check-env start-docker ## Start both backend and frontend in dev mode
 	@echo "Starting backend and frontend..."
 	@echo "Mailpit UI: http://localhost:$(DEV_MAILPIT_UI_PORT)"
-	@$(LOAD_ENV) $(DEV_ENV) npm run dev & \
-	npm --prefix ../note-explorer run dev & \
+	@$(LOAD_ENV) $(DEV_ENV) $(NODE) --run dev & \
+	(cd ../note-explorer && $(NODE) --run dev) & \
 	wait
 
 .PHONY: dev-compose
@@ -173,44 +174,44 @@ dev-compose: start-docker ## Start the local Docker app stack with Mailpit (no r
 dev-trace: check-env start-docker ## Start the managed local backend runtime with trace warnings
 	@echo "Starting managed Fastify trace runtime..."
 	@echo "Mailpit UI: http://localhost:$(DEV_MAILPIT_UI_PORT)"
-	@$(LOAD_ENV) $(DEV_ENV) npm run dev:trace
+	@$(LOAD_ENV) $(DEV_ENV) $(NODE) --run dev:trace
 
 .PHONY: test
 test: start-docker ## Run the managed local test suite
-	npm run test
+	$(NODE) --run test
 
 .PHONY: test-ci
 test-ci: ## Run tests in CI mode (no Docker, no managed runtime)
-	npm run test:ci
+	$(NODE) --run test:ci
 
 .PHONY: test-cov
 test-cov: start-docker ## Run the managed local test suite with coverage
-	npm run test:coverage
+	$(NODE) --run test:coverage
 
 .PHONY: migrate
 migrate: check-env ## Apply db migrations with the selected env file loaded
-	@$(LOAD_ENV) npm run migrate
+	@$(LOAD_ENV) $(NODE) --run migrate
 
 .PHONY: lint
 lint:
-	npm run lint
+	$(NODE) --run lint
 
 .PHONY: runtime-status
 runtime-status: ## Show human-readable status for managed local runtimes
-	npm run runtime:status
+	$(NODE) --run runtime:status
 
 .PHONY: runtime-status-json
 runtime-status-json: ## Emit machine-readable managed runtime status JSON
-	npm run runtime:status -- --json
+	$(NODE) --run runtime:status -- --json
 
 .PHONY: runtime-cleanup
 runtime-cleanup: ## Clean managed runtime state and owned stale processes
-	npm run runtime:cleanup
+	$(NODE) --run runtime:cleanup
 
 .PHONY: verify
 verify: start-docker ## Run the main local verification checks
-	npm run lint
-	npm run test
+	$(NODE) --run lint
+	$(NODE) --run test
 
 # --- Prod VPS ---
 .PHONY: up
