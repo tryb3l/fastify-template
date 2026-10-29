@@ -1,6 +1,7 @@
 'use strict'
 
 const fp = require('fastify-plugin')
+const { instantFromDate, instantToIsoString } = require('../utils/time')
 
 module.exports = fp(
   async function errorHandlerPlugin(fastify) {
@@ -19,6 +20,26 @@ module.exports = fp(
 
       const logLevel = statusCode >= 500 ? 'error' : 'warn'
       req.log[logLevel]({ req, res: reply, err }, err.message)
+
+      if (statusCode === 409 && err.conflictCode) {
+        const conflictPayload = {
+          message: err.message,
+          code: err.conflictCode,
+        }
+
+        if (err.currentRevision !== undefined) {
+          conflictPayload.currentRevision = err.currentRevision
+        }
+
+        if (err.currentModifiedAt !== undefined) {
+          conflictPayload.currentModifiedAt =
+            err.currentModifiedAt instanceof Date
+              ? instantToIsoString(instantFromDate(err.currentModifiedAt))
+              : err.currentModifiedAt
+        }
+
+        return reply.send(conflictPayload)
+      }
 
       const errorResponse = {
         statusCode,

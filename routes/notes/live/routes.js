@@ -7,12 +7,9 @@ module.exports = async function liveNotesRoutes(fastify) {
       websocket: true,
       preHandler: async (req) => {
         const noteId = req.params.id
-        const userId = req.user._id || req.user.id
         try {
-          await fastify.notesDataSource.readNote(noteId, userId)
+          await req.notesDataSource.readNote(noteId)
         } catch {
-          // Whether the note doesn't exist or the user doesn't own it,
-          // return 403 to avoid leaking note existence information
           throw fastify.httpErrors.forbidden('Access to this live feed is forbidden')
         }
       },

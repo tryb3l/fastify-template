@@ -28,13 +28,96 @@ module.exports = async function noteRoutes(fastify, opts) {
       },
     },
     handler: async function listNotesHandler(request) {
-      const { skip, limit, title } = request.query
-      const notes = await fastify.notesDataSource.listNotes(
-        { filter: { title }, projection: NOTE_LIST_PROJECTION, skip, limit },
-        request.user._id,
-      )
-      const totalCount = await fastify.notesDataSource.countNotes({ title }, request.user._id)
+      const { skip, limit, title, notebookId, folderId, inbox } = request.query
+      const filter = { title }
+      if (inbox === true) {
+        filter.notebookId = null
+        filter.folderId = null
+      } else {
+        if (notebookId !== undefined) filter.notebookId = notebookId
+        if (folderId !== undefined) filter.folderId = folderId
+      }
+
+      const notes = await request.notesDataSource.listNotes({
+        filter,
+        projection: NOTE_LIST_PROJECTION,
+        skip,
+        limit,
+      })
+      const totalCount = await request.notesDataSource.countNotes(filter)
       return { data: notes, totalCount }
+    },
+  })
+
+  fastify.route({
+    method: 'GET',
+    url: '/graph',
+    config: {
+      rateLimit: notesRateLimit,
+    },
+    schema: {
+      tags: ['notes'],
+      summary: 'Get poly-hierarchical mind-map graph of notes and note links',
+      querystring: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          rootNoteId: { type: 'string', format: 'uuid' },
+          notebookId: { type: 'string', format: 'uuid' },
+          folderId: { type: 'string', format: 'uuid' },
+          maxDepth: { type: 'integer', minimum: 1, maximum: 5, default: 3 },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['data'],
+          properties: {
+            data: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['nodes', 'edges'],
+              properties: {
+                nodes: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    additionalProperties: false,
+                    required: ['id', 'title', 'tags', 'notebookId', 'folderId', 'modifiedAt'],
+                    properties: {
+                      id: { type: 'string', format: 'uuid' },
+                      title: { type: 'string' },
+                      tags: { type: 'array', items: { type: 'string' } },
+                      notebookId: { type: ['string', 'null'], format: 'uuid' },
+                      folderId: { type: ['string', 'null'], format: 'uuid' },
+                      modifiedAt: { type: 'string', format: 'date-time' },
+                    },
+                  },
+                },
+                edges: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    additionalProperties: false,
+                    required: ['sourceId', 'targetId', 'relation'],
+                    properties: {
+                      sourceId: { type: 'string', format: 'uuid' },
+                      targetId: { type: 'string', format: 'uuid' },
+                      relation: { type: 'string', enum: ['parent', 'child', 'related'] },
+                      label: { type: 'string' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    handler: async function getMindMapGraphHandler(request) {
+      const graph = await request.notesDataSource.getMindMapGraph(request.query)
+      return { data: graph }
     },
   })
 
@@ -56,8 +139,7 @@ module.exports = async function noteRoutes(fastify, opts) {
       },
     },
     handler: async function createNoteHandler(request, reply) {
-      const { title, body, tags } = request.body
-      const note = await fastify.notesDataSource.createNote({ title, body, tags }, request.user._id)
+      const note = await request.notesDataSource.createNote(request.body)
       reply.code(201)
       return { data: note }
     },
@@ -82,21 +164,51 @@ module.exports = async function noteRoutes(fastify, opts) {
     },
     handler: async function readNoteHandler(request) {
       const { id } = request.params
-      const userId = request.user._id || request.user.id
-      const cacheKey = `note:${id}:${userId}`
-
-      const cached = await fastify.cacheGet(cacheKey)
-      if (cached && cached.item) {
-        request.log.info('Cache HIT - Serving from RAM')
-        return { data: cached.item }
-      }
-
-      request.log.info('Cache MISS - Fetching from MongoDB')
-      const note = await fastify.notesDataSource.readNote(id, userId)
-
-      await fastify.cacheSet(cacheKey, note, 300000)
-
+      const note = await request.notesDataSource.readNote(id)
       return { data: note }
+    },
+  })
+
+  fastify.route({
+    method: 'GET',
+    url: '/:id/backlinks',
+    config: {
+      rateLimit: notesRateLimit,
+    },
+    schema: {
+      tags: ['notes'],
+      summary: 'List incoming backlinks for a note',
+      params: { $ref: 'schema:note:read:params#' },
+      response: {
+        200: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['data'],
+          properties: {
+            data: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['sourceId', 'title', 'notebookId', 'folderId', 'relation', 'modifiedAt'],
+                properties: {
+                  sourceId: { type: 'string', format: 'uuid' },
+                  title: { type: 'string' },
+                  notebookId: { type: ['string', 'null'], format: 'uuid' },
+                  folderId: { type: ['string', 'null'], format: 'uuid' },
+                  relation: { type: 'string', enum: ['parent', 'child', 'related'] },
+                  label: { type: 'string' },
+                  modifiedAt: { type: 'string', format: 'date-time' },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    handler: async function listBacklinksHandler(request) {
+      const backlinks = await request.notesDataSource.listBacklinks(request.params.id)
+      return { data: backlinks }
     },
   })
 
@@ -129,57 +241,8 @@ module.exports = async function noteRoutes(fastify, opts) {
         },
       },
     },
-    handler: async function updateNoteHandler(request, reply) {
-      const { id } = request.params
-      const userId = request.user._id || request.user.id
-      const updateData = request.body
-
-      let updatedNote
-
-      try {
-        updatedNote = await fastify.notesDataSource.updateNote(id, updateData, userId)
-      } catch (error) {
-        if (error?.statusCode === 409 && error.conflictCode === 'NOTE_STALE_SAVE') {
-          reply.code(409)
-          return {
-            message: error.message,
-            code: error.conflictCode,
-            currentRevision: error.currentRevision,
-            currentModifiedAt:
-              error.currentModifiedAt instanceof Date
-                ? error.currentModifiedAt.toISOString()
-                : error.currentModifiedAt,
-          }
-        }
-
-        throw error
-      }
-
-      if (fastify.auditLog) {
-        fastify.auditLog({
-          request,
-          action: 'note_updated',
-          userId,
-          resourceType: 'note',
-          resourceId: id,
-        })
-      }
-
-      if (fastify.eventBus) {
-        const sanitizedEventDTO = {
-          id: updatedNote.id,
-          title: updatedNote.title,
-          body: updatedNote.body,
-          tags: updatedNote.tags,
-          revision: updatedNote.revision,
-          modifiedAt: updatedNote.modifiedAt,
-        }
-        fastify.eventBus.emit(`note_updated:${id}`, {
-          type: 'NOTE_UPDATED',
-          payload: sanitizedEventDTO,
-        })
-      }
-
+    handler: async function updateNoteHandler(request) {
+      const updatedNote = await request.notesDataSource.updateNote(request.params.id, request.body)
       return { data: updatedNote }
     },
   })
@@ -196,6 +259,7 @@ module.exports = async function noteRoutes(fastify, opts) {
       params: { $ref: 'schema:note:read:params#' },
       querystring: { $ref: 'schema:note:delete:query#' },
       response: {
+        204: { type: 'null' },
         409: {
           type: 'object',
           additionalProperties: false,
@@ -210,39 +274,7 @@ module.exports = async function noteRoutes(fastify, opts) {
       },
     },
     handler: async function deleteNoteHandler(request, reply) {
-      const { id } = request.params
-      const { expectedRevision } = request.query
-      const userId = request.user._id || request.user.id
-
-      try {
-        await fastify.notesDataSource.deleteNote(id, userId, expectedRevision)
-      } catch (error) {
-        if (error?.statusCode === 409 && error.conflictCode === 'NOTE_STALE_DELETE') {
-          reply.code(409)
-          return {
-            message: error.message,
-            code: error.conflictCode,
-            currentRevision: error.currentRevision,
-            currentModifiedAt:
-              error.currentModifiedAt instanceof Date
-                ? error.currentModifiedAt.toISOString()
-                : error.currentModifiedAt,
-          }
-        }
-
-        throw error
-      }
-
-      if (fastify.auditLog) {
-        fastify.auditLog({
-          request,
-          action: 'note_deleted',
-          userId,
-          resourceType: 'note',
-          resourceId: id,
-        })
-      }
-
+      await request.notesDataSource.deleteNote(request.params.id, request.query.expectedRevision)
       reply.code(204).send()
     },
   })

@@ -39,6 +39,7 @@ module.exports = fp(
       NODE_ENV: nodeEnv,
       MONGO_URL: fastify.secrets.MONGO_URL,
       FRONTEND_URL: fastify.secrets.FRONTEND_URL || 'http://localhost:5173',
+      UPLOAD_DIR: fastify.secrets.UPLOAD_DIR || './uploads',
 
       ADMIN_EMAIL: fastify.secrets.ADMIN_EMAIL,
       ADMIN_PASSWORD: fastify.secrets.ADMIN_PASSWORD,

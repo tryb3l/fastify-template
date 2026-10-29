@@ -50,6 +50,10 @@
       "type": "string",
       "default": "http://localhost:5173"
     },
+    "UPLOAD_DIR": {
+      "type": "string",
+      "default": "./uploads"
+    },
     "ADMIN_EMAIL": {
       "type": "string",
       "default": "admin@notes.local"
