@@ -2,6 +2,9 @@ DOCKER_COMPOSE = docker compose -f docker-compose.yml
 LOCAL_DOCKER_COMPOSE = docker compose -f docker-compose.yml -f docker-compose.local.yml
 APP_NAME = fastify-app
 ENV_FILE ?= .env
+CERTS_DIR ?= .certs
+CERT_FILE ?= $(CERTS_DIR)/localhost.pem
+KEY_FILE ?= $(CERTS_DIR)/localhost-key.pem
 DEV_MONGO_CONTAINER ?= fastify-mongo
 DEV_MAILPIT_CONTAINER ?= fastify-mailpit
 DEV_MONGO_URL ?= mongodb://localhost:27017/note
@@ -148,19 +151,44 @@ init-env: ## Create a local .env file with safe development defaults
 	@echo "Created $(ENV_FILE) for local development."
 	@echo "Review the generated values and rotate secrets if you reuse this setup elsewhere."
 
+.PHONY: init-certs
+init-certs: ## Create local TLS certificates in .certs/ (uses mkcert if installed, falls back to openssl)
+	@if [ -f "$(CERT_FILE)" ] && [ -f "$(KEY_FILE)" ]; then \
+		exit 0; \
+	fi; \
+	mkdir -p "$(CERTS_DIR)"; \
+	if command -v mkcert >/dev/null 2>&1; then \
+		mkcert -install || true; \
+		mkcert -key-file "$(KEY_FILE)" -cert-file "$(CERT_FILE)" localhost 127.0.0.1 ::1; \
+		echo "Created local HTTPS certificates in $(CERTS_DIR)/ using mkcert."; \
+	elif command -v openssl >/dev/null 2>&1; then \
+		openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 365 \
+			-subj "/CN=localhost" \
+			-addext "basicConstraints=critical,CA:FALSE" \
+			-addext "keyUsage=critical,digitalSignature,keyEncipherment" \
+			-addext "extendedKeyUsage=serverAuth" \
+			-addext "subjectAltName=DNS:localhost,IP:127.0.0.1,IP:::1" \
+			-keyout "$(KEY_FILE)" -out "$(CERT_FILE)" >/dev/null 2>&1; \
+		echo "Created self-signed local HTTPS certificates in $(CERTS_DIR)/ using openssl."; \
+	else \
+		echo "Neither mkcert nor openssl is installed; skipping local HTTPS certificate generation."; \
+	fi
+
 .PHONY: start-docker
 start-docker: ## Ensure Docker is installed and start the Docker service if stopped
 	@$(ENSURE_DOCKER)
 
 .PHONY: dev
-dev: check-env start-docker ## Start the managed local backend runtime
+dev: check-env init-certs start-docker ## Start the managed local backend runtime
 	@echo "Starting managed Fastify development runtime..."
+	@echo "Swagger UI: https://localhost:3000/docs"
 	@echo "Mailpit UI: http://localhost:$(DEV_MAILPIT_UI_PORT)"
 	@$(LOAD_ENV) $(DEV_ENV) $(NODE) --run dev
 
 .PHONY: dev-app
-dev-app: check-env start-docker ## Start both backend and frontend in dev mode
+dev-app: check-env init-certs start-docker ## Start both backend and frontend in dev mode
 	@echo "Starting backend and frontend..."
+	@echo "Swagger UI: https://localhost:3000/docs"
 	@echo "Mailpit UI: http://localhost:$(DEV_MAILPIT_UI_PORT)"
 	@$(LOAD_ENV) $(DEV_ENV) $(NODE) --run dev & \
 	(cd ../note-explorer && $(NODE) --run dev) & \
@@ -171,13 +199,14 @@ dev-compose: start-docker ## Start the local Docker app stack with Mailpit (no r
 	$(LOCAL_DOCKER_COMPOSE) up -d --build
 
 .PHONY: dev-trace
-dev-trace: check-env start-docker ## Start the managed local backend runtime with trace warnings
+dev-trace: check-env init-certs start-docker ## Start the managed local backend runtime with trace warnings
 	@echo "Starting managed Fastify trace runtime..."
+	@echo "Swagger UI: https://localhost:3000/docs"
 	@echo "Mailpit UI: http://localhost:$(DEV_MAILPIT_UI_PORT)"
 	@$(LOAD_ENV) $(DEV_ENV) $(NODE) --run dev:trace
 
 .PHONY: test
-test: start-docker ## Run the managed local test suite
+test: init-certs start-docker ## Run the managed local test suite
 	$(NODE) --run test
 
 .PHONY: test-ci
@@ -185,7 +214,7 @@ test-ci: ## Run tests in CI mode (no Docker, no managed runtime)
 	$(NODE) --run test:ci
 
 .PHONY: test-cov
-test-cov: start-docker ## Run the managed local test suite with coverage
+test-cov: init-certs start-docker ## Run the managed local test suite with coverage
 	$(NODE) --run test:coverage
 
 .PHONY: migrate
@@ -209,7 +238,7 @@ runtime-cleanup: ## Clean managed runtime state and owned stale processes
 	$(NODE) --run runtime:cleanup
 
 .PHONY: verify
-verify: start-docker ## Run the main local verification checks
+verify: init-certs start-docker ## Run the main local verification checks
 	$(NODE) --run lint
 	$(NODE) --run test
 

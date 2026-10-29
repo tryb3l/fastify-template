@@ -63,5 +63,8 @@ profile*
 # uploads
 uploads/
 
+# local certificates
+.certs/
+
 # local runtime state
 .runtime/

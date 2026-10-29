@@ -1,5 +1,7 @@
 'use strict'
 const crypto = require('node:crypto')
+const fs = require('node:fs')
+const path = require('node:path')
 const { LogController } = require('fastify')
 const loggerOptions = require('./logger-options')
 
@@ -12,7 +14,29 @@ function extractTraceId(raw) {
   return match ? match[1] : null
 }
 
+function resolveHttpsOptions() {
+  if (process.env.HTTPS_ENABLED === 'false') {
+    return null
+  }
+
+  const defaultCertsDir = path.join(__dirname, '..', '.certs')
+  const keyPath = process.env.HTTPS_KEY_PATH || path.join(defaultCertsDir, 'localhost-key.pem')
+  const certPath = process.env.HTTPS_CERT_PATH || path.join(defaultCertsDir, 'localhost.pem')
+
+  if (!fs.existsSync(keyPath) || !fs.existsSync(certPath)) {
+    return null
+  }
+
+  return {
+    key: fs.readFileSync(keyPath),
+    cert: fs.readFileSync(certPath),
+  }
+}
+
+const httpsOptions = resolveHttpsOptions()
+
 module.exports = {
+  ...(httpsOptions ? { https: httpsOptions } : {}),
   logger: loggerOptions,
   childLoggerFactory(logger, bindings, opts, rawReq) {
     const traceId = extractTraceId(rawReq.headers?.traceparent)

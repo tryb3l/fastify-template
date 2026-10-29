@@ -7,9 +7,24 @@ const { randomUsername, randomEmail, randomPassword } = require('../../../utils/
 const { buildMarkdownNote } = require('../../../utils/markdown-note')
 const WebSocket = require('ws')
 
+const httpsPorts = new Set()
+
 async function listenOnRandomPort(app) {
   await app.listen({ port: 0 })
-  return app.server.address().port
+  const port = app.server.address().port
+  if (app.initialConfig?.https) {
+    httpsPorts.add(port)
+  }
+  return port
+}
+
+function createLiveWebSocket(port, path, options = {}) {
+  const isHttps = httpsPorts.has(port)
+  const protocol = isHttps ? 'wss' : 'ws'
+  return new WebSocket(`${protocol}://localhost:${port}${path}`, {
+    ...(isHttps ? { rejectUnauthorized: false } : {}),
+    ...options,
+  })
 }
 
 async function createOwnedNote(
@@ -219,7 +234,7 @@ test('WS /notes/:id/live 101 - Authorized owner receives ping/pong on own note',
   const noteId = await createOwnedNote(app, accessToken)
 
   // Act
-  const ws = new WebSocket(`ws://localhost:${port}/notes/live/${noteId}`, {
+  const ws = createLiveWebSocket(port, `/notes/live/${noteId}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
   const message = await sendPingAndReadMessage(ws)
@@ -234,7 +249,7 @@ test('WS /notes/:id/live 401 - Rejects upgrade without access token', async (t) 
   const port = await listenOnRandomPort(app)
 
   // Act
-  const ws = new WebSocket(`ws://localhost:${port}/notes/live/fake-id`)
+  const ws = createLiveWebSocket(port, '/notes/live/fake-id')
   const statusCode = await readUnexpectedResponseStatus(ws)
 
   // Assert
@@ -253,7 +268,7 @@ test('WS /notes/:id/live broadcasts NOTE_UPDATED payload after note change', asy
     tags: ['live', 'update'],
     expectedRevision: 1,
   }
-  const ws = new WebSocket(`ws://localhost:${port}/notes/live/${noteId}`, {
+  const ws = createLiveWebSocket(port, `/notes/live/${noteId}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
 
@@ -299,7 +314,7 @@ test('WS /notes/:id/live ignores updates for a different users different note', 
     title: 'Unrelated Note',
     body: 'do not broadcast',
   })
-  const ws = new WebSocket(`ws://localhost:${port}/notes/live/${watchedNoteId}`, {
+  const ws = createLiveWebSocket(port, `/notes/live/${watchedNoteId}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
 
@@ -335,7 +350,7 @@ test('WS /notes/:id/live 403 - Blocks cross-user subscription to another users n
   const port = await listenOnRandomPort(ownerCtx.app)
 
   // Act
-  const ws = new WebSocket(`ws://localhost:${port}/notes/live/${privateNoteId}`, {
+  const ws = createLiveWebSocket(port, `/notes/live/${privateNoteId}`, {
     headers: { Authorization: `Bearer ${intruderCtx.accessToken}` },
   })
   const statusCode = await readUnexpectedResponseStatus(ws)

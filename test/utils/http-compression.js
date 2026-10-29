@@ -1,14 +1,21 @@
 'use strict'
 
 const http = require('node:http')
+const https = require('node:https')
 const { brotliDecompressSync, gunzipSync, inflateSync } = require('node:zlib')
+
+const httpsPorts = new Set()
 
 async function listenOnRandomPort(app) {
   if (!app.server.listening) {
     await app.listen({ port: 0, host: '127.0.0.1' })
   }
 
-  return app.server.address().port
+  const port = app.server.address().port
+  if (app.initialConfig?.https) {
+    httpsPorts.add(port)
+  }
+  return port
 }
 
 function decodeResponseBody(rawBody, contentEncoding) {
@@ -32,13 +39,17 @@ function decodeResponseBody(rawBody, contentEncoding) {
 }
 
 async function getCompressedResponse({ port, path, accessToken, encoding }) {
+  const isHttps = httpsPorts.has(port)
+  const transport = isHttps ? https : http
+
   return await new Promise((resolve, reject) => {
-    const request = http.request(
+    const request = transport.request(
       {
         hostname: '127.0.0.1',
         port,
         path,
         method: 'GET',
+        ...(isHttps ? { rejectUnauthorized: false } : {}),
         headers: {
           Authorization: `Bearer ${accessToken}`,
           'Accept-Encoding': encoding,
