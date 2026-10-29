@@ -6,10 +6,8 @@ const closeWithGrace = require('close-with-grace')
 
 module.exports = async function (fastify, opts) {
   try {
-    // Register base schema
-    await require('./routes/auth/schemas/loader').authSchemasLoader(fastify)
-    await require('./routes/notes/schemas/loader').noteSchemasLoader(fastify)
-    require('./routes/users/schemas/loader').loadUserSchemas(fastify)
+    // Load Schemas
+    await fastify.register(require('./schemas/loader'))
 
     // Load Config
     await fastify.register(require('./plugins/config'), opts)

@@ -1,23 +1,25 @@
+'use strict'
+
+const { buildNoteSchemas } = require('../note-contract')
+
 async function noteSchemasLoader(fastify) {
-  const schemas = [
-    './list-query.json',
-    './list-item.json',
-    './list-response.json',
-    './list-export.json',
-    './create-body.json',
-    './create-response.json',
-    './note.json',
-    './read-params.json',
-    './update-body.json',
-    './delete-query.json',
-    '../../../schemas/limit.json',
-    '../../../schemas/skip.json',
-  ]
-  for (const schemaPath of schemas) {
-    const schema = require(schemaPath)
-    fastify.addSchema(schema)
-    fastify.log.debug(`Note schema added: ${schema.$id}`)
+  const sharedSchemas = ['../../../schemas/limit.json', '../../../schemas/skip.json']
+
+  for (const schema of buildNoteSchemas()) {
+    if (!fastify.getSchema(schema.$id)) {
+      fastify.addSchema(schema)
+      fastify.log.debug(`Note schema added: ${schema.$id}`)
+    }
   }
+
+  for (const schemaPath of sharedSchemas) {
+    const schema = require(schemaPath)
+    if (!fastify.getSchema(schema.$id)) {
+      fastify.addSchema(schema)
+      fastify.log.debug(`Shared schema added: ${schema.$id}`)
+    }
+  }
+
   fastify.log.debug('Note schemas loaded')
 }
 
