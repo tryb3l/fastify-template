@@ -1,9 +1,8 @@
 'use strict'
 
-module.exports = async function userRoutes(fastify) {
-  const selfUpdateableUserFields = new Set(['username', 'email', 'firstName', 'lastName'])
-  const adminUpdateableUserFields = new Set([...selfUpdateableUserFields, 'role'])
+const { ADMIN_UPDATEABLE_USER_FIELDS, SELF_UPDATEABLE_USER_FIELDS } = require('./user-contract')
 
+module.exports = async function userRoutes(fastify) {
   function createRejectUnknownUpdateFields(allowedFields) {
     return async function rejectUnknownUpdateFields(request) {
       if (!request.body || typeof request.body !== 'object' || Array.isArray(request.body)) {
@@ -20,8 +19,90 @@ module.exports = async function userRoutes(fastify) {
     }
   }
 
-  const rejectUnknownSelfUpdateFields = createRejectUnknownUpdateFields(selfUpdateableUserFields)
-  const rejectUnknownAdminUpdateFields = createRejectUnknownUpdateFields(adminUpdateableUserFields)
+  const rejectUnknownSelfUpdateFields = createRejectUnknownUpdateFields(SELF_UPDATEABLE_USER_FIELDS)
+  const rejectUnknownAdminUpdateFields = createRejectUnknownUpdateFields(
+    ADMIN_UPDATEABLE_USER_FIELDS,
+  )
+
+  fastify.route({
+    method: 'POST',
+    url: '/invites',
+    preHandler: fastify.authorize(['admin']),
+    schema: {
+      tags: ['users'],
+      summary: 'Create a single-use user invitation (Admin)',
+      body: { $ref: 'schema:user:invite:create:body#' },
+      response: {
+        201: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['data'],
+          properties: {
+            data: { $ref: 'schema:user:invite#' },
+          },
+        },
+      },
+    },
+    handler: async function createInviteHandler(request, reply) {
+      const invite = await fastify.usersDataSource.createInvite({
+        email: request.body?.email ?? null,
+        role: request.body?.role || 'user',
+        ttlHours: request.body?.ttlHours,
+        createdBy: request.user._id || request.user.id,
+      })
+
+      reply.code(201)
+      return { data: invite }
+    },
+  })
+
+  fastify.route({
+    method: 'GET',
+    url: '/invites',
+    preHandler: fastify.authorize(['admin']),
+    schema: {
+      tags: ['users'],
+      summary: 'List all user invitations (Admin)',
+      response: {
+        200: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['data'],
+          properties: {
+            data: {
+              type: 'array',
+              items: { $ref: 'schema:user:invite#' },
+            },
+          },
+        },
+      },
+    },
+    handler: async function listInvitesHandler() {
+      const invites = await fastify.usersDataSource.listInvites()
+      return { data: invites }
+    },
+  })
+
+  fastify.route({
+    method: 'DELETE',
+    url: '/invites/:id',
+    preHandler: fastify.authorize(['admin']),
+    schema: {
+      tags: ['users'],
+      summary: 'Revoke a user invitation by id (Admin)',
+      params: { $ref: 'schema:user:read:params#' },
+      response: {
+        204: { type: 'null' },
+      },
+    },
+    handler: async function revokeInviteHandler(request, reply) {
+      const deleted = await fastify.usersDataSource.revokeInvite(request.params.id)
+      if (!deleted) {
+        throw fastify.httpErrors.notFound('Invitation not found')
+      }
+      reply.code(204).send()
+    },
+  })
 
   fastify.route({
     method: 'GET',

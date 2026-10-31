@@ -20,7 +20,13 @@ test('GET /users - Admin user can list users', async (t) => {
   assert.strictEqual(response.statusCode, 200)
   const body = response.json()
   assert.ok(Array.isArray(body.data))
+  assert.ok(body.data.length > 0)
   assert.ok(typeof body.totalCount === 'number')
+  for (const listedUser of body.data) {
+    assert.strictEqual(typeof listedUser.id, 'string')
+    assert.ok(listedUser.id.length > 0, 'Expected listed users to include normalized id field')
+    assert.strictEqual(listedUser._id, undefined)
+  }
 })
 
 test('GET /users - Regular user receives 403 Forbidden', async (t) => {

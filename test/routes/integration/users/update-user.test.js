@@ -49,6 +49,48 @@ test('PUT /users/me 200 - Updates self username', async (t) => {
   assert.strictEqual(response.json().data.username, newUsername)
 })
 
+test('PUT /users/me 409 - Conflict when updating username or email to an existing user', async (t) => {
+  const actor = await setup(t, 'user')
+  const existing = await setup(t, 'user')
+
+  const duplicateUsernameRes = await actor.app.inject({
+    method: 'PUT',
+    url: '/users/me',
+    headers: { Authorization: `Bearer ${actor.accessToken}` },
+    payload: { username: existing.username.toUpperCase() },
+  })
+  assert.strictEqual(duplicateUsernameRes.statusCode, 409)
+
+  const duplicateEmailRes = await actor.app.inject({
+    method: 'PUT',
+    url: '/users/me',
+    headers: { Authorization: `Bearer ${actor.accessToken}` },
+    payload: { email: existing.email.toUpperCase() },
+  })
+  assert.strictEqual(duplicateEmailRes.statusCode, 409)
+})
+
+test('PUT /users/me 200 - Email change increments credentialsVersion and invalidates old token', async (t) => {
+  const actor = await setup(t, 'user')
+  const newEmail = `updated-${Date.now()}@example.com`
+
+  const updateRes = await actor.app.inject({
+    method: 'PUT',
+    url: '/users/me',
+    headers: { Authorization: `Bearer ${actor.accessToken}` },
+    payload: { email: newEmail },
+  })
+  assert.strictEqual(updateRes.statusCode, 200)
+  assert.strictEqual(updateRes.json().data.email, newEmail)
+
+  const staleTokenRes = await actor.app.inject({
+    method: 'GET',
+    url: '/users/me',
+    headers: { Authorization: `Bearer ${actor.accessToken}` },
+  })
+  assert.strictEqual(staleTokenRes.statusCode, 401)
+})
+
 test('PUT /users/me 400 - Rejects attacker-controlled identity fields', async (t) => {
   // Arrange
   const actor = await setup(t, 'user')

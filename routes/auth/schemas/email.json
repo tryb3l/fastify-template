@@ -1,5 +1,0 @@
-{
-  "$id": "schema:auth:email",
-  "type": "string",
-  "format": "email"
-}

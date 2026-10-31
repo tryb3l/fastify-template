@@ -92,6 +92,23 @@
     "PASSWORD_RESET_MAX_ATTEMPTS": {
       "type": "integer",
       "default": 5
+    },
+    "REGISTRATION_MODE": {
+      "type": "string",
+      "enum": ["closed", "invite", "open"],
+      "default": "invite"
+    },
+    "INVITE_TTL_HOURS": {
+      "type": "integer",
+      "default": 168
+    },
+    "MAX_UPLOAD_BYTES": {
+      "type": "integer",
+      "default": 10000000
+    },
+    "USER_STORAGE_QUOTA_BYTES": {
+      "type": "integer",
+      "default": 524288000
     }
   }
 }

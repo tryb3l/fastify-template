@@ -1,3 +1,4 @@
+const { randomUUIDv7 } = require('node:crypto')
 const { hashPassword } = require('../routes/auth/generate-hash')
 
 module.exports = {
@@ -20,20 +21,26 @@ module.exports = {
       return
     }
 
-    const adminExists = await users.findOne({ email: process.env.ADMIN_EMAIL })
+    const normalizedAdminEmail = String(process.env.ADMIN_EMAIL).trim().toLowerCase()
+    const adminExists = await users.findOne({ email: normalizedAdminEmail })
 
     if (!adminExists) {
       console.log('No admin user found. Seeding default admin account...')
       const hash = await hashPassword(process.env.ADMIN_PASSWORD || 'ChangeThisNow!2026')
+      const _id = randomUUIDv7()
+      const now = new Date()
 
       try {
         await users.insertOne({
+          _id,
+          id: _id,
           username: 'admin',
-          email: process.env.ADMIN_EMAIL,
+          email: normalizedAdminEmail,
           hash: hash,
           role: 'admin',
-          createdAt: new Date(),
-          updatedAt: new Date(),
+          credentialsVersion: 0,
+          createdAt: now,
+          modifiedAt: now,
         })
         console.log('Default admin account seeded successfully!')
       } catch (err) {

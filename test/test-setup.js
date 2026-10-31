@@ -11,6 +11,7 @@ function getDefaultEnv() {
     JWT_SECRET: process.env.JWT_SECRET || 'secret-11111111',
     COOKIE_SECRET: process.env.COOKIE_SECRET || 'cookie-secret-11111111',
     FRONTEND_URL: process.env.FRONTEND_URL || 'http://localhost:5173',
+    REGISTRATION_MODE: process.env.REGISTRATION_MODE || 'open',
   }
 }
 

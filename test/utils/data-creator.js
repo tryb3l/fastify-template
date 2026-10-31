@@ -17,7 +17,7 @@ function fastGenerate(length, chars) {
 }
 
 function randomUsername(length = 8) {
-  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+  const chars = 'abcdefghijklmnopqrstuvwxyz'
   return fastGenerate(length, chars)
 }
 

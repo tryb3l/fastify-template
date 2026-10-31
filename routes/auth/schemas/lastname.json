@@ -1,6 +1,0 @@
-{
-  "$id": "schema:auth:lastname",
-  "type": "string",
-  "minLength": 3,
-  "maxLength": 20
-}

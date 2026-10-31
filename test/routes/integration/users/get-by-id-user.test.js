@@ -19,7 +19,35 @@ test('GET /users/:id 200 - Admin can fetch user details', async (t) => {
 
   // Assert
   assert.strictEqual(response.statusCode, 200)
-  assert.strictEqual(response.json().data.username, username)
+  const data = response.json().data
+  assert.strictEqual(data.id, userId)
+  assert.strictEqual(data.username, username)
+  assert.ok(data.createdAt)
+  assert.ok(data.modifiedAt)
+  assert.strictEqual(data._id, undefined)
+})
+
+test('GET /users/me 200 - Returns normalized id and profile fields', async (t) => {
+  // Arrange
+  const { app, accessToken, userId, username, email } = await setup(t, 'user')
+
+  // Act
+  const response = await app.inject({
+    method: 'GET',
+    url: '/users/me',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  // Assert
+  assert.strictEqual(response.statusCode, 200)
+  const data = response.json().data
+  assert.strictEqual(data.id, userId)
+  assert.strictEqual(data.username, username)
+  assert.strictEqual(data.email, email)
+  assert.strictEqual(data.role, 'user')
+  assert.ok(data.createdAt)
+  assert.ok(data.modifiedAt)
+  assert.strictEqual(data._id, undefined)
 })
 
 test('GET /users/:id 404 - User not found', async (t) => {

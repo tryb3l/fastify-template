@@ -17,18 +17,34 @@ module.exports = async function authRoutes(fastify) {
     },
     config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
     handler: async function registerHandler(request, reply) {
-      let userExists = false
+      const registrationMode = fastify.config?.REGISTRATION_MODE || 'invite'
+      if (registrationMode === 'closed') {
+        throw fastify.httpErrors.forbidden('Registration is currently closed')
+      }
 
+      let verifiedInvite = null
+      if (registrationMode === 'invite') {
+        if (!request.body.inviteToken) {
+          throw fastify.httpErrors.forbidden('A valid invitation token is required to register')
+        }
+        verifiedInvite = await fastify.usersDataSource.verifyInviteToken(
+          request.body.inviteToken,
+          request.body.email,
+        )
+        if (!verifiedInvite) {
+          throw fastify.httpErrors.forbidden('Invalid, expired, or mismatched invitation token')
+        }
+      }
+
+      let userExists = false
       if (request.body.username) {
         const byUsername = await fastify.usersDataSource.readUser(request.body.username)
         if (byUsername) userExists = true
       }
-
       if (request.body.email && !userExists) {
         const byEmail = await fastify.usersDataSource.readUser(request.body.email)
         if (byEmail) userExists = true
       }
-
       if (userExists) {
         throw fastify.httpErrors.conflict('User already registered')
       }
@@ -39,8 +55,16 @@ module.exports = async function authRoutes(fastify) {
         username: request.body.username,
         email: request.body.email,
         hash: hash,
-        role: 'user',
+        role: verifiedInvite?.role || 'user',
       })
+
+      if (verifiedInvite) {
+        const consumed = await fastify.usersDataSource.consumeInvite(verifiedInvite.id, newUserId)
+        if (!consumed) {
+          await fastify.usersDataSource.deleteUser(newUserId)
+          throw fastify.httpErrors.forbidden('Invitation token has already been used')
+        }
+      }
 
       request.log.info({ userId: newUserId }, 'New user successfully registered')
 

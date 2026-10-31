@@ -129,3 +129,104 @@ test('DELETE /users/:id 204 - Admin deletes other users', async (t) => {
   // Assert
   assert.strictEqual(response.statusCode, 204)
 })
+
+test('DELETE /users/me 204 - Cascade purges notebooks, folders, notes, disk attachments, and frees email/username for re-registration', async (t) => {
+  const fs = require('node:fs/promises')
+  const path = require('node:path')
+  const FormData = require('form-data')
+  const actor = await setup(t, 'user')
+
+  const nbRes = await actor.app.inject({
+    method: 'POST',
+    url: '/notebooks',
+    headers: { Authorization: `Bearer ${actor.accessToken}` },
+    payload: { name: 'Cascade Notebook' },
+  })
+  assert.strictEqual(nbRes.statusCode, 201)
+  const notebookId = nbRes.json().data.id
+
+  const fldRes = await actor.app.inject({
+    method: 'POST',
+    url: `/notebooks/${notebookId}/folders`,
+    headers: { Authorization: `Bearer ${actor.accessToken}` },
+    payload: { name: 'Cascade Folder' },
+  })
+  assert.strictEqual(fldRes.statusCode, 201)
+  const folderId = fldRes.json().data.id
+
+  const noteRes = await actor.app.inject({
+    method: 'POST',
+    url: '/notes',
+    headers: { Authorization: `Bearer ${actor.accessToken}` },
+    payload: { title: 'Cascade Note', body: 'Hello', notebookId, folderId },
+  })
+  assert.strictEqual(noteRes.statusCode, 201)
+  const noteId = noteRes.json().data.id
+
+  // Attach a physical file to the user's note and verify it is unlinked on user deletion
+  const form = new FormData()
+  form.append('file', Buffer.from('user-cascade-blob'), {
+    filename: 'cascade.txt',
+    contentType: 'text/plain',
+  })
+  const uploadRes = await actor.app.inject({
+    method: 'POST',
+    url: `/files/upload?noteId=${noteId}`,
+    headers: {
+      ...form.getHeaders(),
+      Authorization: `Bearer ${actor.accessToken}`,
+    },
+    payload: form,
+  })
+  assert.strictEqual(uploadRes.statusCode, 201)
+  const uploadedFileId = uploadRes.json().files[0].fileId
+  const blobPath = path.join(process.cwd(), 'uploads', `${uploadedFileId}.txt`)
+
+  const existsBeforeDelete = await fs
+    .access(blobPath)
+    .then(() => true)
+    .catch(() => false)
+  assert.strictEqual(existsBeforeDelete, true)
+
+  const delRes = await deleteCurrentUser(actor.app, actor.accessToken)
+  assert.strictEqual(delRes.statusCode, 204)
+
+  const existsAfterDelete = await fs
+    .access(blobPath)
+    .then(() => true)
+    .catch(() => false)
+  assert.strictEqual(
+    existsAfterDelete,
+    false,
+    'Physical attachment file must be deleted when user is deleted',
+  )
+
+  // Re-registering with the original username and email succeeds and starts with an empty workspace
+  const reRegisterRes = await actor.app.inject({
+    method: 'POST',
+    url: '/auth/register',
+    payload: {
+      username: actor.username,
+      email: actor.email,
+      password: actor.password,
+    },
+  })
+  assert.strictEqual(reRegisterRes.statusCode, 201)
+
+  const reLoginRes = await actor.app.inject({
+    method: 'POST',
+    url: '/auth/authenticate',
+    payload: { username: actor.username, password: actor.password },
+  })
+  assert.strictEqual(reLoginRes.statusCode, 200)
+  const newAccessToken = reLoginRes.json().access_token
+
+  const treeRes = await actor.app.inject({
+    method: 'GET',
+    url: '/notebooks/tree',
+    headers: { Authorization: `Bearer ${newAccessToken}` },
+  })
+  assert.strictEqual(treeRes.statusCode, 200)
+  assert.strictEqual(treeRes.json().data.inboxNoteCount, 0)
+  assert.deepStrictEqual(treeRes.json().data.notebooks, [])
+})

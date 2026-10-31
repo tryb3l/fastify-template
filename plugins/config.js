@@ -40,6 +40,10 @@ module.exports = fp(
       MONGO_URL: fastify.secrets.MONGO_URL,
       FRONTEND_URL: fastify.secrets.FRONTEND_URL || 'http://localhost:5173',
       UPLOAD_DIR: fastify.secrets.UPLOAD_DIR || './uploads',
+      REGISTRATION_MODE: fastify.secrets.REGISTRATION_MODE || 'invite',
+      INVITE_TTL_HOURS: fastify.secrets.INVITE_TTL_HOURS || 168,
+      MAX_UPLOAD_BYTES: fastify.secrets.MAX_UPLOAD_BYTES || 10_000_000,
+      USER_STORAGE_QUOTA_BYTES: fastify.secrets.USER_STORAGE_QUOTA_BYTES || 524_288_000,
 
       ADMIN_EMAIL: fastify.secrets.ADMIN_EMAIL,
       ADMIN_PASSWORD: fastify.secrets.ADMIN_PASSWORD,
