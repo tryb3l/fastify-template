@@ -12,6 +12,27 @@ const ALLOWED_UPLOAD_MIME_TYPES = {
   'text/plain': '.txt',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+  'audio/mpeg': ['.mp3'],
+  'audio/wav': ['.wav'],
+  'audio/x-wav': ['.wav'],
+  'audio/ogg': ['.ogg', '.oga'],
+  'audio/mp4': ['.m4a', '.mp4'],
+  'audio/x-m4a': ['.m4a', '.mp4'],
+  'audio/webm': ['.weba', '.webm'],
+  'video/mp4': ['.mp4', '.m4v'],
+  'video/webm': ['.webm'],
+}
+
+const COMPATIBLE_DETECTED_MIMES = {
+  'audio/wav': new Set(['audio/wav', 'audio/x-wav', 'audio/vnd.wave', 'audio/wave']),
+  'audio/x-wav': new Set(['audio/wav', 'audio/x-wav', 'audio/vnd.wave', 'audio/wave']),
+  'audio/mp4': new Set(['audio/mp4', 'audio/x-m4a', 'video/mp4']),
+  'audio/x-m4a': new Set(['audio/mp4', 'audio/x-m4a', 'video/mp4']),
+  'video/mp4': new Set(['video/mp4', 'audio/mp4', 'audio/x-m4a']),
+  'audio/webm': new Set(['audio/webm', 'video/webm']),
+  'video/webm': new Set(['video/webm', 'audio/webm']),
+  'audio/ogg': new Set(['audio/ogg', 'application/ogg', 'video/ogg']),
+  'audio/mpeg': new Set(['audio/mpeg', 'audio/mp3']),
 }
 
 const TEXT_LIKE_MIME_TYPES = new Set(['text/plain', 'text/csv'])
@@ -23,6 +44,15 @@ const BINARY_SIGNATURE_MIME_TYPES = new Set([
   'application/pdf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'audio/mpeg',
+  'audio/wav',
+  'audio/x-wav',
+  'audio/ogg',
+  'audio/mp4',
+  'audio/x-m4a',
+  'audio/webm',
+  'video/mp4',
+  'video/webm',
 ])
 const ALLOWED_TEXT_CONTROL_BYTES = new Set([0x09, 0x0a, 0x0c, 0x0d])
 const TEXT_SAMPLE_SIZE = 4096
@@ -104,7 +134,10 @@ async function assertBinaryContent(filePath, filename, mimeType) {
   }
 
   const detectedExtension = `.${detectedType.ext.toLowerCase()}`
-  const mimeMatches = detectedType.mime === mimeType
+  const compatibleMimes = COMPATIBLE_DETECTED_MIMES[mimeType]
+  const mimeMatches = compatibleMimes
+    ? compatibleMimes.has(detectedType.mime)
+    : detectedType.mime === mimeType
   const extensionMatches = allowedExtensions.includes(detectedExtension)
 
   if (!mimeMatches || !extensionMatches) {

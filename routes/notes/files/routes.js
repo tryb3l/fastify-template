@@ -5,12 +5,15 @@ const { createNotesCsvExportStream, importNotesFromCsvStream } = require('../../
 const { NOTE_EXPORT_PROJECTION } = require('../query-shapes')
 
 module.exports = async function fileRoutes(fastify) {
+  const maxUploadBytes = Number(fastify.config?.MAX_UPLOAD_BYTES || 10_000_000)
+  const userStorageQuotaBytes = Number(fastify.config?.USER_STORAGE_QUOTA_BYTES || 524_288_000)
+
   await fastify.register(fastifyMultipart, {
     limits: {
       fieldNameSize: 50,
       fieldSize: 100,
       fields: 10,
-      fileSize: 10_000_000, // 10MB limit
+      fileSize: maxUploadBytes,
       files: 1,
     },
   })
@@ -140,6 +143,13 @@ module.exports = async function fileRoutes(fastify) {
       )
 
       try {
+        const batchBytes = dbFiles.reduce((acc, f) => acc + Number(f.size || 0), 0)
+        const currentUsageBytes = await request.notesDataSource.getUserStorageUsageBytes()
+        if (currentUsageBytes + batchBytes > userStorageQuotaBytes) {
+          await cleanup()
+          throw fastify.httpErrors.payloadTooLarge('User storage quota exceeded')
+        }
+
         await request.notesDataSource.addAttachments(noteId, dbFiles)
       } catch (err) {
         request.log.error(err)
@@ -160,7 +170,7 @@ module.exports = async function fileRoutes(fastify) {
     url: '/:fileId',
     schema: {
       tags: ['files'],
-      summary: 'Download an attachment',
+      summary: 'Download or stream an attachment (supports HTTP Range)',
       params: {
         type: 'object',
         required: ['fileId'],
@@ -177,7 +187,10 @@ module.exports = async function fileRoutes(fastify) {
       },
       response: {
         200: {
-          type: 'object', // Streaming binary content
+          type: 'object',
+        },
+        206: {
+          type: 'object',
         },
       },
     },
@@ -195,15 +208,72 @@ module.exports = async function fileRoutes(fastify) {
       reply.header('ETag', download.etag)
       reply.header('Last-Modified', download.lastModified)
       reply.header('Cache-Control', 'private, no-cache')
+      reply.header('Accept-Ranges', 'bytes')
 
       if (download.notModified) {
         return reply.code(304).send()
       }
 
+      if (download.range) {
+        if (!download.range.satisfiable) {
+          reply.header('Content-Range', `bytes */${download.totalSize}`)
+          return reply.code(416).send({
+            statusCode: 416,
+            error: 'Range Not Satisfiable',
+            message: 'Requested byte range is not satisfiable',
+          })
+        }
+
+        reply.header('Content-Disposition', `attachment; filename="${download.safeFilename}"`)
+        reply.header('Content-Range', download.range.contentRange)
+        reply.header('Content-Length', download.range.contentLength)
+        reply.type(download.attachment.mimeType)
+
+        return reply
+          .code(206)
+          .send(download.createStream({ start: download.range.start, end: download.range.end }))
+      }
+
       reply.header('Content-Disposition', `attachment; filename="${download.safeFilename}"`)
+      reply.header('Content-Length', download.totalSize)
       reply.type(download.attachment.mimeType)
 
       return reply.send(download.createStream())
+    },
+  })
+
+  fastify.route({
+    method: 'DELETE',
+    url: '/:fileId',
+    schema: {
+      tags: ['files'],
+      summary: 'Delete an individual attachment from a note',
+      params: {
+        type: 'object',
+        required: ['fileId'],
+        additionalProperties: false,
+        properties: {
+          fileId: { type: 'string', format: 'uuid' },
+        },
+      },
+      querystring: {
+        type: 'object',
+        required: ['noteId'],
+        additionalProperties: false,
+        properties: {
+          noteId: { type: 'string', format: 'uuid' },
+        },
+      },
+      response: {
+        204: { type: 'null' },
+      },
+    },
+    handler: async function deleteFile(request, reply) {
+      const { fileId } = request.params
+      const { noteId } = request.query
+
+      await request.notesDataSource.removeAttachment(noteId, fileId)
+      reply.code(204).send()
     },
   })
 }

@@ -65,20 +65,109 @@ function sanitizeContentDispositionFilename(name) {
   return hasSafeVisibleCharacter && safeName ? safeName : 'attachment'
 }
 
+function parseByteRangeHeader(rangeHeader, totalSize) {
+  if (!rangeHeader || typeof rangeHeader !== 'string') {
+    return null
+  }
+
+  const trimmed = rangeHeader.trim()
+  if (!trimmed.startsWith('bytes=')) {
+    return { satisfiable: false }
+  }
+
+  const spec = trimmed.slice('bytes='.length).trim()
+  if (spec.includes(',')) {
+    return { satisfiable: false }
+  }
+
+  const match = /^(\d*)-(\d*)$/.exec(spec)
+  if (!match || (match[1] === '' && match[2] === '')) {
+    return { satisfiable: false }
+  }
+
+  if (totalSize === 0) {
+    return { satisfiable: false }
+  }
+
+  let start
+  let end
+
+  if (match[1] === '') {
+    const suffixLength = Number(match[2])
+    if (Number.isNaN(suffixLength) || suffixLength <= 0) {
+      return { satisfiable: false }
+    }
+    start = Math.max(0, totalSize - suffixLength)
+    end = totalSize - 1
+  } else {
+    start = Number(match[1])
+    end = match[2] === '' ? totalSize - 1 : Number(match[2])
+    if (Number.isNaN(start) || Number.isNaN(end) || start >= totalSize || start > end) {
+      return { satisfiable: false }
+    }
+    end = Math.min(end, totalSize - 1)
+  }
+
+  return {
+    satisfiable: true,
+    start,
+    end,
+    contentLength: end - start + 1,
+    contentRange: `bytes ${start}-${end}/${totalSize}`,
+  }
+}
+
+function createLocalDiskStorageProvider(uploadDir) {
+  function resolveKeyPath(key) {
+    return path.join(uploadDir, path.basename(String(key)))
+  }
+
+  return {
+    uploadDir,
+    resolveKeyPath,
+    async putStream(key, readableStream) {
+      await mkdir(uploadDir, { recursive: true })
+      const filePath = resolveKeyPath(key)
+      await pipeline(readableStream, fs.createWriteStream(filePath))
+      return filePath
+    },
+    getStream(key, options = {}) {
+      const filePath = resolveKeyPath(key)
+      const streamOpts = {}
+      if (typeof options.start === 'number') streamOpts.start = options.start
+      if (typeof options.end === 'number') streamOpts.end = options.end
+      return fs.createReadStream(filePath, streamOpts)
+    },
+    async stat(key) {
+      const filePath = resolveKeyPath(key)
+      return await stat(filePath)
+    },
+    async delete(key) {
+      const filePath = resolveKeyPath(key)
+      await unlink(filePath).catch(() => {})
+    },
+  }
+}
+
 module.exports = fp(
   async function notesFileManagerPlugin(fastify) {
     fastify.log.info('Starting registration of notes-file-manager plugin')
 
     const uploadDir = fastify.config?.UPLOAD_DIR || './uploads'
+    const storageProvider = createLocalDiskStorageProvider(uploadDir)
+
+    function resolveAttachmentKey(fileId, originalFilename) {
+      const ext = path.extname(String(originalFilename || '')).toLowerCase()
+      return path.basename(`${fileId}${ext}`)
+    }
 
     function resolveAttachmentPath(fileId, originalFilename) {
-      const ext = path.extname(String(originalFilename || '')).toLowerCase()
-      const safeBasename = path.basename(`${fileId}${ext}`)
-      return path.join(uploadDir, safeBasename)
+      return storageProvider.resolveKeyPath(resolveAttachmentKey(fileId, originalFilename))
     }
 
     const notesFileManager = {
       uploadDir,
+      storageProvider,
       resolveAttachmentPath,
 
       async stageUploads(parts, logger = fastify.log) {
@@ -89,8 +178,8 @@ module.exports = fp(
         const cleanup = async () => {
           await Promise.all(
             uploadedFiles.map(async (file) => {
-              if (file.filePath) {
-                await unlink(file.filePath).catch(() => {})
+              if (file.storageKey) {
+                await storageProvider.delete(file.storageKey)
               }
             }),
           )
@@ -116,9 +205,10 @@ module.exports = fp(
           }
 
           const safeFilename = randomUUIDv7() + ext
-          const filePath = path.join(uploadDir, path.basename(safeFilename))
+          const storageKey = path.basename(safeFilename)
           const fileId = safeFilename.slice(0, safeFilename.lastIndexOf('.'))
           const uploadedAt = nowIsoInstantString()
+          let filePath = storageProvider.resolveKeyPath(storageKey)
 
           uploadedFiles.push({
             fileId,
@@ -126,11 +216,12 @@ module.exports = fp(
             mimeType: part.mimetype,
             size: 0,
             uploadedAt,
+            storageKey,
             filePath,
           })
 
           try {
-            await pipeline(part.file, fs.createWriteStream(filePath))
+            filePath = await storageProvider.putStream(storageKey, part.file)
           } catch (err) {
             logger.error(err)
             await cleanup()
@@ -192,8 +283,8 @@ module.exports = fp(
         await Promise.all(
           attachments.map(async (att) => {
             if (!att || !att.fileId) return
-            const filePath = resolveAttachmentPath(att.fileId, att.originalFilename)
-            await unlink(filePath).catch(() => {})
+            const storageKey = resolveAttachmentKey(att.fileId, att.originalFilename)
+            await storageProvider.delete(storageKey)
           }),
         )
       },
@@ -204,15 +295,16 @@ module.exports = fp(
           throw fastify.httpErrors.notFound('Attachment not found on this note')
         }
 
-        const filePath = resolveAttachmentPath(fileId, attachment.originalFilename)
+        const storageKey = resolveAttachmentKey(fileId, attachment.originalFilename)
 
         let fileStats
         try {
-          fileStats = await stat(filePath)
+          fileStats = await storageProvider.stat(storageKey)
         } catch {
           throw fastify.httpErrors.notFound('File not found on disk')
         }
 
+        const totalSize = Number(fileStats.size || 0)
         const etag = buildAttachmentEtag(fileStats)
         const lastModified = fileStats.mtime.toUTCString()
         const safeFilename = sanitizeContentDispositionFilename(attachment.originalFilename)
@@ -222,13 +314,18 @@ module.exports = fp(
           ? doesIfNoneMatch(ifNoneMatch, etag)
           : isNotModifiedSince(requestHeaders['if-modified-since'], fileStats)
 
+        const rangeHeader = requestHeaders.range || requestHeaders.Range
+        const range = parseByteRangeHeader(rangeHeader, totalSize)
+
         return {
           attachment,
+          totalSize,
           etag,
           lastModified,
           safeFilename,
           notModified,
-          createStream: () => fs.createReadStream(filePath),
+          range,
+          createStream: (rangeOpts = {}) => storageProvider.getStream(storageKey, rangeOpts),
         }
       },
     }
@@ -249,3 +346,4 @@ module.exports.buildAttachmentEtag = buildAttachmentEtag
 module.exports.doesIfNoneMatch = doesIfNoneMatch
 module.exports.isNotModifiedSince = isNotModifiedSince
 module.exports.sanitizeContentDispositionFilename = sanitizeContentDispositionFilename
+module.exports.parseByteRangeHeader = parseByteRangeHeader

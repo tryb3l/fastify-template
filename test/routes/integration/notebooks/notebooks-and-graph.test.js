@@ -456,7 +456,7 @@ test('Attachment Lifecycle (#4) & CSV Container Scoping (#5) - Cleans up disk bl
 
   const deleteNoteRes = await app.inject({
     method: 'DELETE',
-    url: `/notes/${importedIds[0]}?expectedRevision=1`,
+    url: `/notes/${importedIds[0]}?expectedRevision=2`,
     headers: { Authorization: `Bearer ${accessToken}` },
   })
   assert.strictEqual(deleteNoteRes.statusCode, 204)

@@ -1005,3 +1005,210 @@ test('GET /files/:fileId 200 - Falls back for unsafe-only Content-Disposition fi
   assert.strictEqual(response.statusCode, 200)
   assert.strictEqual(response.headers['content-disposition'], 'attachment; filename="attachment"')
 })
+
+test('GET /files/:fileId 206 & 416 - Supports HTTP Range byte-slice streaming and rejects invalid ranges', async (t) => {
+  const { app, accessToken, note } = await createNote(t)
+  const form = new FormData()
+  const fileName = 'range-test.txt'
+  const content = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+  form.append('file', Buffer.from(content), {
+    filename: fileName,
+    contentType: 'text/plain',
+  })
+
+  const uploadRes = await uploadNoteFile(app, accessToken, note.data.id, form)
+  assert.strictEqual(uploadRes.statusCode, 201)
+  const fileId = uploadRes.json().files[0].fileId
+  registerFileCleanup(t, fileId, fileName)
+
+  // Full 200 download advertises Accept-Ranges and Content-Length
+  const fullRes = await app.inject({
+    method: 'GET',
+    url: `${ROUTE_PREFIX}/${fileId}?noteId=${note.data.id}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  assert.strictEqual(fullRes.statusCode, 200)
+  assert.strictEqual(fullRes.headers['accept-ranges'], 'bytes')
+  assert.strictEqual(Number(fullRes.headers['content-length']), content.length)
+
+  // Partial 206 download (bytes=10-15 -> 'ABCDEF')
+  const rangeRes = await app.inject({
+    method: 'GET',
+    url: `${ROUTE_PREFIX}/${fileId}?noteId=${note.data.id}`,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Range: 'bytes=10-15',
+    },
+  })
+  assert.strictEqual(rangeRes.statusCode, 206)
+  assert.strictEqual(rangeRes.headers['accept-ranges'], 'bytes')
+  assert.strictEqual(rangeRes.headers['content-range'], `bytes 10-15/${content.length}`)
+  assert.strictEqual(Number(rangeRes.headers['content-length']), 6)
+  assert.strictEqual(rangeRes.body, 'ABCDEF')
+
+  // Open-ended range (bytes=30- -> 'UVWXYZ')
+  const openEndedRes = await app.inject({
+    method: 'GET',
+    url: `${ROUTE_PREFIX}/${fileId}?noteId=${note.data.id}`,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Range: 'bytes=30-',
+    },
+  })
+  assert.strictEqual(openEndedRes.statusCode, 206)
+  assert.strictEqual(
+    openEndedRes.headers['content-range'],
+    `bytes 30-${content.length - 1}/${content.length}`,
+  )
+  assert.strictEqual(openEndedRes.body, 'UVWXYZ')
+
+  // Suffix range (bytes=-4 -> 'WXYZ')
+  const suffixRes = await app.inject({
+    method: 'GET',
+    url: `${ROUTE_PREFIX}/${fileId}?noteId=${note.data.id}`,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Range: 'bytes=-4',
+    },
+  })
+  assert.strictEqual(suffixRes.statusCode, 206)
+  assert.strictEqual(
+    suffixRes.headers['content-range'],
+    `bytes ${content.length - 4}-${content.length - 1}/${content.length}`,
+  )
+  assert.strictEqual(suffixRes.body, 'WXYZ')
+
+  // Out-of-bounds range returns 416 Range Not Satisfiable
+  const invalidRangeRes = await app.inject({
+    method: 'GET',
+    url: `${ROUTE_PREFIX}/${fileId}?noteId=${note.data.id}`,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Range: 'bytes=500-600',
+    },
+  })
+  assert.strictEqual(invalidRangeRes.statusCode, 416)
+  assert.strictEqual(invalidRangeRes.headers['content-range'], `bytes */${content.length}`)
+})
+
+test('POST /files/upload 201 & GET 206 - Uploads magic-byte verified WAV audio and streams byte ranges', async (t) => {
+  const { app, accessToken, note } = await createNote(t)
+  const wavBuffer = Buffer.alloc(64)
+  wavBuffer.write('RIFF', 0, 'ascii')
+  wavBuffer.writeUInt32LE(56, 4)
+  wavBuffer.write('WAVE', 8, 'ascii')
+  wavBuffer.write('fmt ', 12, 'ascii')
+  wavBuffer.writeUInt32LE(16, 16)
+  wavBuffer.writeUInt16LE(1, 20)
+  wavBuffer.writeUInt16LE(1, 22)
+  wavBuffer.writeUInt32LE(44100, 24)
+  wavBuffer.writeUInt32LE(88200, 28)
+  wavBuffer.writeUInt16LE(2, 32)
+  wavBuffer.writeUInt16LE(16, 34)
+  wavBuffer.write('data', 36, 'ascii')
+  wavBuffer.writeUInt32LE(20, 40)
+  wavBuffer.fill(0x7f, 44, 64)
+
+  const form = new FormData()
+  form.append('file', wavBuffer, {
+    filename: 'meeting-note.wav',
+    contentType: 'audio/wav',
+  })
+
+  const uploadRes = await uploadNoteFile(app, accessToken, note.data.id, form)
+  assert.strictEqual(uploadRes.statusCode, 201)
+  const uploaded = uploadRes.json().files[0]
+  registerFileCleanup(t, uploaded.fileId, uploaded.originalFilename)
+  assert.strictEqual(uploaded.mimeType, 'audio/wav')
+  assert.strictEqual(uploaded.size, 64)
+
+  const partialRes = await app.inject({
+    method: 'GET',
+    url: `${ROUTE_PREFIX}/${uploaded.fileId}?noteId=${note.data.id}`,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Range: 'bytes=0-11',
+    },
+  })
+  assert.strictEqual(partialRes.statusCode, 206)
+  assert.strictEqual(partialRes.headers['content-type'], 'audio/wav')
+  assert.strictEqual(partialRes.headers['content-range'], 'bytes 0-11/64')
+  assert.strictEqual(partialRes.rawPayload.subarray(0, 4).toString('ascii'), 'RIFF')
+  assert.strictEqual(partialRes.rawPayload.subarray(8, 12).toString('ascii'), 'WAVE')
+})
+
+test('DELETE /files/:fileId 204 & Quota 413 - Deletes single attachment with revision bump and enforces per-user storage quota', async (t) => {
+  const userCtx = await setup(t, 'user', {
+    USER_STORAGE_QUOTA_BYTES: 100,
+  })
+  const noteCreateRes = await userCtx.app.inject({
+    method: 'POST',
+    url: '/notes',
+    headers: { Authorization: `Bearer ${userCtx.accessToken}` },
+    payload: { title: 'Attachment Quota Note', body: 'Testing quota and delete' },
+  })
+  assert.strictEqual(noteCreateRes.statusCode, 201)
+  const createdNote = noteCreateRes.json().data
+  assert.strictEqual(createdNote.revision, 1)
+
+  // Upload 60-byte file (within 100-byte quota) -> bumps note revision to 2
+  const form1 = new FormData()
+  form1.append('file', Buffer.alloc(60, 'a'), {
+    filename: 'part1.txt',
+    contentType: 'text/plain',
+  })
+  const upload1 = await uploadNoteFile(userCtx.app, userCtx.accessToken, createdNote.id, form1)
+  assert.strictEqual(upload1.statusCode, 201)
+  const file1 = upload1.json().files[0]
+  const file1Path = registerFileCleanup(t, file1.fileId, file1.originalFilename)
+
+  const afterUploadNoteRes = await userCtx.app.inject({
+    method: 'GET',
+    url: `/notes/${createdNote.id}`,
+    headers: { Authorization: `Bearer ${userCtx.accessToken}` },
+  })
+  assert.strictEqual(afterUploadNoteRes.json().data.revision, 2)
+
+  // Second upload of 50 bytes exceeds 100-byte quota -> rejected with 413
+  const form2 = new FormData()
+  form2.append('file', Buffer.alloc(50, 'b'), {
+    filename: 'over-quota.txt',
+    contentType: 'text/plain',
+  })
+  const upload2 = await uploadNoteFile(userCtx.app, userCtx.accessToken, createdNote.id, form2)
+  assert.strictEqual(upload2.statusCode, 413)
+
+  // Delete first attachment via DELETE /files/:fileId?noteId=... -> removes blob and bumps revision to 3
+  const delFileRes = await userCtx.app.inject({
+    method: 'DELETE',
+    url: `${ROUTE_PREFIX}/${file1.fileId}?noteId=${createdNote.id}`,
+    headers: { Authorization: `Bearer ${userCtx.accessToken}` },
+  })
+  assert.strictEqual(delFileRes.statusCode, 204)
+  assert.strictEqual(await fileExists(file1Path), false)
+
+  const afterDeleteNoteRes = await userCtx.app.inject({
+    method: 'GET',
+    url: `/notes/${createdNote.id}`,
+    headers: { Authorization: `Bearer ${userCtx.accessToken}` },
+  })
+  assert.strictEqual(afterDeleteNoteRes.json().data.revision, 3)
+  assert.deepStrictEqual(afterDeleteNoteRes.json().data.attachments, [])
+
+  // Deleting an already-removed attachment returns 404
+  const delAgainRes = await userCtx.app.inject({
+    method: 'DELETE',
+    url: `${ROUTE_PREFIX}/${file1.fileId}?noteId=${createdNote.id}`,
+    headers: { Authorization: `Bearer ${userCtx.accessToken}` },
+  })
+  assert.strictEqual(delAgainRes.statusCode, 404)
+
+  // Another user cannot delete an attachment on a note they do not own
+  const intruderCtx = await setup(t, 'user')
+  const intruderDelRes = await intruderCtx.app.inject({
+    method: 'DELETE',
+    url: `${ROUTE_PREFIX}/${file1.fileId}?noteId=${createdNote.id}`,
+    headers: { Authorization: `Bearer ${intruderCtx.accessToken}` },
+  })
+  assert.strictEqual(intruderDelRes.statusCode, 404)
+})
