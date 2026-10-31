@@ -79,10 +79,18 @@
 - **Requirements:**
   - Users should be able to export their notes in a CSV format.
   - The exported file should include relevant note data (title, content, timestamps).
+  - CSV import (`POST /files/import`) defaults to the Inbox (`notebookId: null, folderId: null`) and accepts optional `notebookId` and `folderId` query parameters; CSV export (`GET /files/export`) accepts optional `notebookId`, `folderId`, `inbox`, and `title` query parameters while keeping the 6-column CSV format (`title,body,tags,createdAt,modifiedAt,id`) backwards-compatible.
 
-## 4. Frontend Integration Notes
+## 4. Notebooks, Nested Folders & Poly-Hierarchical Mind-Map Links
 
-### 4.1. Markdown Storage Contract
+See [notebooks-and-mindmap-spec.md](./notebooks-and-mindmap-spec.md), [GLOSSARY.md](../GLOSSARY.md), [ADR-0001](./adr/0001-two-tier-notebook-folder-and-poly-hierarchical-links.md), and [ADR-0002](./adr/0002-request-scoped-monomorphic-data-sources.md) for the complete specification.
+
+- **Two-Tier Containment:** Notes live either in the virtual **Inbox** (`notebookId: null, folderId: null`), at a **Notebook** root (`notebookId: <uuid>, folderId: null`), or inside a nested **Folder** (`notebookId: <uuid>, folderId: <uuid>`, up to 5 levels deep within that Notebook). Non-empty Notebooks and Folders reject deletion with `409 Conflict` (`NOTEBOOK_NOT_EMPTY` / `FOLDER_NOT_EMPTY`).
+- **Poly-Hierarchical Note Links & Mind Map:** Notes carry directed typed `links` (`parent`, `child`, `related`) authored explicitly or extracted from Markdown (`[[<uuid>|Label]]`, `[Label](note://<uuid>)`). Incoming links are exposed at `GET /notes/:id/backlinks`, mind-map subgraphs are queried via `$graphLookup` at `GET /notes/graph`, and deleting a note automatically `$pull`s incoming links and unlinks disk attachments.
+
+## 5. Frontend Integration Notes
+
+### 5.1. Markdown Storage Contract
 
 - **Implementation Note:** The backend keeps Markdown as the single source of truth in the `body` field.
 - **Requirements:**
@@ -91,21 +99,21 @@
   - The backend does not store HTML, AST data, or editor-specific state for notes.
   - Tags and attachments remain separate note fields rather than being embedded into the stored Markdown shape.
 
-### 4.2. Notes List vs Detail Contract
+### 5.2. Notes List vs Detail Contract
 
 - **Implementation Note:** The notes list endpoint is intentionally summary-only.
 - **Requirements:**
   - `GET /notes` should stay summary-only metadata for browsing and pagination, not a source for full note content.
-  - `GET /notes` responses include summary fields only: `id`, `title`, `tags`, `createdAt`, and `modifiedAt`.
-  - `GET /notes/:id` remains the endpoint for the full Markdown source in `body` and any note attachments.
+  - `GET /notes` responses include summary fields only: `id`, `title`, `tags`, `notebookId`, `folderId`, `revision`, `createdAt`, and `modifiedAt`.
+  - `GET /notes/:id` remains the endpoint for the full Markdown source in `body`, `links`, and any note `attachments`.
 
-### 4.3. List Payload Reduction Snapshot
+### 5.3. List Payload Reduction Snapshot
 
 - **Validation Note:** On a validation dataset of 100 notes with large Markdown bodies around the current Milkdown target size, `GET /notes?limit=100` returned `16,827` bytes with the summary-only contract.
 - **Validation Note:** The equivalent simulated pre-split full-note payload on the same persisted dataset was `3,421,727` bytes, for a reduction of `3,404,900` bytes or `99.51%`.
 - **Methodology Note:** The "before" size is a simulation of the old full-note list contract built from the same stored notes, not a measurement from an old branch checkout.
 
-### 4.4. Autosave and Live Updates
+### 5.4. Autosave and Live Updates
 
 - **Implementation Note:** Note updates and live events still carry the full Markdown `body`.
 - **Requirements:**
@@ -113,7 +121,7 @@
   - `PUT /notes/:id` remains the canonical update path for Markdown note bodies.
   - `NOTE_UPDATED` websocket payloads should be expected to include the full updated `body`, not a partial patch.
 
-### 4.5. Markdown Rendering Safety
+### 5.5. Markdown Rendering Safety
 
 - **Implementation Note:** Markdown rendering safety is deferred to the frontend in this phase, and no frontend rendering code exists in this workspace.
 - **Requirements:**
@@ -123,7 +131,7 @@
   - The backend does not parse Markdown into HTML or sanitize rendered HTML in this phase.
   - This backend repo defines the transport contract and rendering-safety handoff; actual renderer implementation is deferred until a frontend codebase is available.
 
-### 4.6. HTTP Compression Scope
+### 5.6. HTTP Compression Scope
 
 - **Implementation Note:** Response compression is existing backend infrastructure, not a transport fix for note writes or websocket sync.
 - **Requirements:**

@@ -68,3 +68,8 @@ uploads/
 
 # local runtime state
 .runtime/
+
+# agent local files
+AGENTS.md
+.scratch/
+docs/agents/

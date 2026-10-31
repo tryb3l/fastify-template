@@ -1,107 +1,85 @@
-# My Fastify Template for Future Projects
-
-## Status
+# Fastify Notes Backend
 
 [![CI](https://github.com/tryb3l/fastify-boilerplate/actions/workflows/ci.yml/badge.svg)](https://github.com/tryb3l/fastify-boilerplate/actions/workflows/ci.yml)
 
+Backend API for a Markdown note-taking application, built with Fastify and MongoDB. This repository started as a personal Fastify project template and grew into the backend service for managing notes, attachments, CSV imports/exports, and user accounts.
+
+## Features
+
+- **Markdown Notes CRUD** (`routes/notes/`): Create, read, update, and delete notes with Markdown stored directly in `body`. `GET /notes` returns summary metadata (`id`, `title`, `tags`, `notebookId`, `folderId`, `revision`, `createdAt`, `modifiedAt`) for fast pagination and container/Inbox filtering; `GET /notes/:id` returns the full note with attachments and links, cached in memory.
+- **Notebooks & Nested Folders** (`routes/notebooks/`, `plugins/notebooks-store.js`): Organize notes into top-level **Notebooks** and nested **Folders** (up to 5 levels deep, with cycle detection and `409 Conflict` guards on non-empty deletes), or leave unfiled notes in the virtual **Inbox** (`notebookId: null, folderId: null`). `GET /notebooks/tree` and `GET /notebooks/:id/tree` assemble folder hierarchies and note counts in two parallel queries.
+- **Poly-Hierarchical Note Links & Mind-Map Graph** (`plugins/notes-store.js`): Connect notes across containers using explicit typed links (`parent`, `child`, `related`) and automatic Markdown link extraction (`[[<uuid>|Label]]` and `[Label](note://<uuid>)`). Query incoming backlinks at `GET /notes/:id/backlinks` and multi-hop mind-map subgraphs via MongoDB `$graphLookup` at `GET /notes/graph`.
+- **Optimistic Concurrency**: Every note tracks an integer `revision` (starting at `1`). `PUT /notes/:id` (body) and `DELETE /notes/:id` (query) require `expectedRevision` and return `409 Conflict` (`NOTE_STALE_SAVE` or `NOTE_STALE_DELETE`) with `currentRevision` and `currentModifiedAt` on mismatch.
+- **Attachments & CSV Sync** (`routes/notes/files/`): Upload and download note attachments (up to 10 MB, verified by extension and magic bytes, with `ETag` and `If-Modified-Since` caching and automatic disk cleanup on note delete) and stream notes to/from CSV (`/files/import`, `/files/export`) with optional `notebookId`/`folderId` scoping and spreadsheet formula sanitization.
+- **Authentication, RBAC & Password Reset** (`routes/auth/`, `routes/users/`): Argon2id password hashing, short-lived JWT access tokens paired with HTTP-only refresh token cookies (`/auth/refresh`), CSRF token protection, email-based password reset, `user`/`admin` role enforcement, and audit logging.
+- **Operational Endpoints**: OpenAPI docs at `/docs` (non-production), health check with MongoDB ping at `/health`, and readiness check at `/ready`.
+
 ## Requirements
 
-To execute this example, install Node.js and Docker. The local workflow below starts MongoDB and Mailpit for you in Docker.
+- **Node.js 26+** (uses the built-in `Temporal` API and `node --run`)
+- **Docker** (powers local MongoDB 7 and Mailpit containers)
 
-#### You can use the following versions:
+> Keep `Temporal` usage inside business-logic helpers and convert back to native `Date` values at MongoDB or other library boundaries.
 
-- Node.js 26+
-- Latest Docker engine
+## Quick Start (Local Development)
 
-The backend now uses the built-in Temporal API available in Node.js 26. Keep Temporal usage inside business-logic helpers and convert back to native `Date` values at MongoDB or other library boundaries.
-
-## Getting Started
-
-### Running the Project Using Docker
-
-There are two Docker compose paths.
-
-**Local Docker stack (Mailpit included, no real SMTP needed)**
-
-```sh
-make dev-compose
-```
-
-This builds the image and starts Mongo, the app in development mode, and Mailpit for SMTP capture. Open `http://localhost:8025` to inspect captured mail. No SMTP credentials are required.
-
-**Production Docker stack (real SMTP required)**
-
-Ensure `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, and `SMTP_PASS` are set in `.env`, then:
-
-```sh
-docker compose -f docker-compose.yml up
-```
-
-or the makefile alias:
-
-```sh
-make up
-```
-
-The app boots in production mode and fails fast at startup if SMTP is not configured. That behavior is intentional.
-
-### Running the Project Locally
-
-1. **Install Dependencies:**
+1. **Install dependencies:**
 
    ```sh
    npm install
    ```
 
-2. **Create the local env file:**
+2. **Generate `.env` with local defaults:**
+
+   ```sh
+   make init-env
+   ```
+
+   Creates `.env` once with `MONGO_URL`, `FRONTEND_URL`, `LOG_LEVEL`, `MAIL_FROM`, and `openssl`-generated `JWT_SECRET` and `COOKIE_SECRET`. If `.env` already exists, it is left unchanged.
+
+3. **Start the local development stack (generates local HTTPS certs in `.certs/` automatically):**
+
+   ```sh
+   make dev
+   ```
+
+   Generates `.certs/localhost.pem` and `.certs/localhost-key.pem` via `make init-certs` (using `mkcert` when installed, or `openssl` as fallback), starts Docker containers for MongoDB (`localhost:27017`) and Mailpit (`localhost:1025` SMTP, `http://localhost:8025` web UI), runs pending database migrations, and boots Fastify in watch mode over HTTPS on `https://localhost:3000` (Swagger UI at `https://localhost:3000/docs`). Stopping `make dev` (`Ctrl+C`) automatically stops the managed dev containers.
+
+4. **Run tests and linting:**
+
+   ```sh
+   make verify
+   ```
+
+## Docker Compose Workflows
+
+### Local Docker Stack (with Mailpit)
+
+Runs MongoDB, Mailpit, and the backend container in development mode without requiring external SMTP credentials:
 
 ```sh
-make init-env
+make dev-compose
 ```
 
-`make init-env` creates `.env` with local-safe defaults and generates secrets when `openssl` is available. If `.env` already exists, the target leaves it unchanged.
+Inspect captured emails (such as password reset links) at `http://localhost:8025`.
 
-3. **Adjust `.env` if needed:**
+### Production Docker Stack
 
-   Leave `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, and `SMTP_PASS` unset to use local Mailpit by default. Review or rotate the generated secrets before reusing the environment elsewhere.
-
-4. **Start the local stack:**
-
-   ```sh
-    make dev
-   ```
-
-   This starts MongoDB on `localhost:27017`, Mailpit SMTP on `localhost:1025`, and the Mailpit inbox UI on `http://localhost:8025`.
-
-5. **Inspect captured email in Mailpit:**
-
-   Open `http://localhost:8025` and trigger flows such as password reset. Development defaults to Mailpit unless you set real SMTP credentials in `.env`.
-
-6. **Run Tests:**
-
-   ```sh
-   make test
-   ```
-
-`make test` starts the managed local test runtime, including Docker-backed test dependencies, managed runtime state, and cleanup.
-
-Use the raw CI-oriented runner only when the test dependencies are already available outside the managed wrapper:
+Requires real SMTP settings (`SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`) in `.env`. Outside `development` and `test`, the server fails fast at startup if SMTP is not configured.
 
 ```sh
-make test-ci
+make up
 ```
 
-`make test-ci` and `npm run test:ci` are intentionally plain, CI-style entrypoints. They do not boot MongoDB or other test dependencies for you.
+The production compose file exposes the backend on `http://localhost:3042` (`3042:3000`). Stop the stack with:
 
-7. **Stop the local containers when finished:**
+```sh
+make down
+```
 
-   ```sh
-   make dev-stop
-   ```
+### Testing Real SMTP Locally
 
-### Switching to Real SMTP
-
-For short manual delivery checks, add the SMTP settings below to `.env` and rerun `make dev`:
+To test real email delivery during local development, uncomment and populate the SMTP variables in `.env`, then restart `make dev`:
 
 ```dotenv
 SMTP_HOST=smtp.example.com
@@ -111,101 +89,41 @@ SMTP_USER=your-smtp-user
 SMTP_PASS=your-smtp-password
 ```
 
-Outside `development` and `test`, the app now fails fast during boot if SMTP is not configured.
+## Makefile Reference
 
-### Makefile Commands
+Run `make` (or `make help`) to list documented targets:
 
-- **Show the canonical local command surface:**
+| Command                    | Description                                                                    |
+| -------------------------- | ------------------------------------------------------------------------------ |
+| `make init-env`            | Create `.env` with local development defaults if missing                       |
+| `make init-certs`          | Generate local TLS certificates in `.certs/` (`mkcert` or `openssl`)           |
+| `make check-env`           | Validate required secrets (`JWT_SECRET`, `COOKIE_SECRET`) in `.env`            |
+| `make start-docker`        | Check that Docker is installed and start the daemon if stopped                 |
+| `make dev`                 | Start managed MongoDB + Mailpit, run migrations, and run Fastify in watch mode |
+| `make dev-app`             | Start both this backend and `../note-explorer` in dev mode                     |
+| `make dev-trace`           | Start the managed local runtime with `--trace-warnings`                        |
+| `make dev-compose`         | Start the full local Docker Compose stack with Mailpit                         |
+| `make migrate`             | Apply `migrate-mongo` database migrations with `.env` loaded                   |
+| `make test`                | Run the managed test suite (starts an isolated test MongoDB on port `27018`)   |
+| `make test-cov`            | Run the managed test suite with coverage                                       |
+| `make test-ci`             | Run `node --run test:ci` directly without starting Docker containers           |
+| `make lint`                | Run ESLint                                                                     |
+| `make verify`              | Run `lint` followed by `test`                                                  |
+| `make runtime-status`      | Show human-readable status for managed local runtimes                          |
+| `make runtime-status-json` | Emit plain-text JSON status for managed local runtimes                         |
+| `make runtime-cleanup`     | Stop owned stale processes and clean managed runtime state                     |
+| `make up` / `make down`    | Start or stop the production Docker Compose stack                              |
 
-  ```sh
-   make
-  ```
+## Managed Runtime & Concurrency Notes
 
-- **Create `.env` once for local development:**
+### Managed Runtime State
 
-  ```sh
-   make init-env
-  ```
+- `make dev` and `make test` track owned processes and containers in the OS temp directory so interrupted runs can be inspected (`make runtime-status`) or cleaned up (`make runtime-cleanup`).
+- Automatic stale-state recovery runs only after a 15-minute inactivity TTL. If a previous session is newer than 15 minutes, startup exits early and prompts you to wait or run `make runtime-cleanup` (which bypasses the TTL, attempts a graceful stop, and escalates to forced termination if needed).
+- Interactive terminal output uses semantic ANSI color by default. Set `NO_COLOR=1` to disable color or `FORCE_COLOR=1` to force it on non-TTY streams. `make help` and `make runtime-status-json` always emit unstyled plain text.
 
-- **Start the local Docker app stack with Mailpit:**
+### Notes Concurrency & Live Feed Details
 
-  ```sh
-   make dev-compose
-  ```
-
-- **Start local MongoDB + Mailpit + app:\*\***
-
-  ```sh
-   make dev
-  ```
-
-- **Stop local MongoDB + Mailpit:**
-
-  ```sh
-   make dev-stop
-  ```
-
-- **Inspect managed runtime state:**
-
-  ```sh
-   make runtime-status
-  ```
-
-- **Clean managed runtime state and owned processes:**
-
-  ```sh
-   make runtime-cleanup
-  ```
-
-- **Run database migrations with `.env` loaded:**
-
-  ```sh
-   make migrate
-  ```
-
-- **Run tests:**
-
-  ```sh
-   make test
-  ```
-
-- **Run the raw CI-style Node suite when test dependencies are already running:**
-
-  ```sh
-   make test-ci
-  ```
-
-- **Run lint:**
-
-  ```sh
-   make lint
-  ```
-
-- **Emit machine-readable managed runtime status:**
-
-  ```sh
-   make runtime-status-json
-  ```
-
-### Runtime Status And Cleanup
-
-- `make runtime-status` and `npm run runtime:status` show human-readable managed runtime status and keep exit code `0` for inspection.
-- `make runtime-status-json` and `npm run runtime:status -- --json` emit machine-readable JSON without ANSI styling.
-- `make runtime-cleanup` and `npm run runtime:cleanup` clean backend-owned runtime state and owned stale processes.
-- Cleanup first attempts a graceful stop, waits for the process to exit, and then escalates to forced termination if the process remains alive.
-- If cleanup still cannot remove all runtime state, the cleanup command exits with code `1` and prints a manual-recovery message instead of pretending the machine is clean.
-
-### Stale Runtime State
-
-- Managed runtimes record ownership in the system temp directory instead of inside the repository.
-- Automatic stale-state recovery only happens after the recorded runtime has been inactive for the stale-state TTL, which defaults to 15 minutes.
-- If a recorded runtime is too recent for automatic recovery, startup fails fast and asks you to wait for the TTL window or run explicit cleanup.
-- Explicit cleanup bypasses the stale-state TTL so operators can recover immediately.
-
-### Output And Color Behavior
-
-- Human-oriented Node-managed surfaces such as `make dev`, `make test`, `make runtime-status`, and the managed local Node test reporter use semantic color when the output stream is interactive.
-- Set `NO_COLOR` to disable ANSI styling. Set `FORCE_COLOR=1` to force ANSI styling on Node-managed human output even for non-TTY streams.
-- JSON status output remains plain text JSON.
-- `make help` is plain text by design so the make entrypoint stays thin and predictable.
-- Focused wrapper tests intentionally use quiet output sinks so they can validate lifecycle semantics without leaking fake operator banners into the suite output.
+- `modifiedAt` is audit/display metadata only; write conflicts are checked strictly against the integer `revision` in a single atomic MongoDB operation.
+- Uploading or removing attachments updates `modifiedAt` and increments `revision` so attachment changes propagate through workspace delta-sync (`GET /notes/sync`).
+- The WebSocket endpoint at `/notes/live/:id` requires an `Authorization` header during the upgrade handshake (which browser `WebSocket` clients cannot set directly). The `note-explorer` frontend coordinates same-browser-tab updates via `BroadcastChannel` and REST refetches instead.
