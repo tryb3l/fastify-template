@@ -51,6 +51,120 @@ module.exports = async function noteRoutes(fastify, opts) {
 
   fastify.route({
     method: 'GET',
+    url: '/sync',
+    config: {
+      rateLimit: notesRateLimit,
+    },
+    schema: {
+      tags: ['notes'],
+      summary:
+        'Get workspace delta changes (Notes, Notebooks, Folders, and deletions) since a timestamp',
+      querystring: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['since'],
+        properties: {
+          since: { type: 'string', format: 'date-time' },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['data'],
+          properties: {
+            data: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['serverTime', 'notes', 'notebooks', 'folders'],
+              properties: {
+                serverTime: { type: 'string', format: 'date-time' },
+                notes: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['upserted', 'deletedIds'],
+                  properties: {
+                    upserted: { type: 'array', items: { $ref: 'schema:note#' } },
+                    deletedIds: { type: 'array', items: { type: 'string', format: 'uuid' } },
+                  },
+                },
+                notebooks: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['upserted', 'deletedIds'],
+                  properties: {
+                    upserted: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        additionalProperties: false,
+                        required: ['id', 'name', 'description', 'createdAt', 'modifiedAt'],
+                        properties: {
+                          id: { type: 'string', format: 'uuid' },
+                          name: { type: 'string' },
+                          description: { type: 'string' },
+                          createdAt: { type: 'string', format: 'date-time' },
+                          modifiedAt: { type: 'string', format: 'date-time' },
+                        },
+                      },
+                    },
+                    deletedIds: { type: 'array', items: { type: 'string', format: 'uuid' } },
+                  },
+                },
+                folders: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['upserted', 'deletedIds'],
+                  properties: {
+                    upserted: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        additionalProperties: false,
+                        required: [
+                          'id',
+                          'notebookId',
+                          'parentId',
+                          'name',
+                          'createdAt',
+                          'modifiedAt',
+                        ],
+                        properties: {
+                          id: { type: 'string', format: 'uuid' },
+                          notebookId: { type: 'string', format: 'uuid' },
+                          parentId: { type: ['string', 'null'], format: 'uuid' },
+                          name: { type: 'string' },
+                          createdAt: { type: 'string', format: 'date-time' },
+                          modifiedAt: { type: 'string', format: 'date-time' },
+                        },
+                      },
+                    },
+                    deletedIds: { type: 'array', items: { type: 'string', format: 'uuid' } },
+                  },
+                },
+              },
+            },
+          },
+        },
+        410: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['message', 'code'],
+          properties: {
+            message: { type: 'string' },
+            code: { type: 'string' },
+          },
+        },
+      },
+    },
+    handler: async function getWorkspaceSyncDeltaHandler(request) {
+      const delta = await request.notesDataSource.getWorkspaceSyncDelta(request.query.since)
+      return { data: delta }
+    },
+  })
+
+  fastify.route({
+    method: 'GET',
     url: '/graph',
     config: {
       rateLimit: notesRateLimit,

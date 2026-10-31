@@ -2,14 +2,47 @@
 
 const fp = require('fastify-plugin')
 const { randomUUIDv7 } = require('node:crypto')
-const { instantToDate, nowInstant } = require('../utils/time')
+const { instantToDate, nowInstant, nowIsoInstantString } = require('../utils/time')
 const {
   NOTE_DETAIL_PROJECTION,
   NOTE_GRAPH_NODE_PROJECTION,
 } = require('../routes/notes/query-shapes')
 
 const NOTE_CACHE_TTL_MS = 300_000
+const SYNC_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000
 const VALID_LINK_RELATIONS = new Set(['parent', 'child', 'related'])
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function areStringArraysEqual(a, b) {
+  const arrA = Array.isArray(a) ? a : []
+  const arrB = Array.isArray(b) ? b : []
+  if (arrA.length !== arrB.length) return false
+  for (let i = 0; i < arrA.length; i += 1) {
+    if (arrA[i] !== arrB[i]) return false
+  }
+  return true
+}
+
+function areLinksEqual(a, b) {
+  const arrA = Array.isArray(a) ? a : []
+  const arrB = Array.isArray(b) ? b : []
+  if (arrA.length !== arrB.length) return false
+  for (let i = 0; i < arrA.length; i += 1) {
+    const linkA = arrA[i]
+    const linkB = arrB[i]
+    if (
+      linkA.targetId !== linkB.targetId ||
+      linkA.relation !== linkB.relation ||
+      (linkA.label ?? undefined) !== (linkB.label ?? undefined)
+    ) {
+      return false
+    }
+  }
+  return true
+}
 
 const WIKI_LINK_REGEX =
   /\[\[([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\|([^\]]{1,100}))?\]\]/gi
@@ -183,12 +216,24 @@ class ScopedNotesDataSource {
     return this.store.addAttachments(id, attachments, this.userId)
   }
 
+  removeAttachment(id, fileId) {
+    return this.store.removeAttachment(id, fileId, this.userId)
+  }
+
+  getUserStorageUsageBytes() {
+    return this.store.getUserStorageUsageBytes(this.userId)
+  }
+
   listBacklinks(noteId) {
     return this.store.listBacklinks(noteId, this.userId)
   }
 
   getMindMapGraph(options = {}) {
     return this.store.getMindMapGraph(options, this.userId)
+  }
+
+  getWorkspaceSyncDelta(since) {
+    return this.store.getWorkspaceSyncDelta(since, this.userId)
   }
 }
 
@@ -197,6 +242,9 @@ module.exports = fp(
     fastify.log.info('Starting registration of notes-store plugin')
 
     const notes = fastify.mongo.db.collection('notes')
+    const notebooks = fastify.mongo.db.collection('notebooks')
+    const folders = fastify.mongo.db.collection('folders')
+    const syncTombstones = fastify.mongo.db.collection('syncTombstones')
 
     async function invalidateNoteCache(noteId, userId) {
       if (typeof fastify.cacheDelete !== 'function' || !noteId || !userId) {
@@ -231,7 +279,7 @@ module.exports = fp(
       _buildFilter(rawFilter = {}, userId) {
         const finalFilter = { userId }
         if (rawFilter.title) {
-          finalFilter.title = new RegExp(rawFilter.title, 'i')
+          finalFilter.title = new RegExp(escapeRegExp(rawFilter.title), 'i')
         }
         if (Object.hasOwn(rawFilter, 'notebookId') && rawFilter.notebookId !== undefined) {
           finalFilter.notebookId = rawFilter.notebookId
@@ -257,11 +305,13 @@ module.exports = fp(
         fastify.log.info('Entering listNotes method')
         const finalFilter = this._buildFilter(filter, userId)
 
-        const cursor = await notes.find(finalFilter, {
-          projection: { ...projection, _id: 0 },
-          limit,
-          skip,
-        })
+        const cursor = notes
+          .find(finalFilter, {
+            projection: { ...projection, _id: 0 },
+            limit,
+            skip,
+          })
+          .sort({ modifiedAt: -1 })
         if (asStream) {
           fastify.log.info('Exiting listNotes method with stream')
           return cursor.stream()
@@ -423,7 +473,7 @@ module.exports = fp(
         return normalized
       },
 
-      async updateNote(id, newNote, userId, request = null) {
+      async updateNote(id, newNote, userId) {
         const { expectedRevision, ...rawUpdate } = newNote
         const normalizedUpdate = {
           ...rawUpdate,
@@ -438,42 +488,40 @@ module.exports = fp(
         const hasFolderUpdate = Object.hasOwn(normalizedUpdate, 'folderId')
         const hasLinksUpdate = Object.hasOwn(normalizedUpdate, 'links')
 
-        let existingContext = null
-        if (
-          (hasNotebookUpdate && !hasFolderUpdate && normalizedUpdate.notebookId !== null) ||
-          (!hasNotebookUpdate && hasFolderUpdate) ||
-          (hasBodyUpdate && !hasLinksUpdate) ||
-          (hasLinksUpdate && !hasBodyUpdate)
-        ) {
-          existingContext = await notes.findOne(
-            { id, userId },
-            {
-              projection: {
-                _id: 0,
-                notebookId: 1,
-                folderId: 1,
-                body: 1,
-                links: 1,
-                explicitLinks: 1,
-              },
+        const existingContext = await notes.findOne(
+          { id, userId },
+          {
+            projection: {
+              ...NOTE_DETAIL_PROJECTION,
+              explicitLinks: 1,
             },
+          },
+        )
+        if (!existingContext) {
+          throw fastify.httpErrors.notFound('Note not found')
+        }
+
+        if (existingContext.revision !== expectedRevision) {
+          const conflictError = fastify.httpErrors.conflict(
+            'Note was modified elsewhere. Reload the latest note before saving again.',
           )
-          if (!existingContext) {
-            throw fastify.httpErrors.notFound('Note not found')
-          }
+          conflictError.conflictCode = 'NOTE_STALE_SAVE'
+          conflictError.currentRevision = existingContext.revision
+          conflictError.currentModifiedAt = existingContext.modifiedAt
+          throw conflictError
         }
 
         if (hasNotebookUpdate || hasFolderUpdate) {
           const targetNotebookId = hasNotebookUpdate
             ? normalizedUpdate.notebookId
-            : (existingContext?.notebookId ?? null)
+            : (existingContext.notebookId ?? null)
           const targetFolderId = hasFolderUpdate
             ? normalizedUpdate.folderId
             : targetNotebookId === null
               ? null
-              : targetNotebookId !== (existingContext?.notebookId ?? null)
+              : targetNotebookId !== (existingContext.notebookId ?? null)
                 ? null
-                : (existingContext?.folderId ?? null)
+                : (existingContext.folderId ?? null)
 
           const verifiedPlacement = await fastify.notebooksDataSource.verifyContainerPlacement(
             { notebookId: targetNotebookId, folderId: targetFolderId },
@@ -486,7 +534,7 @@ module.exports = fp(
         if (hasLinksUpdate || hasBodyUpdate) {
           const effectiveBody = hasBodyUpdate
             ? normalizedUpdate.body
-            : normalizeNoteBody(existingContext?.body)
+            : normalizeNoteBody(existingContext.body)
           const effectiveExplicitLinks = hasLinksUpdate
             ? normalizeExplicitLinks(normalizedUpdate.links, id)
             : derivePreservedExplicitLinks(existingContext)
@@ -498,7 +546,7 @@ module.exports = fp(
           )
 
           const previousTargetIds = new Set(
-            (existingContext?.links || []).map((link) => link.targetId),
+            (existingContext.links || []).map((link) => link.targetId),
           )
           const unverifiedLinks = mergedLinks.filter(
             (link) => !previousTargetIds.has(link.targetId),
@@ -509,6 +557,41 @@ module.exports = fp(
 
           normalizedUpdate.explicitLinks = effectiveExplicitLinks
           normalizedUpdate.links = mergedLinks
+        }
+
+        const nextTitle = Object.hasOwn(normalizedUpdate, 'title')
+          ? normalizedUpdate.title
+          : existingContext.title
+        const nextBody = hasBodyUpdate
+          ? normalizedUpdate.body
+          : normalizeNoteBody(existingContext.body)
+        const nextTags = Object.hasOwn(normalizedUpdate, 'tags')
+          ? normalizedUpdate.tags
+          : existingContext.tags
+        const nextNotebookId = Object.hasOwn(normalizedUpdate, 'notebookId')
+          ? normalizedUpdate.notebookId
+          : (existingContext.notebookId ?? null)
+        const nextFolderId = Object.hasOwn(normalizedUpdate, 'folderId')
+          ? normalizedUpdate.folderId
+          : (existingContext.folderId ?? null)
+        const nextLinks = Object.hasOwn(normalizedUpdate, 'links')
+          ? normalizedUpdate.links
+          : existingContext.links || []
+        const nextExplicitLinks = Object.hasOwn(normalizedUpdate, 'explicitLinks')
+          ? normalizedUpdate.explicitLinks
+          : derivePreservedExplicitLinks(existingContext)
+
+        const isNoOp =
+          nextTitle === existingContext.title &&
+          nextBody === normalizeNoteBody(existingContext.body) &&
+          areStringArraysEqual(nextTags, existingContext.tags) &&
+          nextNotebookId === (existingContext.notebookId ?? null) &&
+          nextFolderId === (existingContext.folderId ?? null) &&
+          areLinksEqual(nextLinks, existingContext.links) &&
+          areLinksEqual(nextExplicitLinks, derivePreservedExplicitLinks(existingContext))
+
+        if (isNoOp) {
+          return normalizePersistedNote(existingContext)
         }
 
         const result = await notes.findOneAndUpdate(
@@ -553,16 +636,6 @@ module.exports = fp(
         const normalized = normalizePersistedNote(updatedNote)
 
         await invalidateNoteCache(id, userId)
-
-        if (fastify.auditLog) {
-          fastify.auditLog({
-            request,
-            action: 'note_updated',
-            userId,
-            resourceType: 'note',
-            resourceId: id,
-          })
-        }
 
         if (fastify.eventBus) {
           const sanitizedEventDTO = {
@@ -620,6 +693,14 @@ module.exports = fp(
 
         await invalidateNoteCache(id, userId)
 
+        await syncTombstones.insertOne({
+          _id: randomUUIDv7(),
+          userId,
+          entityType: 'note',
+          entityId: id,
+          deletedAt: instantToDate(nowInstant()),
+        })
+
         // Clean up any incoming links from other notes of the same user
         const referencingNotes = await notes
           .find({ userId, 'links.targetId': id }, { projection: { _id: 0, id: 1 } })
@@ -668,6 +749,7 @@ module.exports = fp(
           {
             $push: { attachments: { $each: attachments } },
             $set: { modifiedAt: instantToDate(nowInstant()) },
+            $inc: { revision: 1 },
           },
           { returnDocument: 'after' },
         )
@@ -681,6 +763,55 @@ module.exports = fp(
         await invalidateNoteCache(id, userId)
 
         return normalizePersistedNote(updatedNote)
+      },
+
+      async removeAttachment(id, fileId, userId) {
+        const existingNote = await notes.findOne(
+          { id, userId },
+          { projection: { _id: 0, id: 1, attachments: 1 } },
+        )
+        if (!existingNote) {
+          throw fastify.httpErrors.notFound('Note not found')
+        }
+
+        const targetAttachment = (existingNote.attachments || []).find(
+          (att) => att.fileId === fileId,
+        )
+        if (!targetAttachment) {
+          throw fastify.httpErrors.notFound('Attachment not found on this note')
+        }
+
+        const result = await notes.findOneAndUpdate(
+          { id, userId },
+          {
+            $pull: { attachments: { fileId } },
+            $set: { modifiedAt: instantToDate(nowInstant()) },
+            $inc: { revision: 1 },
+          },
+          { returnDocument: 'after' },
+        )
+
+        const updatedNote = result?.value ?? result
+
+        await invalidateNoteCache(id, userId)
+
+        if (fastify.notesFileManager) {
+          await fastify.notesFileManager.deleteNoteAttachments([targetAttachment])
+        }
+
+        return normalizePersistedNote(updatedNote)
+      },
+
+      async getUserStorageUsageBytes(userId) {
+        const agg = await notes
+          .aggregate([
+            { $match: { userId, 'attachments.0': { $exists: true } } },
+            { $unwind: '$attachments' },
+            { $group: { _id: null, totalBytes: { $sum: '$attachments.size' } } },
+          ])
+          .toArray()
+
+        return agg.length > 0 ? Number(agg[0].totalBytes || 0) : 0
       },
 
       async listBacklinks(noteId, userId) {
@@ -846,6 +977,79 @@ module.exports = fp(
 
       forUser(userId, request = null) {
         return new ScopedNotesDataSource(this, userId, request)
+      },
+
+      async getWorkspaceSyncDelta(since, userId) {
+        const sinceMs = Date.parse(since)
+        if (Number.isNaN(sinceMs)) {
+          throw fastify.httpErrors.badRequest('Invalid since timestamp')
+        }
+
+        const nowMs = Date.now()
+        if (nowMs - sinceMs > SYNC_TOMBSTONE_TTL_MS || sinceMs > nowMs + 60_000) {
+          const goneErr = fastify.httpErrors.gone('Sync cursor expired; perform a full sync')
+          goneErr.syncCode = 'SYNC_CURSOR_EXPIRED'
+          throw goneErr
+        }
+
+        const serverTime = nowIsoInstantString()
+        const sinceDate = new Date(sinceMs)
+
+        const [upsertedNotes, upsertedNotebooks, upsertedFolders, tombstones] = await Promise.all([
+          notes
+            .find(
+              { userId, modifiedAt: { $gte: sinceDate } },
+              { projection: NOTE_DETAIL_PROJECTION },
+            )
+            .sort({ modifiedAt: 1 })
+            .toArray(),
+          notebooks
+            .find(
+              { userId, modifiedAt: { $gte: sinceDate } },
+              { projection: { _id: 0, userId: 0 } },
+            )
+            .sort({ modifiedAt: 1 })
+            .toArray(),
+          folders
+            .find(
+              { userId, modifiedAt: { $gte: sinceDate } },
+              { projection: { _id: 0, userId: 0 } },
+            )
+            .sort({ modifiedAt: 1 })
+            .toArray(),
+          syncTombstones
+            .find(
+              { userId, deletedAt: { $gte: sinceDate } },
+              { projection: { _id: 0, entityType: 1, entityId: 1 } },
+            )
+            .toArray(),
+        ])
+
+        const deletedNotes = new Set()
+        const deletedNotebooks = new Set()
+        const deletedFolders = new Set()
+
+        for (const t of tombstones) {
+          if (t.entityType === 'note') deletedNotes.add(t.entityId)
+          else if (t.entityType === 'notebook') deletedNotebooks.add(t.entityId)
+          else if (t.entityType === 'folder') deletedFolders.add(t.entityId)
+        }
+
+        return {
+          serverTime,
+          notes: {
+            upserted: upsertedNotes.map(normalizePersistedNote),
+            deletedIds: Array.from(deletedNotes),
+          },
+          notebooks: {
+            upserted: upsertedNotebooks,
+            deletedIds: Array.from(deletedNotebooks),
+          },
+          folders: {
+            upserted: upsertedFolders,
+            deletedIds: Array.from(deletedFolders),
+          },
+        }
       },
     }
 

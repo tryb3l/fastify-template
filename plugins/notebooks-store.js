@@ -158,6 +158,17 @@ module.exports = fp(
     const notebooks = fastify.mongo.db.collection('notebooks')
     const folders = fastify.mongo.db.collection('folders')
     const notes = fastify.mongo.db.collection('notes')
+    const syncTombstones = fastify.mongo.db.collection('syncTombstones')
+
+    async function recordSyncTombstone(userId, entityType, entityId) {
+      await syncTombstones.insertOne({
+        _id: randomUUIDv7(),
+        userId,
+        entityType,
+        entityId,
+        deletedAt: instantToDate(nowInstant()),
+      })
+    }
 
     const notebooksDataSource = {
       MAX_FOLDER_DEPTH,
@@ -267,6 +278,7 @@ module.exports = fp(
         }
 
         await notebooks.deleteOne({ id, userId })
+        await recordSyncTombstone(userId, 'notebook', id)
 
         if (fastify.auditLog) {
           fastify.auditLog({
@@ -465,6 +477,7 @@ module.exports = fp(
         }
 
         await folders.deleteOne({ id, userId })
+        await recordSyncTombstone(userId, 'folder', id)
 
         if (fastify.auditLog) {
           fastify.auditLog({

@@ -451,3 +451,90 @@ test('PUT /notes/:id concurrent updates - exactly one write wins and revision in
   assert.strictEqual(readResponse.json().data.title, winningUpdate.title)
   assert.strictEqual(readResponse.json().data.body, winningUpdate.body)
 })
+
+test('PUT /notes/:id 200 - No-op autosave with unchanged fields and links does not bump revision, modifiedAt, or emit audit events', async (t) => {
+  const { flushAuditLogs } = require('../../../../utils/audit')
+  const { MongoClient } = require('mongodb')
+  const targetCtx = await createNote(t, { title: 'Target Note', body: 'Target' })
+  const targetId = targetCtx.note.data.id
+
+  const noteCreateRes = await targetCtx.app.inject({
+    method: 'POST',
+    url: '/notes',
+    headers: { Authorization: `Bearer ${targetCtx.accessToken}` },
+    payload: {
+      title: 'Autosave Source',
+      body: `Inline link [[${targetId}|Target]]`,
+      tags: ['alpha', 'beta'],
+      links: [{ targetId, relation: 'parent', label: 'Explicit Parent' }],
+    },
+  })
+  assert.strictEqual(noteCreateRes.statusCode, 201)
+  const sourceNote = noteCreateRes.json().data
+
+  // 1. Omitting optional fields (partial payload with identical title) is a no-op
+  const partialNoopRes = await targetCtx.app.inject({
+    method: 'PUT',
+    url: `/notes/${sourceNote.id}`,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${targetCtx.accessToken}`,
+    },
+    payload: {
+      title: sourceNote.title,
+      expectedRevision: sourceNote.revision,
+    },
+  })
+  assert.strictEqual(partialNoopRes.statusCode, 200)
+  assert.strictEqual(partialNoopRes.json().data.revision, sourceNote.revision)
+  assert.strictEqual(partialNoopRes.json().data.modifiedAt, sourceNote.modifiedAt)
+
+  // 2. Sending full identical body, tags, and explicit links is also a no-op
+  const fullNoopRes = await targetCtx.app.inject({
+    method: 'PUT',
+    url: `/notes/${sourceNote.id}`,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${targetCtx.accessToken}`,
+    },
+    payload: {
+      title: sourceNote.title,
+      body: sourceNote.body,
+      tags: sourceNote.tags,
+      links: [{ targetId, relation: 'parent', label: 'Explicit Parent' }],
+      expectedRevision: sourceNote.revision,
+    },
+  })
+  assert.strictEqual(fullNoopRes.statusCode, 200)
+  assert.strictEqual(fullNoopRes.json().data.revision, sourceNote.revision)
+  assert.strictEqual(fullNoopRes.json().data.modifiedAt, sourceNote.modifiedAt)
+
+  // 3. Real content update increments revision, but does not spam note_updated in auditLogs
+  const realUpdateRes = await targetCtx.app.inject({
+    method: 'PUT',
+    url: `/notes/${sourceNote.id}`,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${targetCtx.accessToken}`,
+    },
+    payload: {
+      body: `Updated body with [[${targetId}|Target]]`,
+      expectedRevision: sourceNote.revision,
+    },
+  })
+  assert.strictEqual(realUpdateRes.statusCode, 200)
+  assert.strictEqual(realUpdateRes.json().data.revision, sourceNote.revision + 1)
+
+  await flushAuditLogs()
+  const client = new MongoClient(targetCtx.mongoUrl)
+  await client.connect()
+  try {
+    const updateAuditCount = await client
+      .db()
+      .collection('auditLogs')
+      .countDocuments({ action: 'note_updated', resourceId: sourceNote.id })
+    assert.strictEqual(updateAuditCount, 0, 'Routine autosave updates must not bloat auditLogs')
+  } finally {
+    await client.close()
+  }
+})

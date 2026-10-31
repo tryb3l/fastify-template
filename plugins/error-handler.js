@@ -21,6 +21,13 @@ module.exports = fp(
       const logLevel = statusCode >= 500 ? 'error' : 'warn'
       req.log[logLevel]({ req, res: reply, err }, err.message)
 
+      if (statusCode === 410 && err.syncCode) {
+        return reply.send({
+          message: err.message,
+          code: err.syncCode,
+        })
+      }
+
       if (statusCode === 409 && err.conflictCode) {
         const conflictPayload = {
           message: err.message,

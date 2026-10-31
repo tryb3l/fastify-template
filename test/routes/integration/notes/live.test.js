@@ -358,3 +358,33 @@ test('WS /notes/:id/live 403 - Blocks cross-user subscription to another users n
   // Assert
   assert.strictEqual(statusCode, 403, 'Cross-user subscription must be forbidden')
 })
+
+test('WS /notes/:id/live does not broadcast NOTE_UPDATED on a no-op autosave', async (t) => {
+  const { app, accessToken } = await setup(t, 'user')
+  const port = await listenOnRandomPort(app)
+  const noteId = await createOwnedNote(app, accessToken, {
+    title: 'Idempotent Live Note',
+    body: 'unchanged content',
+  })
+  const ws = createLiveWebSocket(port, `/notes/live/${noteId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  await waitForSocketOpen(ws)
+
+  const noMessagePromise = assertNoSocketMessageWithin(ws, 250)
+  const noopUpdateRes = await app.inject({
+    method: 'PUT',
+    url: `/notes/${noteId}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+    payload: {
+      title: 'Idempotent Live Note',
+      body: 'unchanged content',
+      expectedRevision: 1,
+    },
+  })
+
+  assert.strictEqual(noopUpdateRes.statusCode, 200)
+  assert.strictEqual(noopUpdateRes.json().data.revision, 1)
+  await noMessagePromise
+})
