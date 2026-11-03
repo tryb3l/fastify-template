@@ -1,13 +1,46 @@
 'use strict'
 
+const readinessSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'toReviewCount',
+    'inProgressCount',
+    'masteredCount',
+    'totalCount',
+    'scorePercent',
+    'blocks',
+  ],
+  properties: {
+    toReviewCount: { type: 'integer', minimum: 0 },
+    inProgressCount: { type: 'integer', minimum: 0 },
+    masteredCount: { type: 'integer', minimum: 0 },
+    totalCount: { type: 'integer', minimum: 0 },
+    scorePercent: { type: 'integer', minimum: 0, maximum: 100 },
+    blocks: { type: 'integer', minimum: 0, maximum: 10 },
+  },
+}
+
 const notebookSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['id', 'name', 'description', 'createdAt', 'modifiedAt'],
+  required: [
+    'id',
+    'name',
+    'description',
+    'mode',
+    'status',
+    'targetDate',
+    'createdAt',
+    'modifiedAt',
+  ],
   properties: {
     id: { type: 'string', format: 'uuid' },
     name: { type: 'string', minLength: 1, maxLength: 100 },
     description: { type: 'string', maxLength: 500 },
+    mode: { type: 'string', enum: ['notebook', 'campaign'] },
+    status: { type: 'string', enum: ['active', 'archived'] },
+    targetDate: { type: ['string', 'null'], format: 'date-time' },
     createdAt: { type: 'string', format: 'date-time' },
     modifiedAt: { type: 'string', format: 'date-time' },
   },
@@ -39,11 +72,13 @@ function buildFolderTreeNodeSchema(remainingDepth = 5) {
       'createdAt',
       'modifiedAt',
       'noteCount',
+      'readiness',
       'children',
     ],
     properties: {
       ...folderSchema.properties,
       noteCount: { type: 'integer', minimum: 0 },
+      readiness: readinessSchema,
       children: {
         type: 'array',
         items:
@@ -62,16 +97,21 @@ const notebookTreeSchema = {
     'id',
     'name',
     'description',
+    'mode',
+    'status',
+    'targetDate',
     'createdAt',
     'modifiedAt',
     'rootNoteCount',
     'totalNoteCount',
+    'readiness',
     'folders',
   ],
   properties: {
     ...notebookSchema.properties,
     rootNoteCount: { type: 'integer', minimum: 0 },
     totalNoteCount: { type: 'integer', minimum: 0 },
+    readiness: readinessSchema,
     folders: {
       type: 'array',
       items: folderTreeNodeSchema,
@@ -110,6 +150,14 @@ module.exports = async function notebookRoutes(fastify, opts) {
     schema: {
       tags: ['notebooks'],
       summary: 'List all notebooks for the current user',
+      querystring: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          mode: { type: 'string', enum: ['notebook', 'campaign'] },
+          status: { type: 'string', enum: ['active', 'archived'] },
+        },
+      },
       response: {
         200: {
           type: 'object',
@@ -122,7 +170,7 @@ module.exports = async function notebookRoutes(fastify, opts) {
       },
     },
     handler: async function listNotebooksHandler(request) {
-      const notebooks = await request.notebooksDataSource.listNotebooks()
+      const notebooks = await request.notebooksDataSource.listNotebooks(request.query)
       return { data: notebooks }
     },
   })
@@ -164,6 +212,15 @@ module.exports = async function notebookRoutes(fastify, opts) {
         properties: {
           name: { type: 'string', minLength: 1, maxLength: 100 },
           description: { type: 'string', maxLength: 500 },
+          mode: { type: 'string', enum: ['notebook', 'campaign'], default: 'notebook' },
+          status: { type: 'string', enum: ['active', 'archived'], default: 'active' },
+          targetDate: { type: ['string', 'null'], format: 'date-time', default: null },
+          starterTemplate: { type: ['string', 'null'], enum: ['interview', 'exam', null] },
+          starterFolders: {
+            type: 'array',
+            maxItems: 10,
+            items: { type: 'string', minLength: 1, maxLength: 100 },
+          },
         },
       },
       response: {
@@ -258,6 +315,9 @@ module.exports = async function notebookRoutes(fastify, opts) {
         properties: {
           name: { type: 'string', minLength: 1, maxLength: 100 },
           description: { type: 'string', maxLength: 500 },
+          mode: { type: 'string', enum: ['notebook', 'campaign'] },
+          status: { type: 'string', enum: ['active', 'archived'] },
+          targetDate: { type: ['string', 'null'], format: 'date-time' },
         },
       },
       response: {

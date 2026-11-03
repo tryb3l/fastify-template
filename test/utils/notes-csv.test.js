@@ -9,9 +9,27 @@ const {
 } = require('../../utils/notes-csv')
 
 test('buildNoteImportHeaders accepts importable and ignored metadata headers', () => {
-  const headers = buildNoteImportHeaders(['title', 'body', 'tags', 'createdAt', 'modifiedAt', 'id'])
+  const headers = buildNoteImportHeaders([
+    'title',
+    'body',
+    'tags',
+    'readiness',
+    'noteType',
+    'createdAt',
+    'modifiedAt',
+    'id',
+  ])
 
-  assert.deepStrictEqual(headers, ['title', 'body', 'tags', 'createdAt', 'modifiedAt', 'id'])
+  assert.deepStrictEqual(headers, [
+    'title',
+    'body',
+    'tags',
+    'readiness',
+    'noteType',
+    'createdAt',
+    'modifiedAt',
+    'id',
+  ])
 })
 
 test('buildNoteImportHeaders rejects unsupported headers', () => {
@@ -21,12 +39,30 @@ test('buildNoteImportHeaders rejects unsupported headers', () => {
   )
 })
 
-test('mapNoteImportRow parses JSON tags and ignores metadata columns', () => {
-  const headers = buildNoteImportHeaders(['title', 'body', 'tags', 'createdAt', 'modifiedAt', 'id'])
+test('mapNoteImportRow parses JSON tags, readiness, and noteType and ignores metadata columns', () => {
+  const headers = buildNoteImportHeaders([
+    'title',
+    'body',
+    'tags',
+    'readiness',
+    'noteType',
+    'createdAt',
+    'modifiedAt',
+    'id',
+  ])
 
   const note = mapNoteImportRow(
     headers,
-    ['Quarterly plan', 'Ship the feature', '["ops","q2"]', 'old-created', 'old-modified', 'old-id'],
+    [
+      'Quarterly plan',
+      'Ship the feature',
+      '["ops","q2"]',
+      'mastered',
+      'post_mortem',
+      'old-created',
+      'old-modified',
+      'old-id',
+    ],
     1,
   )
 
@@ -34,7 +70,23 @@ test('mapNoteImportRow parses JSON tags and ignores metadata columns', () => {
     title: 'Quarterly plan',
     body: 'Ship the feature',
     tags: ['ops', 'q2'],
+    readiness: 'mastered',
+    noteType: 'post_mortem',
   })
+})
+
+test('mapNoteImportRow rejects invalid readiness or noteType values', () => {
+  const headers = buildNoteImportHeaders(['title', 'body', 'readiness', 'noteType'])
+
+  assert.throws(
+    () => mapNoteImportRow(headers, ['Title', 'Body', 'invalid_readiness', 'standard'], 2),
+    /Row 2: readiness must be one of: to_review, in_progress, mastered/,
+  )
+
+  assert.throws(
+    () => mapNoteImportRow(headers, ['Title', 'Body', 'to_review', 'invalid_type'], 3),
+    /Row 3: noteType must be one of: standard, post_mortem/,
+  )
 })
 
 test('mapNoteImportRow rejects malformed tags content', () => {
@@ -67,6 +119,8 @@ test('mapNoteImportRow accepts empty note bodies', () => {
     title: 'Empty body note',
     body: '',
     tags: [],
+    readiness: 'to_review',
+    noteType: 'standard',
   })
 })
 
@@ -78,6 +132,8 @@ test('mapNoteImportRow accepts note bodies up to the 50000 character ceiling', (
     title: 'Large note',
     body,
     tags: [],
+    readiness: 'to_review',
+    noteType: 'standard',
   })
 })
 

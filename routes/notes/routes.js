@@ -28,8 +28,8 @@ module.exports = async function noteRoutes(fastify, opts) {
       },
     },
     handler: async function listNotesHandler(request) {
-      const { skip, limit, title, notebookId, folderId, inbox } = request.query
-      const filter = { title }
+      const { skip, limit, title, readiness, noteType, notebookId, folderId, inbox } = request.query
+      const filter = { title, readiness, noteType }
       if (inbox === true) {
         filter.notebookId = null
         filter.folderId = null
@@ -98,11 +98,23 @@ module.exports = async function noteRoutes(fastify, opts) {
                       items: {
                         type: 'object',
                         additionalProperties: false,
-                        required: ['id', 'name', 'description', 'createdAt', 'modifiedAt'],
+                        required: [
+                          'id',
+                          'name',
+                          'description',
+                          'mode',
+                          'status',
+                          'targetDate',
+                          'createdAt',
+                          'modifiedAt',
+                        ],
                         properties: {
                           id: { type: 'string', format: 'uuid' },
                           name: { type: 'string' },
                           description: { type: 'string' },
+                          mode: { type: 'string', enum: ['notebook', 'campaign'] },
+                          status: { type: 'string', enum: ['active', 'archived'] },
+                          targetDate: { type: ['string', 'null'], format: 'date-time' },
                           createdAt: { type: 'string', format: 'date-time' },
                           modifiedAt: { type: 'string', format: 'date-time' },
                         },
@@ -180,6 +192,7 @@ module.exports = async function noteRoutes(fastify, opts) {
           notebookId: { type: 'string', format: 'uuid' },
           folderId: { type: 'string', format: 'uuid' },
           maxDepth: { type: 'integer', minimum: 1, maximum: 5, default: 3 },
+          includeExternal: { type: 'boolean', default: true },
         },
       },
       response: {
@@ -198,13 +211,34 @@ module.exports = async function noteRoutes(fastify, opts) {
                   items: {
                     type: 'object',
                     additionalProperties: false,
-                    required: ['id', 'title', 'tags', 'notebookId', 'folderId', 'modifiedAt'],
+                    required: [
+                      'id',
+                      'title',
+                      'tags',
+                      'readiness',
+                      'noteType',
+                      'notebookId',
+                      'folderId',
+                      'homeNotebookId',
+                      'isExternal',
+                      'modifiedAt',
+                    ],
                     properties: {
                       id: { type: 'string', format: 'uuid' },
                       title: { type: 'string' },
                       tags: { type: 'array', items: { type: 'string' } },
+                      readiness: {
+                        type: 'string',
+                        enum: ['to_review', 'in_progress', 'mastered'],
+                      },
+                      noteType: {
+                        type: 'string',
+                        enum: ['standard', 'post_mortem'],
+                      },
                       notebookId: { type: ['string', 'null'], format: 'uuid' },
                       folderId: { type: ['string', 'null'], format: 'uuid' },
+                      homeNotebookId: { type: ['string', 'null'], format: 'uuid' },
+                      isExternal: { type: 'boolean' },
                       modifiedAt: { type: 'string', format: 'date-time' },
                     },
                   },

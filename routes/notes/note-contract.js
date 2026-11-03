@@ -20,17 +20,30 @@ const NOTE_CONSTRAINTS = Object.freeze({
 })
 
 const NOTE_LINK_RELATIONS = Object.freeze(['parent', 'child', 'related'])
+const NOTE_READINESS_VALUES = Object.freeze(['to_review', 'in_progress', 'mastered'])
+const NOTE_TYPES = Object.freeze(['standard', 'post_mortem'])
 
-const CSV_IMPORTABLE_HEADERS = Object.freeze(['title', 'body', 'tags'])
+const CSV_IMPORTABLE_HEADERS = Object.freeze(['title', 'body', 'tags', 'readiness', 'noteType'])
 const CSV_IGNORED_HEADERS = Object.freeze(['createdAt', 'modifiedAt', 'id'])
 const CSV_REQUIRED_HEADERS = Object.freeze(['title', 'body'])
-const CSV_EXPORT_COLUMNS = Object.freeze(['title', 'body', 'tags', 'createdAt', 'modifiedAt', 'id'])
+const CSV_EXPORT_COLUMNS = Object.freeze([
+  'title',
+  'body',
+  'tags',
+  'readiness',
+  'noteType',
+  'createdAt',
+  'modifiedAt',
+  'id',
+])
 
 const NOTE_DETAIL_FIELDS = Object.freeze([
   'id',
   'title',
   'body',
   'tags',
+  'readiness',
+  'noteType',
   'notebookId',
   'folderId',
   'links',
@@ -44,6 +57,8 @@ const NOTE_LIST_FIELDS = Object.freeze([
   'id',
   'title',
   'tags',
+  'readiness',
+  'noteType',
   'notebookId',
   'folderId',
   'revision',
@@ -55,6 +70,8 @@ const NOTE_GRAPH_NODE_FIELDS = Object.freeze([
   'id',
   'title',
   'tags',
+  'readiness',
+  'noteType',
   'notebookId',
   'folderId',
   'links',
@@ -139,6 +156,14 @@ function buildNoteSchemas() {
           items: tagItemSchema,
           maxItems: NOTE_CONSTRAINTS.TAGS_MAX_ITEMS,
         },
+        readiness: {
+          type: 'string',
+          enum: [...NOTE_READINESS_VALUES],
+        },
+        noteType: {
+          type: 'string',
+          enum: [...NOTE_TYPES],
+        },
         notebookId: { type: ['string', 'null'], format: 'uuid' },
         folderId: { type: ['string', 'null'], format: 'uuid' },
         links: {
@@ -192,6 +217,14 @@ function buildNoteSchemas() {
           items: tagItemSchema,
           maxItems: NOTE_CONSTRAINTS.TAGS_MAX_ITEMS,
         },
+        readiness: {
+          type: 'string',
+          enum: [...NOTE_READINESS_VALUES],
+        },
+        noteType: {
+          type: 'string',
+          enum: [...NOTE_TYPES],
+        },
         notebookId: { type: ['string', 'null'], format: 'uuid' },
         folderId: { type: ['string', 'null'], format: 'uuid' },
         createdAt: { type: 'string', format: 'date-time' },
@@ -216,6 +249,8 @@ function buildNoteSchemas() {
       additionalProperties: false,
       properties: {
         title: { type: 'string' },
+        readiness: { type: 'string', enum: [...NOTE_READINESS_VALUES] },
+        noteType: { type: 'string', enum: [...NOTE_TYPES] },
         notebookId: { type: 'string', format: 'uuid' },
         folderId: { type: 'string', format: 'uuid' },
         inbox: { type: 'boolean' },
@@ -267,6 +302,16 @@ function buildNoteSchemas() {
           type: 'array',
           items: tagItemSchema,
         },
+        readiness: {
+          type: 'string',
+          enum: [...NOTE_READINESS_VALUES],
+          default: 'to_review',
+        },
+        noteType: {
+          type: 'string',
+          enum: [...NOTE_TYPES],
+          default: 'standard',
+        },
         notebookId: { type: ['string', 'null'], format: 'uuid' },
         folderId: { type: ['string', 'null'], format: 'uuid' },
         links: {
@@ -303,6 +348,14 @@ function buildNoteSchemas() {
         tags: {
           type: 'array',
           items: tagItemSchema,
+        },
+        readiness: {
+          type: 'string',
+          enum: [...NOTE_READINESS_VALUES],
+        },
+        noteType: {
+          type: 'string',
+          enum: [...NOTE_TYPES],
         },
         notebookId: { type: ['string', 'null'], format: 'uuid' },
         folderId: { type: ['string', 'null'], format: 'uuid' },
@@ -346,5 +399,7 @@ module.exports = {
   NOTE_GRAPH_NODE_PROJECTION,
   NOTE_LINK_RELATIONS,
   NOTE_LIST_PROJECTION,
+  NOTE_READINESS_VALUES,
+  NOTE_TYPES,
   buildNoteSchemas,
 }

@@ -295,6 +295,8 @@ test('WS /notes/:id/live broadcasts NOTE_UPDATED payload after note change', asy
       title: updatedNote.title,
       body: updatedNote.body,
       tags: updatedNote.tags,
+      readiness: updatedNote.readiness,
+      noteType: updatedNote.noteType,
       revision: updatedNote.revision,
       modifiedAt: updatedNote.modifiedAt,
     },

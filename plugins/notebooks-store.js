@@ -2,9 +2,98 @@
 
 const fp = require('fastify-plugin')
 const { randomUUIDv7 } = require('node:crypto')
-const { instantToDate, nowInstant } = require('../utils/time')
+const { parseIsoInstant, instantToDate, nowInstant } = require('../utils/time')
 
 const MAX_FOLDER_DEPTH = 5
+const VALID_NOTEBOOK_MODES = new Set(['notebook', 'campaign'])
+const VALID_NOTEBOOK_STATUSES = new Set(['active', 'archived'])
+const STARTER_TEMPLATES = Object.freeze({
+  interview: Object.freeze([
+    '01 - Screening & Recruiter',
+    '02 - Technical & Coding',
+    '03 - System Design & Architecture',
+    '04 - Post-Mortems & Debriefs',
+  ]),
+  exam: Object.freeze([
+    '01 - Core Syllabus',
+    '02 - Practice & Mock Problems',
+    '03 - Post-Mortems & Weak Spots',
+  ]),
+})
+
+function normalizeTargetDateInput(targetDate) {
+  if (targetDate === null || targetDate === undefined) {
+    return null
+  }
+  if (targetDate instanceof Date) {
+    return targetDate
+  }
+  if (typeof targetDate === 'string' && targetDate.trim() !== '') {
+    return instantToDate(parseIsoInstant(targetDate.trim()))
+  }
+  return null
+}
+
+function normalizeNotebookDoc(notebook) {
+  const rawTargetDate = notebook.targetDate ?? null
+  const serializedTargetDate =
+    rawTargetDate instanceof Date ? rawTargetDate.toISOString() : rawTargetDate
+  return {
+    id: notebook.id,
+    name: notebook.name,
+    description: notebook.description ?? '',
+    mode: VALID_NOTEBOOK_MODES.has(notebook.mode) ? notebook.mode : 'notebook',
+    status: VALID_NOTEBOOK_STATUSES.has(notebook.status) ? notebook.status : 'active',
+    targetDate: serializedTargetDate,
+    createdAt: notebook.createdAt,
+    modifiedAt: notebook.modifiedAt,
+  }
+}
+
+function computeReadinessSummary(noteItems) {
+  let toReviewCount = 0
+  let inProgressCount = 0
+  let masteredCount = 0
+
+  for (const note of noteItems) {
+    if (!note || note.noteType === 'post_mortem') {
+      continue
+    }
+    const readiness = note.readiness || 'to_review'
+    if (readiness === 'mastered') {
+      masteredCount += 1
+    } else if (readiness === 'in_progress') {
+      inProgressCount += 1
+    } else {
+      toReviewCount += 1
+    }
+  }
+
+  const totalCount = toReviewCount + inProgressCount + masteredCount
+  if (totalCount === 0) {
+    return {
+      toReviewCount: 0,
+      inProgressCount: 0,
+      masteredCount: 0,
+      totalCount: 0,
+      scorePercent: 0,
+      blocks: 0,
+    }
+  }
+
+  const weightedSum = masteredCount * 1.0 + inProgressCount * 0.5
+  const scorePercent = Math.round((weightedSum / totalCount) * 100)
+  const blocks = Math.round(scorePercent / 10)
+
+  return {
+    toReviewCount,
+    inProgressCount,
+    masteredCount,
+    totalCount,
+    scorePercent,
+    blocks,
+  }
+}
 
 function computeAncestorDepthAndCheckCycle(folderMap, targetParentId, movingFolderId = null) {
   let depth = 0
@@ -64,14 +153,20 @@ function computeMaxSubtreeHeight(folderMap, rootFolderId) {
   return maxOffset
 }
 
-function assembleFolderTree(flatFolders, noteCountByFolderId) {
+function assembleFolderTree(flatFolders, noteCountByFolderId, readinessByFolderId = new Map()) {
   const nodeMap = new Map()
   const roots = []
 
   for (const folder of flatFolders) {
     nodeMap.set(folder.id, {
-      ...folder,
+      id: folder.id,
+      notebookId: folder.notebookId,
+      parentId: folder.parentId ?? null,
+      name: folder.name,
+      createdAt: folder.createdAt,
+      modifiedAt: folder.modifiedAt,
       noteCount: noteCountByFolderId.get(folder.id) || 0,
+      readiness: readinessByFolderId.get(folder.id) || computeReadinessSummary([]),
       children: [],
     })
   }
@@ -87,6 +182,59 @@ function assembleFolderTree(flatFolders, noteCountByFolderId) {
   return roots
 }
 
+function computeFolderRollupReadiness(flatFolders, notesByFolderId, externalNotesById) {
+  const childrenByParent = new Map()
+  for (const folder of flatFolders) {
+    const parentKey = folder.parentId ?? null
+    if (!childrenByParent.has(parentKey)) {
+      childrenByParent.set(parentKey, [])
+    }
+    childrenByParent.get(parentKey).push(folder.id)
+  }
+
+  const readinessByFolderId = new Map()
+
+  for (const folder of flatFolders) {
+    const subtreeFolderIds = []
+    const stack = [folder.id]
+    const visited = new Set([folder.id])
+
+    while (stack.length > 0) {
+      const currId = stack.pop()
+      subtreeFolderIds.push(currId)
+      const childIds = childrenByParent.get(currId) || []
+      for (const childId of childIds) {
+        if (!visited.has(childId)) {
+          visited.add(childId)
+          stack.push(childId)
+        }
+      }
+    }
+
+    const deduplicatedNotes = new Map()
+    for (const fId of subtreeFolderIds) {
+      const fNotes = notesByFolderId.get(fId) || []
+      for (const note of fNotes) {
+        deduplicatedNotes.set(note.id, note)
+        if (Array.isArray(note.links)) {
+          for (const link of note.links) {
+            if (link?.targetId && externalNotesById.has(link.targetId)) {
+              deduplicatedNotes.set(link.targetId, externalNotesById.get(link.targetId))
+            }
+          }
+        }
+      }
+    }
+
+    readinessByFolderId.set(
+      folder.id,
+      computeReadinessSummary(Array.from(deduplicatedNotes.values())),
+    )
+  }
+
+  return readinessByFolderId
+}
+
 class ScopedNotebooksDataSource {
   constructor(store, userId, request = null) {
     this.store = store
@@ -98,8 +246,8 @@ class ScopedNotebooksDataSource {
     return this.store.createNotebook(data, this.userId, this.request)
   }
 
-  listNotebooks() {
-    return this.store.listNotebooks(this.userId)
+  listNotebooks(filter = {}) {
+    return this.store.listNotebooks(this.userId, filter)
   }
 
   readNotebook(id) {
@@ -173,45 +321,94 @@ module.exports = fp(
     const notebooksDataSource = {
       MAX_FOLDER_DEPTH,
 
-      async createNotebook({ name, description = '' }, userId, request = null) {
+      async createNotebook(
+        {
+          name,
+          description = '',
+          mode = 'notebook',
+          status = 'active',
+          targetDate = null,
+          starterTemplate = null,
+          starterFolders = null,
+        },
+        userId,
+        request = null,
+      ) {
         const _id = randomUUIDv7()
         const now = instantToDate(nowInstant())
+        const normalizedMode = VALID_NOTEBOOK_MODES.has(mode) ? mode : 'notebook'
+        const normalizedStatus = VALID_NOTEBOOK_STATUSES.has(status) ? status : 'active'
+        const normalizedTargetDate = normalizeTargetDateInput(targetDate)
+
         const notebook = {
           _id,
           id: _id,
           userId,
           name,
           description: typeof description === 'string' ? description : '',
+          mode: normalizedMode,
+          status: normalizedStatus,
+          targetDate: normalizedTargetDate,
           createdAt: now,
           modifiedAt: now,
         }
 
         await notebooks.insertOne(notebook)
 
+        let foldersToSeed = []
+        if (Array.isArray(starterFolders) && starterFolders.length > 0) {
+          foldersToSeed = starterFolders
+            .filter((f) => typeof f === 'string' && f.trim() !== '')
+            .map((f) => f.trim().slice(0, 100))
+            .slice(0, 10)
+        } else if (starterTemplate && Object.hasOwn(STARTER_TEMPLATES, starterTemplate)) {
+          foldersToSeed = [...STARTER_TEMPLATES[starterTemplate]]
+        }
+
+        if (foldersToSeed.length > 0) {
+          const folderDocs = foldersToSeed.map((folderName) => {
+            const folderId = randomUUIDv7()
+            return {
+              _id: folderId,
+              id: folderId,
+              userId,
+              notebookId: _id,
+              parentId: null,
+              name: folderName,
+              createdAt: now,
+              modifiedAt: now,
+            }
+          })
+          await folders.insertMany(folderDocs)
+        }
+
         if (fastify.auditLog) {
           fastify.auditLog({
             request,
-            action: 'notebook_created',
+            action: normalizedMode === 'campaign' ? 'campaign_created' : 'notebook_created',
             userId,
             resourceType: 'notebook',
             resourceId: _id,
+            details: { mode: normalizedMode },
           })
         }
 
-        return {
-          id: notebook.id,
-          name: notebook.name,
-          description: notebook.description,
-          createdAt: notebook.createdAt,
-          modifiedAt: notebook.modifiedAt,
-        }
+        return normalizeNotebookDoc(notebook)
       },
 
-      async listNotebooks(userId) {
-        return await notebooks
-          .find({ userId }, { projection: { _id: 0, userId: 0 } })
+      async listNotebooks(userId, filter = {}) {
+        const query = { userId }
+        if (filter.mode && VALID_NOTEBOOK_MODES.has(filter.mode)) {
+          query.mode = filter.mode === 'notebook' ? { $in: ['notebook', null] } : filter.mode
+        }
+        if (filter.status && VALID_NOTEBOOK_STATUSES.has(filter.status)) {
+          query.status = filter.status === 'active' ? { $in: ['active', null] } : filter.status
+        }
+        const docs = await notebooks
+          .find(query, { projection: { _id: 0, userId: 0 } })
           .sort({ modifiedAt: -1 })
           .toArray()
+        return docs.map(normalizeNotebookDoc)
       },
 
       async readNotebook(id, userId) {
@@ -222,7 +419,7 @@ module.exports = fp(
         if (!notebook) {
           throw fastify.httpErrors.notFound('Notebook not found')
         }
-        return notebook
+        return normalizeNotebookDoc(notebook)
       },
 
       async updateNotebook(id, updateData, userId, request = null) {
@@ -235,6 +432,15 @@ module.exports = fp(
         if (Object.hasOwn(updateData, 'description')) {
           updates.description =
             typeof updateData.description === 'string' ? updateData.description : ''
+        }
+        if (Object.hasOwn(updateData, 'mode') && VALID_NOTEBOOK_MODES.has(updateData.mode)) {
+          updates.mode = updateData.mode
+        }
+        if (Object.hasOwn(updateData, 'status') && VALID_NOTEBOOK_STATUSES.has(updateData.status)) {
+          updates.status = updateData.status
+        }
+        if (Object.hasOwn(updateData, 'targetDate')) {
+          updates.targetDate = normalizeTargetDateInput(updateData.targetDate)
         }
 
         const result = await notebooks.findOneAndUpdate(
@@ -251,14 +457,14 @@ module.exports = fp(
         if (fastify.auditLog) {
           fastify.auditLog({
             request,
-            action: 'notebook_updated',
+            action: updates.status === 'archived' ? 'notebook_archived' : 'notebook_updated',
             userId,
             resourceType: 'notebook',
             resourceId: id,
           })
         }
 
-        return updated
+        return normalizeNotebookDoc(updated)
       },
 
       async deleteNotebook(id, userId, request = null) {
@@ -493,42 +699,105 @@ module.exports = fp(
       async getNotebookTree(notebookId, userId) {
         const notebook = await this.readNotebook(notebookId, userId)
 
-        const [notebookFolders, groupedNoteCounts] = await Promise.all([
+        const [notebookFolders, notebookNotes] = await Promise.all([
           folders
             .find({ userId, notebookId }, { projection: { _id: 0, userId: 0 } })
             .sort({ name: 1 })
             .toArray(),
           notes
-            .aggregate([
-              { $match: { userId, notebookId } },
-              { $group: { _id: '$folderId', count: { $sum: 1 } } },
-            ])
+            .find(
+              { userId, notebookId },
+              {
+                projection: {
+                  _id: 0,
+                  id: 1,
+                  notebookId: 1,
+                  folderId: 1,
+                  readiness: 1,
+                  noteType: 1,
+                  links: 1,
+                },
+              },
+            )
             .toArray(),
         ])
 
-        const noteCountByFolderId = new Map()
-        let rootNoteCount = 0
-        let totalNoteCount = 0
-
-        for (const group of groupedNoteCounts) {
-          totalNoteCount += group.count
-          if (group._id === null || group._id === undefined) {
-            rootNoteCount += group.count
-          } else {
-            noteCountByFolderId.set(group._id, group.count)
+        const directNoteIds = new Set(notebookNotes.map((n) => n.id))
+        const externalTargetIds = new Set()
+        for (const note of notebookNotes) {
+          if (Array.isArray(note.links)) {
+            for (const link of note.links) {
+              if (link?.targetId && !directNoteIds.has(link.targetId)) {
+                externalTargetIds.add(link.targetId)
+              }
+            }
           }
         }
 
+        let externalNotes = []
+        if (externalTargetIds.size > 0) {
+          externalNotes = await notes
+            .find(
+              { userId, id: { $in: Array.from(externalTargetIds) } },
+              {
+                projection: {
+                  _id: 0,
+                  id: 1,
+                  notebookId: 1,
+                  folderId: 1,
+                  readiness: 1,
+                  noteType: 1,
+                },
+              },
+            )
+            .toArray()
+        }
+        const externalNotesById = new Map(externalNotes.map((n) => [n.id, n]))
+
+        const noteCountByFolderId = new Map()
+        const notesByFolderId = new Map()
+        let rootNoteCount = 0
+        const totalNoteCount = notebookNotes.length
+
+        for (const note of notebookNotes) {
+          const fldId = note.folderId ?? null
+          if (fldId === null) {
+            rootNoteCount += 1
+          } else {
+            noteCountByFolderId.set(fldId, (noteCountByFolderId.get(fldId) || 0) + 1)
+            if (!notesByFolderId.has(fldId)) {
+              notesByFolderId.set(fldId, [])
+            }
+            notesByFolderId.get(fldId).push(note)
+          }
+        }
+
+        const readinessByFolderId = computeFolderRollupReadiness(
+          notebookFolders,
+          notesByFolderId,
+          externalNotesById,
+        )
+
+        const allNotebookScopeNotes = [...notebookNotes, ...externalNotes]
+
         return {
-          ...notebook,
+          id: notebook.id,
+          name: notebook.name,
+          description: notebook.description,
+          mode: notebook.mode,
+          status: notebook.status,
+          targetDate: notebook.targetDate,
+          createdAt: notebook.createdAt,
+          modifiedAt: notebook.modifiedAt,
           rootNoteCount,
           totalNoteCount,
-          folders: assembleFolderTree(notebookFolders, noteCountByFolderId),
+          readiness: computeReadinessSummary(allNotebookScopeNotes),
+          folders: assembleFolderTree(notebookFolders, noteCountByFolderId, readinessByFolderId),
         }
       },
 
       async getWorkspaceTree(userId) {
-        const [userNotebooks, userFolders, groupedNoteCounts] = await Promise.all([
+        const [userNotebooks, userFolders, allUserNotes] = await Promise.all([
           notebooks
             .find({ userId }, { projection: { _id: 0, userId: 0 } })
             .sort({ modifiedAt: -1 })
@@ -538,37 +807,54 @@ module.exports = fp(
             .sort({ name: 1 })
             .toArray(),
           notes
-            .aggregate([
-              { $match: { userId } },
+            .find(
+              { userId },
               {
-                $group: {
-                  _id: { notebookId: '$notebookId', folderId: '$folderId' },
-                  count: { $sum: 1 },
+                projection: {
+                  _id: 0,
+                  id: 1,
+                  notebookId: 1,
+                  folderId: 1,
+                  readiness: 1,
+                  noteType: 1,
+                  links: 1,
                 },
               },
-            ])
+            )
             .toArray(),
         ])
 
+        const allNotesById = new Map(allUserNotes.map((n) => [n.id, n]))
         let inboxNoteCount = 0
         const rootCountByNotebook = new Map()
         const totalCountByNotebook = new Map()
         const noteCountByFolderId = new Map()
+        const notesByNotebook = new Map()
+        const notesByFolderId = new Map()
 
-        for (const group of groupedNoteCounts) {
-          const nbId = group._id?.notebookId ?? null
-          const fldId = group._id?.folderId ?? null
+        for (const note of allUserNotes) {
+          const nbId = note.notebookId ?? null
+          const fldId = note.folderId ?? null
 
           if (nbId === null) {
-            inboxNoteCount += group.count
+            inboxNoteCount += 1
             continue
           }
 
-          totalCountByNotebook.set(nbId, (totalCountByNotebook.get(nbId) || 0) + group.count)
+          if (!notesByNotebook.has(nbId)) {
+            notesByNotebook.set(nbId, [])
+          }
+          notesByNotebook.get(nbId).push(note)
+
+          totalCountByNotebook.set(nbId, (totalCountByNotebook.get(nbId) || 0) + 1)
           if (fldId === null) {
-            rootCountByNotebook.set(nbId, (rootCountByNotebook.get(nbId) || 0) + group.count)
+            rootCountByNotebook.set(nbId, (rootCountByNotebook.get(nbId) || 0) + 1)
           } else {
-            noteCountByFolderId.set(fldId, group.count)
+            noteCountByFolderId.set(fldId, (noteCountByFolderId.get(fldId) || 0) + 1)
+            if (!notesByFolderId.has(fldId)) {
+              notesByFolderId.set(fldId, [])
+            }
+            notesByFolderId.get(fldId).push(note)
           }
         }
 
@@ -580,12 +866,50 @@ module.exports = fp(
           foldersByNotebook.get(folder.notebookId).push(folder)
         }
 
-        const notebookTrees = userNotebooks.map((nb) => ({
-          ...nb,
-          rootNoteCount: rootCountByNotebook.get(nb.id) || 0,
-          totalNoteCount: totalCountByNotebook.get(nb.id) || 0,
-          folders: assembleFolderTree(foldersByNotebook.get(nb.id) || [], noteCountByFolderId),
-        }))
+        const notebookTrees = userNotebooks.map((rawNb) => {
+          const nb = normalizeNotebookDoc(rawNb)
+          const nbFolders = foldersByNotebook.get(nb.id) || []
+          const nbDirectNotes = notesByNotebook.get(nb.id) || []
+          const directIds = new Set(nbDirectNotes.map((n) => n.id))
+
+          const externalNotesById = new Map()
+          for (const note of nbDirectNotes) {
+            if (Array.isArray(note.links)) {
+              for (const link of note.links) {
+                if (
+                  link?.targetId &&
+                  !directIds.has(link.targetId) &&
+                  allNotesById.has(link.targetId)
+                ) {
+                  externalNotesById.set(link.targetId, allNotesById.get(link.targetId))
+                }
+              }
+            }
+          }
+
+          const readinessByFolderId = computeFolderRollupReadiness(
+            nbFolders,
+            notesByFolderId,
+            externalNotesById,
+          )
+
+          const allNbScopeNotes = [...nbDirectNotes, ...externalNotesById.values()]
+
+          return {
+            id: nb.id,
+            name: nb.name,
+            description: nb.description,
+            mode: nb.mode,
+            status: nb.status,
+            targetDate: nb.targetDate,
+            createdAt: nb.createdAt,
+            modifiedAt: nb.modifiedAt,
+            rootNoteCount: rootCountByNotebook.get(nb.id) || 0,
+            totalNoteCount: totalCountByNotebook.get(nb.id) || 0,
+            readiness: computeReadinessSummary(allNbScopeNotes),
+            folders: assembleFolderTree(nbFolders, noteCountByFolderId, readinessByFolderId),
+          }
+        })
 
         return {
           inboxNoteCount,

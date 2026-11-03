@@ -6,11 +6,17 @@ const { instantToDate, nowInstant, nowIsoInstantString } = require('../utils/tim
 const {
   NOTE_DETAIL_PROJECTION,
   NOTE_GRAPH_NODE_PROJECTION,
+  NOTE_READINESS_VALUES,
+  NOTE_TYPES,
 } = require('../routes/notes/query-shapes')
 
 const NOTE_CACHE_TTL_MS = 300_000
 const SYNC_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000
 const VALID_LINK_RELATIONS = new Set(['parent', 'child', 'related'])
+const VALID_READINESS_SET = new Set(
+  NOTE_READINESS_VALUES || ['to_review', 'in_progress', 'mastered'],
+)
+const VALID_NOTE_TYPES_SET = new Set(NOTE_TYPES || ['standard', 'post_mortem'])
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -51,19 +57,21 @@ const NOTE_URI_LINK_REGEX =
 
 const normalizeNoteBody = (body) => (typeof body === 'string' ? body : '')
 
-const normalizePersistedNote = (note) => {
-  const normalized = {
-    ...note,
-    body: normalizeNoteBody(note.body),
-    notebookId: note.notebookId ?? null,
-    folderId: note.folderId ?? null,
-    links: Array.isArray(note.links) ? note.links : [],
-  }
-  delete normalized._id
-  delete normalized.userId
-  delete normalized.explicitLinks
-  return normalized
-}
+const normalizePersistedNote = (note) => ({
+  id: note.id,
+  revision: Number(note.revision) || 1,
+  title: note.title,
+  body: normalizeNoteBody(note.body),
+  tags: Array.isArray(note.tags) ? note.tags : [],
+  readiness: VALID_READINESS_SET.has(note.readiness) ? note.readiness : 'to_review',
+  noteType: VALID_NOTE_TYPES_SET.has(note.noteType) ? note.noteType : 'standard',
+  notebookId: note.notebookId ?? null,
+  folderId: note.folderId ?? null,
+  links: Array.isArray(note.links) ? note.links : [],
+  attachments: Array.isArray(note.attachments) ? note.attachments : [],
+  createdAt: note.createdAt,
+  modifiedAt: note.modifiedAt,
+})
 
 function normalizeExplicitLinks(explicitLinks, selfNoteId = null) {
   const normalizedByTarget = new Map()
@@ -281,6 +289,14 @@ module.exports = fp(
         if (rawFilter.title) {
           finalFilter.title = new RegExp(escapeRegExp(rawFilter.title), 'i')
         }
+        if (rawFilter.readiness && VALID_READINESS_SET.has(rawFilter.readiness)) {
+          finalFilter.readiness =
+            rawFilter.readiness === 'to_review' ? { $in: ['to_review', null] } : rawFilter.readiness
+        }
+        if (rawFilter.noteType && VALID_NOTE_TYPES_SET.has(rawFilter.noteType)) {
+          finalFilter.noteType =
+            rawFilter.noteType === 'standard' ? { $in: ['standard', null] } : rawFilter.noteType
+        }
         if (Object.hasOwn(rawFilter, 'notebookId') && rawFilter.notebookId !== undefined) {
           finalFilter.notebookId = rawFilter.notebookId
         }
@@ -320,6 +336,16 @@ module.exports = fp(
         fastify.log.info('Exiting listNotes method')
         return items.map((item) => ({
           ...item,
+          ...(Object.hasOwn(projection, 'readiness')
+            ? {
+                readiness: VALID_READINESS_SET.has(item.readiness) ? item.readiness : 'to_review',
+              }
+            : {}),
+          ...(Object.hasOwn(projection, 'noteType')
+            ? {
+                noteType: VALID_NOTE_TYPES_SET.has(item.noteType) ? item.noteType : 'standard',
+              }
+            : {}),
           ...(Object.hasOwn(projection, 'notebookId')
             ? { notebookId: item.notebookId ?? null }
             : {}),
@@ -328,7 +354,16 @@ module.exports = fp(
       },
 
       async createNote(
-        { title, body, tags, notebookId = null, folderId = null, links },
+        {
+          title,
+          body,
+          tags,
+          readiness = 'to_review',
+          noteType = 'standard',
+          notebookId = null,
+          folderId = null,
+          links,
+        },
         userId,
         request = null,
       ) {
@@ -354,6 +389,9 @@ module.exports = fp(
           await verifyTargetNoteIdsExist(resolvedLinks, userId)
         }
 
+        const normalizedReadiness = VALID_READINESS_SET.has(readiness) ? readiness : 'to_review'
+        const normalizedNoteType = VALID_NOTE_TYPES_SET.has(noteType) ? noteType : 'standard'
+
         const now = instantToDate(nowInstant())
         const note = {
           _id,
@@ -361,6 +399,8 @@ module.exports = fp(
           title,
           body: normalizedBody,
           tags,
+          readiness: normalizedReadiness,
+          noteType: normalizedNoteType,
           notebookId: verifiedPlacement.notebookId,
           folderId: verifiedPlacement.folderId,
           explicitLinks: normalizedExplicit,
@@ -414,6 +454,8 @@ module.exports = fp(
             userId,
             ...rawNote,
             body: normalizedBody,
+            readiness: VALID_READINESS_SET.has(rawNote.readiness) ? rawNote.readiness : 'to_review',
+            noteType: VALID_NOTE_TYPES_SET.has(rawNote.noteType) ? rawNote.noteType : 'standard',
             notebookId: targetNotebookId,
             folderId: targetFolderId,
             explicitLinks: normalizedExplicit,
@@ -568,6 +610,18 @@ module.exports = fp(
         const nextTags = Object.hasOwn(normalizedUpdate, 'tags')
           ? normalizedUpdate.tags
           : existingContext.tags
+        const existingReadiness = VALID_READINESS_SET.has(existingContext.readiness)
+          ? existingContext.readiness
+          : 'to_review'
+        const existingNoteType = VALID_NOTE_TYPES_SET.has(existingContext.noteType)
+          ? existingContext.noteType
+          : 'standard'
+        const nextReadiness = Object.hasOwn(normalizedUpdate, 'readiness')
+          ? normalizedUpdate.readiness
+          : existingReadiness
+        const nextNoteType = Object.hasOwn(normalizedUpdate, 'noteType')
+          ? normalizedUpdate.noteType
+          : existingNoteType
         const nextNotebookId = Object.hasOwn(normalizedUpdate, 'notebookId')
           ? normalizedUpdate.notebookId
           : (existingContext.notebookId ?? null)
@@ -585,6 +639,8 @@ module.exports = fp(
           nextTitle === existingContext.title &&
           nextBody === normalizeNoteBody(existingContext.body) &&
           areStringArraysEqual(nextTags, existingContext.tags) &&
+          nextReadiness === existingReadiness &&
+          nextNoteType === existingNoteType &&
           nextNotebookId === (existingContext.notebookId ?? null) &&
           nextFolderId === (existingContext.folderId ?? null) &&
           areLinksEqual(nextLinks, existingContext.links) &&
@@ -643,6 +699,8 @@ module.exports = fp(
             title: normalized.title,
             body: normalized.body,
             tags: normalized.tags,
+            readiness: normalized.readiness,
+            noteType: normalized.noteType,
             revision: normalized.revision,
             modifiedAt: normalized.modifiedAt,
           }
@@ -836,7 +894,10 @@ module.exports = fp(
         })
       },
 
-      async getMindMapGraph({ rootNoteId, notebookId, folderId, maxDepth = 3 } = {}, userId) {
+      async getMindMapGraph(
+        { rootNoteId, notebookId, folderId, maxDepth = 3, includeExternal = true } = {},
+        userId,
+      ) {
         const boundedDepth = Math.min(Math.max(Number(maxDepth) || 3, 1), 5)
 
         await fastify.notebooksDataSource.verifyContainerFilter({ notebookId, folderId }, userId)
@@ -850,6 +911,7 @@ module.exports = fp(
         }
 
         let rawNodes
+        const internalNodeIds = new Set()
 
         if (rootNoteId) {
           const [traversalResult, incomingBacklinkNotes] = await Promise.all([
@@ -875,6 +937,8 @@ module.exports = fp(
                       id: '$id',
                       title: '$title',
                       tags: '$tags',
+                      readiness: '$readiness',
+                      noteType: '$noteType',
                       notebookId: '$notebookId',
                       folderId: '$folderId',
                       links: '$links',
@@ -888,6 +952,8 @@ module.exports = fp(
                           id: '$$d.id',
                           title: '$$d.title',
                           tags: '$$d.tags',
+                          readiness: '$$d.readiness',
+                          noteType: '$$d.noteType',
                           notebookId: '$$d.notebookId',
                           folderId: '$$d.folderId',
                           links: '$$d.links',
@@ -913,22 +979,101 @@ module.exports = fp(
 
           const { root, descendants = [] } = traversalResult[0]
           rawNodes = [root, ...descendants, ...incomingBacklinkNotes]
+          for (const n of rawNodes) {
+            if (n?.id) internalNodeIds.add(n.id)
+          }
         } else {
-          rawNodes = await notes
-            .find(containerFilter, { projection: NOTE_GRAPH_NODE_PROJECTION })
+          let effectiveContainerFilter = { ...containerFilter }
+          if (folderId !== undefined) {
+            const folderDoc = await folders.findOne(
+              { id: folderId, userId },
+              { projection: { _id: 0, id: 1, notebookId: 1 } },
+            )
+            if (folderDoc) {
+              const allNbFolders = await folders
+                .find(
+                  { userId, notebookId: folderDoc.notebookId },
+                  { projection: { _id: 0, id: 1, parentId: 1 } },
+                )
+                .toArray()
+              const childrenByParent = new Map()
+              for (const f of allNbFolders) {
+                const pKey = f.parentId ?? null
+                if (!childrenByParent.has(pKey)) childrenByParent.set(pKey, [])
+                childrenByParent.get(pKey).push(f.id)
+              }
+              const subtreeFolderIds = []
+              const stack = [folderId]
+              const visited = new Set([folderId])
+              while (stack.length > 0) {
+                const curr = stack.pop()
+                subtreeFolderIds.push(curr)
+                for (const childId of childrenByParent.get(curr) || []) {
+                  if (!visited.has(childId)) {
+                    visited.add(childId)
+                    stack.push(childId)
+                  }
+                }
+              }
+              effectiveContainerFilter = {
+                ...containerFilter,
+                folderId: { $in: subtreeFolderIds },
+              }
+            }
+          }
+
+          const directContainerNodes = await notes
+            .find(effectiveContainerFilter, { projection: NOTE_GRAPH_NODE_PROJECTION })
             .sort({ modifiedAt: -1 })
             .toArray()
+
+          for (const n of directContainerNodes) {
+            if (n?.id) internalNodeIds.add(n.id)
+          }
+
+          let externalNodes = []
+          const shouldExpandExternal =
+            includeExternal !== false && (notebookId !== undefined || folderId !== undefined)
+
+          if (shouldExpandExternal && directContainerNodes.length > 0) {
+            const externalTargetIds = new Set()
+            for (const n of directContainerNodes) {
+              if (Array.isArray(n.links)) {
+                for (const link of n.links) {
+                  if (link?.targetId && !internalNodeIds.has(link.targetId)) {
+                    externalTargetIds.add(link.targetId)
+                  }
+                }
+              }
+            }
+
+            if (externalTargetIds.size > 0) {
+              externalNodes = await notes
+                .find(
+                  { userId, id: { $in: Array.from(externalTargetIds) } },
+                  { projection: NOTE_GRAPH_NODE_PROJECTION },
+                )
+                .toArray()
+            }
+          }
+
+          rawNodes = [...directContainerNodes, ...externalNodes]
         }
 
         const nodeMap = new Map()
         for (const n of rawNodes) {
           if (!n || !n.id || nodeMap.has(n.id)) continue
+          const isExternal = !internalNodeIds.has(n.id)
           nodeMap.set(n.id, {
             id: n.id,
             title: n.title,
             tags: Array.isArray(n.tags) ? n.tags : [],
+            readiness: VALID_READINESS_SET.has(n.readiness) ? n.readiness : 'to_review',
+            noteType: VALID_NOTE_TYPES_SET.has(n.noteType) ? n.noteType : 'standard',
             notebookId: n.notebookId ?? null,
             folderId: n.folderId ?? null,
+            homeNotebookId: n.notebookId ?? null,
+            isExternal,
             modifiedAt: n.modifiedAt,
             _links: Array.isArray(n.links) ? n.links : [],
           })
@@ -964,8 +1109,12 @@ module.exports = fp(
           id: node.id,
           title: node.title,
           tags: node.tags,
+          readiness: node.readiness,
+          noteType: node.noteType,
           notebookId: node.notebookId,
           folderId: node.folderId,
+          homeNotebookId: node.homeNotebookId,
+          isExternal: node.isExternal,
           modifiedAt: node.modifiedAt,
         }))
 
@@ -1042,7 +1191,19 @@ module.exports = fp(
             deletedIds: Array.from(deletedNotes),
           },
           notebooks: {
-            upserted: upsertedNotebooks,
+            upserted: upsertedNotebooks.map((nb) => ({
+              id: nb.id,
+              name: nb.name,
+              description: nb.description ?? '',
+              mode: nb.mode === 'campaign' ? 'campaign' : 'notebook',
+              status: nb.status === 'archived' ? 'archived' : 'active',
+              targetDate:
+                nb.targetDate instanceof Date
+                  ? nb.targetDate.toISOString()
+                  : (nb.targetDate ?? null),
+              createdAt: nb.createdAt,
+              modifiedAt: nb.modifiedAt,
+            })),
             deletedIds: Array.from(deletedNotebooks),
           },
           folders: {

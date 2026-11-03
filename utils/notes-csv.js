@@ -9,11 +9,15 @@ const {
   CSV_IMPORTABLE_HEADERS,
   CSV_REQUIRED_HEADERS,
   NOTE_CONSTRAINTS,
+  NOTE_READINESS_VALUES,
+  NOTE_TYPES,
 } = require('../routes/notes/note-contract')
 
 const IMPORTABLE_NOTE_HEADERS = new Set(CSV_IMPORTABLE_HEADERS)
 const IGNORED_NOTE_HEADERS = new Set(CSV_IGNORED_HEADERS)
 const REQUIRED_NOTE_HEADERS = CSV_REQUIRED_HEADERS
+const VALID_READINESS_SET = new Set(NOTE_READINESS_VALUES)
+const VALID_NOTE_TYPES_SET = new Set(NOTE_TYPES)
 
 const NOTE_TITLE_LIMITS = {
   min: NOTE_CONSTRAINTS.TITLE_MIN_LENGTH,
@@ -133,6 +137,32 @@ function parseTagsCell(value, rowNumber) {
   return parsedValue
 }
 
+function parseReadinessCell(value, rowNumber) {
+  if (value === undefined || value === null || value.trim() === '') {
+    return 'to_review'
+  }
+  const normalized = value.trim()
+  if (!VALID_READINESS_SET.has(normalized)) {
+    throw createCsvImportError(
+      `Row ${rowNumber}: readiness must be one of: ${NOTE_READINESS_VALUES.join(', ')}`,
+    )
+  }
+  return normalized
+}
+
+function parseNoteTypeCell(value, rowNumber) {
+  if (value === undefined || value === null || value.trim() === '') {
+    return 'standard'
+  }
+  const normalized = value.trim()
+  if (!VALID_NOTE_TYPES_SET.has(normalized)) {
+    throw createCsvImportError(
+      `Row ${rowNumber}: noteType must be one of: ${NOTE_TYPES.join(', ')}`,
+    )
+  }
+  return normalized
+}
+
 function mapNoteImportRow(headers, row, rowNumber) {
   if (!Array.isArray(headers) || headers.length === 0) {
     throw createCsvImportError('CSV must include a header row')
@@ -154,6 +184,8 @@ function mapNoteImportRow(headers, row, rowNumber) {
     title: assertStringField('title', rawRecord.title, rowNumber, NOTE_TITLE_LIMITS),
     body: assertStringField('body', rawRecord.body, rowNumber, NOTE_BODY_LIMITS),
     tags: parseTagsCell(rawRecord.tags, rowNumber),
+    readiness: parseReadinessCell(rawRecord.readiness, rowNumber),
+    noteType: parseNoteTypeCell(rawRecord.noteType, rowNumber),
   }
 }
 
