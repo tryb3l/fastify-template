@@ -2,6 +2,7 @@
 
 const fp = require('fastify-plugin')
 const { authSchemasLoader } = require('../routes/auth/schemas/loader')
+const { loadFlashcardSchemas } = require('../routes/flashcards/schemas/loader')
 const { noteSchemasLoader } = require('../routes/notes/schemas/loader')
 const { loadUserSchemas } = require('../routes/users/schemas/loader')
 
@@ -10,6 +11,7 @@ module.exports = fp(
     await authSchemasLoader(fastify)
     await noteSchemasLoader(fastify)
     loadUserSchemas(fastify)
+    loadFlashcardSchemas(fastify)
   },
   { name: 'application-schemas' },
 )

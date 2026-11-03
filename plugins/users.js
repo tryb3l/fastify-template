@@ -38,6 +38,7 @@ async function usersPlugin(fastify) {
   const notes = fastify.mongo.db.collection('notes')
   const folders = fastify.mongo.db.collection('folders')
   const notebooks = fastify.mongo.db.collection('notebooks')
+  const flashcards = fastify.mongo.db.collection('flashcards')
   const syncTombstones = fastify.mongo.db.collection('syncTombstones')
   const getFindOneAndUpdateValue = (result) => {
     return result && typeof result === 'object' && 'value' in result ? result.value : result
@@ -365,6 +366,7 @@ async function usersPlugin(fastify) {
           notes.deleteMany({ userId: id }),
           folders.deleteMany({ userId: id }),
           notebooks.deleteMany({ userId: id }),
+          flashcards.deleteMany({ userId: id }),
           syncTombstones.deleteMany({ userId: id }),
           this.deleteRevokedTokens(id),
         ])

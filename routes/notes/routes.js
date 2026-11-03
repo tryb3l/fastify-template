@@ -76,7 +76,7 @@ module.exports = async function noteRoutes(fastify, opts) {
             data: {
               type: 'object',
               additionalProperties: false,
-              required: ['serverTime', 'notes', 'notebooks', 'folders'],
+              required: ['serverTime', 'notes', 'notebooks', 'folders', 'flashcards'],
               properties: {
                 serverTime: { type: 'string', format: 'date-time' },
                 notes: {
@@ -151,6 +151,15 @@ module.exports = async function noteRoutes(fastify, opts) {
                         },
                       },
                     },
+                    deletedIds: { type: 'array', items: { type: 'string', format: 'uuid' } },
+                  },
+                },
+                flashcards: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['upserted', 'deletedIds'],
+                  properties: {
+                    upserted: { type: 'array', items: { $ref: 'schema:flashcard#' } },
                     deletedIds: { type: 'array', items: { type: 'string', format: 'uuid' } },
                   },
                 },

@@ -252,6 +252,7 @@ module.exports = fp(
     const notes = fastify.mongo.db.collection('notes')
     const notebooks = fastify.mongo.db.collection('notebooks')
     const folders = fastify.mongo.db.collection('folders')
+    const flashcards = fastify.mongo.db.collection('flashcards')
     const syncTombstones = fastify.mongo.db.collection('syncTombstones')
 
     async function invalidateNoteCache(noteId, userId) {
@@ -751,12 +752,31 @@ module.exports = fp(
 
         await invalidateNoteCache(id, userId)
 
+        const nowDeletedAt = instantToDate(nowInstant())
+
+        // Cascade delete any flashcards attached to this note and record tombstones
+        const noteFlashcards = await flashcards
+          .find({ userId, noteId: id }, { projection: { _id: 0, id: 1 } })
+          .toArray()
+        if (noteFlashcards.length > 0) {
+          await flashcards.deleteMany({ userId, noteId: id })
+          await syncTombstones.insertMany(
+            noteFlashcards.map((fc) => ({
+              _id: randomUUIDv7(),
+              userId,
+              entityType: 'flashcard',
+              entityId: fc.id,
+              deletedAt: nowDeletedAt,
+            })),
+          )
+        }
+
         await syncTombstones.insertOne({
           _id: randomUUIDv7(),
           userId,
           entityType: 'note',
           entityId: id,
-          deletedAt: instantToDate(nowInstant()),
+          deletedAt: nowDeletedAt,
         })
 
         // Clean up any incoming links from other notes of the same user
@@ -1144,44 +1164,54 @@ module.exports = fp(
         const serverTime = nowIsoInstantString()
         const sinceDate = new Date(sinceMs)
 
-        const [upsertedNotes, upsertedNotebooks, upsertedFolders, tombstones] = await Promise.all([
-          notes
-            .find(
-              { userId, modifiedAt: { $gte: sinceDate } },
-              { projection: NOTE_DETAIL_PROJECTION },
-            )
-            .sort({ modifiedAt: 1 })
-            .toArray(),
-          notebooks
-            .find(
-              { userId, modifiedAt: { $gte: sinceDate } },
-              { projection: { _id: 0, userId: 0 } },
-            )
-            .sort({ modifiedAt: 1 })
-            .toArray(),
-          folders
-            .find(
-              { userId, modifiedAt: { $gte: sinceDate } },
-              { projection: { _id: 0, userId: 0 } },
-            )
-            .sort({ modifiedAt: 1 })
-            .toArray(),
-          syncTombstones
-            .find(
-              { userId, deletedAt: { $gte: sinceDate } },
-              { projection: { _id: 0, entityType: 1, entityId: 1 } },
-            )
-            .toArray(),
-        ])
+        const [upsertedNotes, upsertedNotebooks, upsertedFolders, upsertedFlashcards, tombstones] =
+          await Promise.all([
+            notes
+              .find(
+                { userId, modifiedAt: { $gte: sinceDate } },
+                { projection: NOTE_DETAIL_PROJECTION },
+              )
+              .sort({ modifiedAt: 1 })
+              .toArray(),
+            notebooks
+              .find(
+                { userId, modifiedAt: { $gte: sinceDate } },
+                { projection: { _id: 0, userId: 0 } },
+              )
+              .sort({ modifiedAt: 1 })
+              .toArray(),
+            folders
+              .find(
+                { userId, modifiedAt: { $gte: sinceDate } },
+                { projection: { _id: 0, userId: 0 } },
+              )
+              .sort({ modifiedAt: 1 })
+              .toArray(),
+            flashcards
+              .find(
+                { userId, modifiedAt: { $gte: sinceDate } },
+                { projection: { _id: 0, userId: 0 } },
+              )
+              .sort({ modifiedAt: 1 })
+              .toArray(),
+            syncTombstones
+              .find(
+                { userId, deletedAt: { $gte: sinceDate } },
+                { projection: { _id: 0, entityType: 1, entityId: 1 } },
+              )
+              .toArray(),
+          ])
 
         const deletedNotes = new Set()
         const deletedNotebooks = new Set()
         const deletedFolders = new Set()
+        const deletedFlashcards = new Set()
 
         for (const t of tombstones) {
           if (t.entityType === 'note') deletedNotes.add(t.entityId)
           else if (t.entityType === 'notebook') deletedNotebooks.add(t.entityId)
           else if (t.entityType === 'folder') deletedFolders.add(t.entityId)
+          else if (t.entityType === 'flashcard') deletedFlashcards.add(t.entityId)
         }
 
         return {
@@ -1210,6 +1240,20 @@ module.exports = fp(
             upserted: upsertedFolders,
             deletedIds: Array.from(deletedFolders),
           },
+          flashcards: {
+            upserted: upsertedFlashcards.map((fc) => ({
+              id: fc.id,
+              noteId: fc.noteId,
+              front: fc.front,
+              back: fc.back,
+              box: Number(fc.box) || 1,
+              nextReviewAt: fc.nextReviewAt,
+              lastReviewedAt: fc.lastReviewedAt ?? null,
+              createdAt: fc.createdAt,
+              modifiedAt: fc.modifiedAt,
+            })),
+            deletedIds: Array.from(deletedFlashcards),
+          },
         }
       },
     }
@@ -1221,15 +1265,24 @@ module.exports = fp(
       if (userId) {
         request.notesDataSource = fastify.notesDataSource.forUser(userId, request)
         request.notebooksDataSource = fastify.notebooksDataSource.forUser(userId, request)
+        if (fastify.flashcardsDataSource) {
+          request.flashcardsDataSource = fastify.flashcardsDataSource.forUser(userId, request)
+        }
       }
     })
     fastify.log.info('Successfully registered notes-store plugin')
   },
   {
-    dependencies: ['db-plugin', 'notebooks-store', 'notes-file-manager', 'app-cache'],
+    dependencies: [
+      'db-plugin',
+      'notebooks-store',
+      'notes-file-manager',
+      'flashcards-store',
+      'app-cache',
+    ],
     name: 'notes-store',
     decorators: {
-      fastify: ['mongo', 'notebooksDataSource', 'notesFileManager'],
+      fastify: ['mongo', 'notebooksDataSource', 'notesFileManager', 'flashcardsDataSource'],
     },
   },
 )
