@@ -15,6 +15,9 @@ function normalizeFlashcardDoc(card) {
     box: Number(card.box) || 1,
     nextReviewAt: card.nextReviewAt,
     lastReviewedAt: card.lastReviewedAt ?? null,
+    reviewCount: Number(card.reviewCount || 0),
+    lapseCount: Number(card.lapseCount || 0),
+    lastRating: card.lastRating ?? null,
     createdAt: card.createdAt,
     modifiedAt: card.modifiedAt,
   }
@@ -235,6 +238,9 @@ module.exports = fp(
           box: 1,
           nextReviewAt: now,
           lastReviewedAt: null,
+          reviewCount: 0,
+          lapseCount: 0,
+          lastRating: null,
           createdAt: now,
           modifiedAt: now,
         }
@@ -379,25 +385,25 @@ module.exports = fp(
           query.nextReviewAt = { $lte: now }
         }
 
-        const isShuffledCram = mode === 'cram_all' && order === 'shuffled'
+        const isShuffled = order === 'shuffled'
         let sortSpec = { box: 1, nextReviewAt: 1, id: 1 }
-        if (mode === 'cram_all' && order === 'sequential') {
+        if (order === 'sequential') {
           sortSpec = { createdAt: 1, id: 1 }
         }
 
         const cursor = flashcards.find(query, { projection: { _id: 0, userId: 0 } }).sort(sortSpec)
 
-        if (!isShuffledCram) {
+        if (!isShuffled) {
           cursor.limit(boundedLimit)
         }
 
         const rawCards = await cursor.toArray()
 
-        if (isShuffledCram) {
+        if (isShuffled) {
           shuffleInPlace(rawCards)
         }
 
-        const sliced = isShuffledCram ? rawCards.slice(0, boundedLimit) : rawCards
+        const sliced = isShuffled ? rawCards.slice(0, boundedLimit) : rawCards
         const results = new Array(sliced.length)
 
         for (let i = 0; i < sliced.length; i += 1) {
@@ -415,6 +421,9 @@ module.exports = fp(
             box: Number(card.box) || 1,
             nextReviewAt: card.nextReviewAt,
             lastReviewedAt: card.lastReviewedAt ?? null,
+            reviewCount: Number(card.reviewCount || 0),
+            lapseCount: Number(card.lapseCount || 0),
+            lastRating: card.lastRating ?? null,
             createdAt: card.createdAt,
             modifiedAt: card.modifiedAt,
           }
@@ -458,7 +467,12 @@ module.exports = fp(
               box: nextBox,
               nextReviewAt,
               lastReviewedAt: now,
+              lastRating: rating,
               modifiedAt: now,
+            },
+            $inc: {
+              reviewCount: 1,
+              ...(rating === 'again' ? { lapseCount: 1 } : {}),
             },
           },
           { returnDocument: 'after', projection: { _id: 0, userId: 0 } },

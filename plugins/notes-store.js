@@ -1032,7 +1032,8 @@ module.exports = fp(
 
           const { root, descendants = [] } = traversalResult[0]
           rawNodes = [root, ...descendants, ...incomingBacklinkNotes]
-          for (const n of rawNodes) {
+          for (let i = 0; i < rawNodes.length; i += 1) {
+            const n = rawNodes[i]
             if (n?.id) internalNodeIds.add(n.id)
           }
         } else {
@@ -1282,6 +1283,9 @@ module.exports = fp(
               box: Number(fc.box) || 1,
               nextReviewAt: fc.nextReviewAt,
               lastReviewedAt: fc.lastReviewedAt ?? null,
+              reviewCount: Number(fc.reviewCount || 0),
+              lapseCount: Number(fc.lapseCount || 0),
+              lastRating: fc.lastRating ?? null,
               createdAt: fc.createdAt,
               modifiedAt: fc.modifiedAt,
             })),

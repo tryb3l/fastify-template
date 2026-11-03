@@ -229,6 +229,9 @@ test('Leitner Box Transitions, Cram All Mode, Bidirectional Parent Note Readines
   })
   assert.strictEqual(rev1Res.statusCode, 200, rev1Res.payload)
   assert.strictEqual(rev1Res.json().data.flashcard.box, 2)
+  assert.strictEqual(rev1Res.json().data.flashcard.reviewCount, 1)
+  assert.strictEqual(rev1Res.json().data.flashcard.lapseCount, 0)
+  assert.strictEqual(rev1Res.json().data.flashcard.lastRating, 'good')
   assert.strictEqual(rev1Res.json().data.noteReadiness, 'in_progress')
 
   // Verify scheduled drill now only returns cardB (since cardA's nextReviewAt is +3 days in the future)
@@ -339,6 +342,8 @@ test('Leitner Box Transitions, Cram All Mode, Bidirectional Parent Note Readines
     payload: { rating: 'again' },
   })
   assert.strictEqual(againRevRes.json().data.flashcard.box, 1)
+  assert.strictEqual(againRevRes.json().data.flashcard.lapseCount, 1)
+  assert.strictEqual(againRevRes.json().data.flashcard.lastRating, 'again')
   assert.strictEqual(
     againRevRes.json().data.noteReadiness,
     'in_progress',

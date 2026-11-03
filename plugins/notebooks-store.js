@@ -50,7 +50,7 @@ function normalizeNotebookDoc(notebook) {
   }
 }
 
-function computeReadinessSummary(noteItems) {
+function computeReadinessSummary(noteItems, extraNoteIterable = null) {
   let toReviewCount = 0
   let inProgressCount = 0
   let masteredCount = 0
@@ -66,6 +66,22 @@ function computeReadinessSummary(noteItems) {
       inProgressCount += 1
     } else {
       toReviewCount += 1
+    }
+  }
+
+  if (extraNoteIterable) {
+    for (const note of extraNoteIterable) {
+      if (!note || note.noteType === 'post_mortem') {
+        continue
+      }
+      const readiness = note.readiness || 'to_review'
+      if (readiness === 'mastered') {
+        masteredCount += 1
+      } else if (readiness === 'in_progress') {
+        inProgressCount += 1
+      } else {
+        toReviewCount += 1
+      }
     }
   }
 
@@ -226,10 +242,7 @@ function computeFolderRollupReadiness(flatFolders, notesByFolderId, externalNote
       }
     }
 
-    readinessByFolderId.set(
-      folder.id,
-      computeReadinessSummary(Array.from(deduplicatedNotes.values())),
-    )
+    readinessByFolderId.set(folder.id, computeReadinessSummary(deduplicatedNotes.values()))
   }
 
   return readinessByFolderId
@@ -722,13 +735,18 @@ module.exports = fp(
             .toArray(),
         ])
 
-        const directNoteIds = new Set(notebookNotes.map((n) => n.id))
+        const directNoteIds = new Set()
+        for (let i = 0; i < notebookNotes.length; i += 1) {
+          directNoteIds.add(notebookNotes[i].id)
+        }
         const externalTargetIds = new Set()
-        for (const note of notebookNotes) {
+        for (let i = 0; i < notebookNotes.length; i += 1) {
+          const note = notebookNotes[i]
           if (Array.isArray(note.links)) {
-            for (const link of note.links) {
-              if (link?.targetId && !directNoteIds.has(link.targetId)) {
-                externalTargetIds.add(link.targetId)
+            for (let j = 0; j < note.links.length; j += 1) {
+              const targetId = note.links[j]?.targetId
+              if (targetId && !directNoteIds.has(targetId)) {
+                externalTargetIds.add(targetId)
               }
             }
           }
@@ -752,7 +770,11 @@ module.exports = fp(
             )
             .toArray()
         }
-        const externalNotesById = new Map(externalNotes.map((n) => [n.id, n]))
+        const externalNotesById = new Map()
+        for (let i = 0; i < externalNotes.length; i += 1) {
+          const ext = externalNotes[i]
+          externalNotesById.set(ext.id, ext)
+        }
 
         const noteCountByFolderId = new Map()
         const notesByFolderId = new Map()
@@ -778,8 +800,6 @@ module.exports = fp(
           externalNotesById,
         )
 
-        const allNotebookScopeNotes = [...notebookNotes, ...externalNotes]
-
         return {
           id: notebook.id,
           name: notebook.name,
@@ -791,7 +811,7 @@ module.exports = fp(
           modifiedAt: notebook.modifiedAt,
           rootNoteCount,
           totalNoteCount,
-          readiness: computeReadinessSummary(allNotebookScopeNotes),
+          readiness: computeReadinessSummary(notebookNotes, externalNotes),
           folders: assembleFolderTree(notebookFolders, noteCountByFolderId, readinessByFolderId),
         }
       },
@@ -824,7 +844,11 @@ module.exports = fp(
             .toArray(),
         ])
 
-        const allNotesById = new Map(allUserNotes.map((n) => [n.id, n]))
+        const allNotesById = new Map()
+        for (let i = 0; i < allUserNotes.length; i += 1) {
+          const n = allUserNotes[i]
+          allNotesById.set(n.id, n)
+        }
         let inboxNoteCount = 0
         const rootCountByNotebook = new Map()
         const totalCountByNotebook = new Map()
@@ -870,18 +894,19 @@ module.exports = fp(
           const nb = normalizeNotebookDoc(rawNb)
           const nbFolders = foldersByNotebook.get(nb.id) || []
           const nbDirectNotes = notesByNotebook.get(nb.id) || []
-          const directIds = new Set(nbDirectNotes.map((n) => n.id))
+          const directIds = new Set()
+          for (let i = 0; i < nbDirectNotes.length; i += 1) {
+            directIds.add(nbDirectNotes[i].id)
+          }
 
           const externalNotesById = new Map()
-          for (const note of nbDirectNotes) {
+          for (let i = 0; i < nbDirectNotes.length; i += 1) {
+            const note = nbDirectNotes[i]
             if (Array.isArray(note.links)) {
-              for (const link of note.links) {
-                if (
-                  link?.targetId &&
-                  !directIds.has(link.targetId) &&
-                  allNotesById.has(link.targetId)
-                ) {
-                  externalNotesById.set(link.targetId, allNotesById.get(link.targetId))
+              for (let j = 0; j < note.links.length; j += 1) {
+                const targetId = note.links[j]?.targetId
+                if (targetId && !directIds.has(targetId) && allNotesById.has(targetId)) {
+                  externalNotesById.set(targetId, allNotesById.get(targetId))
                 }
               }
             }
@@ -892,8 +917,6 @@ module.exports = fp(
             notesByFolderId,
             externalNotesById,
           )
-
-          const allNbScopeNotes = [...nbDirectNotes, ...externalNotesById.values()]
 
           return {
             id: nb.id,
@@ -906,7 +929,7 @@ module.exports = fp(
             modifiedAt: nb.modifiedAt,
             rootNoteCount: rootCountByNotebook.get(nb.id) || 0,
             totalNoteCount: totalCountByNotebook.get(nb.id) || 0,
-            readiness: computeReadinessSummary(allNbScopeNotes),
+            readiness: computeReadinessSummary(nbDirectNotes, externalNotesById.values()),
             folders: assembleFolderTree(nbFolders, noteCountByFolderId, readinessByFolderId),
           }
         })
