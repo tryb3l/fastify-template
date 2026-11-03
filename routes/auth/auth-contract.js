@@ -112,6 +112,34 @@ function buildAuthSchemas() {
         },
       },
     },
+    {
+      $id: 'schema:auth:verify-email:request',
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        email: {
+          type: 'string',
+          format: 'email',
+        },
+      },
+    },
+    {
+      $id: 'schema:auth:verify-email:confirm',
+      type: 'object',
+      required: ['token'],
+      additionalProperties: false,
+      properties: {
+        email: {
+          type: 'string',
+          format: 'email',
+        },
+        token: {
+          type: 'string',
+          minLength: 10,
+          maxLength: 256,
+        },
+      },
+    },
   ]
 }
 

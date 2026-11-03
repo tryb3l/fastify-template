@@ -36,6 +36,7 @@ module.exports = {
           id: _id,
           username: 'admin',
           email: normalizedAdminEmail,
+          emailVerified: true,
           hash: hash,
           role: 'admin',
           credentialsVersion: 0,

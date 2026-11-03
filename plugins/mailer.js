@@ -112,6 +112,34 @@ async function mailerPlugin(fastify) {
       })
     },
 
+    async sendInviteMail({ to, inviteToken, role = 'user', expiresAt }) {
+      const frontendBaseUrl = String(fastify.config?.FRONTEND_URL || '')
+        .split(',')[0]
+        .trim()
+        .replace(/\/+$/, '')
+      const inviteUrl = `${frontendBaseUrl}/register?inviteToken=${encodeURIComponent(inviteToken)}`
+      const expiryStr =
+        expiresAt instanceof Date ? expiresAt.toISOString() : String(expiresAt || '')
+
+      return await sendMail({
+        from: `"Workspace Team" <${fromEmail || 'no-reply@example.com'}>`,
+        to,
+        subject: 'You have been invited to join the workspace',
+        text: `You have been invited to join the workspace with role "${role}".\n\nUse the following link or invitation token to register before ${expiryStr}:\n\n${inviteUrl}\n\nInvitation token: ${inviteToken}`,
+        html: `<p>You have been invited to join the workspace with role <strong>${role}</strong>.</p><p><a href="${inviteUrl}">Accept Invitation</a></p><p>Invitation token: <code>${inviteToken}</code></p><p>Expires at: ${expiryStr}</p>`,
+      })
+    },
+
+    async sendEmailVerificationMail({ to, rawVerifyUrl, token }) {
+      return await sendMail({
+        from: `"Security Team" <${fromEmail || 'no-reply@example.com'}>`,
+        to,
+        subject: 'Verify your email address',
+        text: `Please verify your email address by visiting the following link:\n\n${rawVerifyUrl}\n\nVerification token: ${token}`,
+        html: `<p>Please verify your email address by clicking the link below:</p><p><a href="${rawVerifyUrl}">Verify Email</a></p><p>Verification token: <code>${token}</code></p>`,
+      })
+    },
+
     getTestMessages() {
       return getTestMessages()
     },

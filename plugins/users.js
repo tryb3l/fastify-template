@@ -23,12 +23,17 @@ function normalizeIdentifier(value) {
 function normalizePublicUser(user) {
   if (!user) return null
   const id = String(user.id || user._id)
-  const normalized = {
-    ...user,
+  return {
     id,
+    username: user.username,
+    email: user.email,
+    emailVerified: Boolean(user.emailVerified),
+    firstName: user.firstName,
+    lastName: user.lastName,
+    role: user.role,
+    createdAt: user.createdAt,
+    modifiedAt: user.modifiedAt,
   }
-  delete normalized._id
-  return normalized
 }
 
 async function usersPlugin(fastify) {
@@ -39,6 +44,7 @@ async function usersPlugin(fastify) {
   const folders = fastify.mongo.db.collection('folders')
   const notebooks = fastify.mongo.db.collection('notebooks')
   const flashcards = fastify.mongo.db.collection('flashcards')
+  const dailyActivity = fastify.mongo.db.collection('dailyActivity')
   const syncTombstones = fastify.mongo.db.collection('syncTombstones')
   const getFindOneAndUpdateValue = (result) => {
     return result && typeof result === 'object' && 'value' in result ? result.value : result
@@ -70,6 +76,7 @@ async function usersPlugin(fastify) {
         id: _id,
         username: normalizeIdentifier(userData.username),
         email: normalizeIdentifier(userData.email),
+        emailVerified: Boolean(userData.emailVerified),
         createdAt: now,
         modifiedAt: now,
         role: userData.role || 'user',
@@ -285,14 +292,22 @@ async function usersPlugin(fastify) {
         }
       }
 
-      const shouldIncrementCredentials =
-        Object.hasOwn(normalizedUpdate, 'email') || Object.hasOwn(normalizedUpdate, 'hash')
+      const hasEmailChange = Object.hasOwn(normalizedUpdate, 'email')
+      const shouldIncrementCredentials = hasEmailChange || Object.hasOwn(normalizedUpdate, 'hash')
+
+      if (hasEmailChange) {
+        normalizedUpdate.emailVerified = false
+      }
 
       const updateDoc = {
         $set: {
           ...normalizedUpdate,
           modifiedAt: instantToDate(nowInstant()),
         },
+      }
+
+      if (hasEmailChange) {
+        updateDoc.$unset = { emailVerification: '' }
       }
 
       if (shouldIncrementCredentials) {
@@ -332,6 +347,7 @@ async function usersPlugin(fastify) {
               firstName: '',
               lastName: '',
               passwordReset: '',
+              emailVerification: '',
             },
             $inc: { credentialsVersion: 1 },
           },
@@ -367,6 +383,7 @@ async function usersPlugin(fastify) {
           folders.deleteMany({ userId: id }),
           notebooks.deleteMany({ userId: id }),
           flashcards.deleteMany({ userId: id }),
+          dailyActivity.deleteMany({ userId: id }),
           syncTombstones.deleteMany({ userId: id }),
           this.deleteRevokedTokens(id),
         ])
@@ -653,6 +670,133 @@ async function usersPlugin(fastify) {
           },
         },
       )
+    },
+
+    async initiateEmailVerification({ userId, email }) {
+      const filter = { deleted: { $ne: true } }
+      if (userId) {
+        filter._id = userId
+      } else if (email) {
+        filter.email = normalizeIdentifier(email)
+      } else {
+        return null
+      }
+
+      const user = await users.findOne(filter, {
+        projection: { _id: 1, id: 1, email: 1, emailVerified: 1 },
+      })
+      if (!user || user.emailVerified === true) {
+        return null
+      }
+
+      const verificationId = randomUUIDv7()
+      const rawSecret = crypto.randomBytes(32).toString('hex')
+      const secretHash = hashInviteSecret(rawSecret)
+      const now = nowInstant()
+      const requestedAt = instantToDate(now)
+      const expiresAt = instantToDate(addInstantDuration(now, { hours: 24 }))
+
+      const updated = await users.updateOne(
+        { _id: user._id, deleted: { $ne: true } },
+        {
+          $set: {
+            emailVerification: {
+              id: verificationId,
+              secretHash,
+              requestedAt,
+              expiresAt,
+            },
+          },
+        },
+      )
+
+      if (updated.modifiedCount === 0) {
+        return null
+      }
+
+      return {
+        userId: String(user.id || user._id),
+        email: user.email,
+        token: `${verificationId}.${rawSecret}`,
+        expiresAt,
+      }
+    },
+
+    async confirmEmailVerification({ token, email = null }) {
+      if (typeof token !== 'string' || !token.includes('.')) {
+        return null
+      }
+      const dotIndex = token.indexOf('.')
+      const verificationId = token.slice(0, dotIndex)
+      const rawSecret = token.slice(dotIndex + 1)
+      if (!verificationId || !rawSecret) {
+        return null
+      }
+
+      const incomingHash = hashInviteSecret(rawSecret)
+      const filter = {
+        'emailVerification.id': verificationId,
+        deleted: { $ne: true },
+      }
+      if (email) {
+        filter.email = normalizeIdentifier(email)
+      }
+
+      const now = instantToDate(nowInstant())
+      const user = await users.findOne(filter, {
+        projection: {
+          _id: 1,
+          id: 1,
+          email: 1,
+          emailVerification: 1,
+        },
+      })
+
+      if (
+        !user ||
+        !user.emailVerification?.secretHash ||
+        !(user.emailVerification.expiresAt instanceof Date) ||
+        user.emailVerification.expiresAt <= now
+      ) {
+        return null
+      }
+
+      const incomingBuf = Buffer.from(incomingHash, 'hex')
+      const storedBuf = Buffer.from(user.emailVerification.secretHash, 'hex')
+      if (
+        incomingBuf.length !== storedBuf.length ||
+        !crypto.timingSafeEqual(incomingBuf, storedBuf)
+      ) {
+        return null
+      }
+
+      const res = await users.findOneAndUpdate(
+        {
+          _id: user._id,
+          'emailVerification.id': verificationId,
+          'emailVerification.secretHash': incomingHash,
+          'emailVerification.expiresAt': { $gt: now },
+          deleted: { $ne: true },
+        },
+        {
+          $set: {
+            emailVerified: true,
+            modifiedAt: now,
+          },
+          $unset: { emailVerification: '' },
+        },
+        {
+          projection: USER_DETAIL_PROJECTION,
+          returnDocument: 'after',
+        },
+      )
+
+      const verifiedUser = getFindOneAndUpdateValue(res)
+      if (verifiedUser) {
+        await invalidateUserCache(String(verifiedUser.id || verifiedUser._id))
+      }
+
+      return normalizePublicUser(verifiedUser)
     },
   }
 

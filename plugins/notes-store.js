@@ -414,6 +414,17 @@ module.exports = fp(
         }
         await notes.insertOne(note)
 
+        if (typeof fastify.recordDailyActivity === 'function') {
+          await fastify.recordDailyActivity(
+            userId,
+            {
+              notesCreated: 1,
+              postMortemsCreated: normalizedNoteType === 'post_mortem' ? 1 : 0,
+            },
+            now,
+          )
+        }
+
         if (fastify.auditLog && request) {
           fastify.auditLog({
             request,
@@ -475,6 +486,24 @@ module.exports = fp(
         }
 
         await notes.insertMany(toInsert)
+
+        if (typeof fastify.recordDailyActivity === 'function' && toInsert.length > 0) {
+          let postMortemsCount = 0
+          for (let i = 0; i < toInsert.length; i += 1) {
+            if (toInsert[i].noteType === 'post_mortem') {
+              postMortemsCount += 1
+            }
+          }
+          await fastify.recordDailyActivity(
+            userId,
+            {
+              notesCreated: toInsert.length,
+              postMortemsCreated: postMortemsCount,
+            },
+            now,
+          )
+        }
+
         fastify.log.info('Exiting createNotes method')
         return toInsert.map((note) => note._id)
       },
@@ -693,6 +722,10 @@ module.exports = fp(
         const normalized = normalizePersistedNote(updatedNote)
 
         await invalidateNoteCache(id, userId)
+
+        if (typeof fastify.recordDailyActivity === 'function') {
+          await fastify.recordDailyActivity(userId, { notesUpdated: 1 }, normalized.modifiedAt)
+        }
 
         if (fastify.eventBus) {
           const sanitizedEventDTO = {

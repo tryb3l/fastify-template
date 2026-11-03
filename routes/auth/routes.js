@@ -34,6 +34,14 @@ module.exports = async function authRoutes(fastify) {
         if (!verifiedInvite) {
           throw fastify.httpErrors.forbidden('Invalid, expired, or mismatched invitation token')
         }
+      } else if (request.body.inviteToken) {
+        verifiedInvite = await fastify.usersDataSource.verifyInviteToken(
+          request.body.inviteToken,
+          request.body.email,
+        )
+        if (!verifiedInvite) {
+          throw fastify.httpErrors.forbidden('Invalid, expired, or mismatched invitation token')
+        }
       }
 
       let userExists = false
@@ -54,6 +62,7 @@ module.exports = async function authRoutes(fastify) {
       const newUserId = await fastify.usersDataSource.createUser({
         username: request.body.username,
         email: request.body.email,
+        emailVerified: Boolean(verifiedInvite),
         hash: hash,
         role: verifiedInvite?.role || 'user',
       })
@@ -90,6 +99,7 @@ module.exports = async function authRoutes(fastify) {
               properties: {
                 id: { type: 'string' },
                 username: { type: 'string' },
+                emailVerified: { type: 'boolean' },
                 role: { type: 'string' },
               },
             },
@@ -191,6 +201,7 @@ module.exports = async function authRoutes(fastify) {
         user: {
           id: user._id,
           username: user.username || user.email,
+          emailVerified: Boolean(user.emailVerified),
           role: user.role,
         },
       }
@@ -217,6 +228,7 @@ module.exports = async function authRoutes(fastify) {
               properties: {
                 id: { type: 'string' },
                 username: { type: 'string' },
+                emailVerified: { type: 'boolean' },
                 role: { type: 'string' },
               },
             },
@@ -252,6 +264,7 @@ module.exports = async function authRoutes(fastify) {
         user: {
           id: request.user._id,
           username: request.user.username || request.user.email,
+          emailVerified: Boolean(request.user.emailVerified),
           role: request.user.role,
         },
       }
@@ -360,6 +373,109 @@ module.exports = async function authRoutes(fastify) {
         throw fastify.httpErrors.unauthorized('Invalid or expired reset token')
       }
       return { message: 'Password has been successfully reset. You may now log in.' }
+    },
+  })
+
+  fastify.post('/verify-email/request', {
+    config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
+    schema: {
+      tags: ['auth'],
+      summary: 'Request an email verification link',
+      body: { $ref: 'schema:auth:verify-email:request#' },
+      response: {
+        200: {
+          type: 'object',
+          properties: { message: { type: 'string' } },
+        },
+      },
+    },
+    handler: async function verifyEmailRequestHandler(request) {
+      let userId = null
+      const email = request.body?.email ?? null
+
+      if (!email && request.headers.authorization) {
+        await fastify.authenticate(request)
+        userId = request.user?._id || request.user?.id || request.user?.sub || null
+      }
+
+      if (!email && !userId) {
+        throw fastify.httpErrors.badRequest('Either email or an Authorization token is required')
+      }
+
+      const initiated = await fastify.usersDataSource.initiateEmailVerification({
+        userId,
+        email,
+      })
+
+      if (initiated && fastify.mailer?.sendEmailVerificationMail) {
+        const frontendBaseUrl = String(fastify.config?.FRONTEND_URL || '')
+          .split(',')[0]
+          .trim()
+          .replace(/\/+$/, '')
+        const rawVerifyUrl = `${frontendBaseUrl}/verify-email/confirm?token=${encodeURIComponent(initiated.token)}`
+        try {
+          await fastify.mailer.sendEmailVerificationMail({
+            to: initiated.email,
+            rawVerifyUrl,
+            token: initiated.token,
+          })
+        } catch (err) {
+          request.log.error(
+            { err, userId: initiated.userId },
+            'Failed to send email verification message',
+          )
+        }
+      }
+
+      return {
+        message:
+          'If an unverified account exists for that email, a verification link has been sent.',
+      }
+    },
+  })
+
+  fastify.post('/verify-email/confirm', {
+    config: { rateLimit: { max: 10, timeWindow: '1 hour' } },
+    schema: {
+      tags: ['auth'],
+      summary: 'Confirm email address verification',
+      body: { $ref: 'schema:auth:verify-email:confirm#' },
+      response: {
+        200: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['verified', 'data'],
+          properties: {
+            verified: { type: 'boolean' },
+            data: { $ref: 'schema:user#' },
+          },
+        },
+      },
+    },
+    handler: async function verifyEmailConfirmHandler(request) {
+      const verifiedUser = await fastify.usersDataSource.confirmEmailVerification({
+        token: request.body.token,
+        email: request.body.email ?? null,
+      })
+
+      if (!verifiedUser) {
+        throw fastify.httpErrors.unauthorized('Invalid or expired email verification token')
+      }
+
+      if (fastify.auditLog) {
+        fastify.auditLog({
+          request,
+          action: 'auth_email_verified',
+          userId: verifiedUser.id,
+          resourceType: 'user',
+          resourceId: verifiedUser.id,
+        })
+      }
+
+      return {
+        verified: true,
+        data: verifiedUser,
+      }
     },
   })
 }

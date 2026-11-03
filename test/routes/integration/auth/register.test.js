@@ -4,6 +4,7 @@ const test = require('node:test')
 const assert = require('node:assert')
 const { buildApp, getTestMongoUrl } = require('../../../test-setup')
 const { randomUsername, randomEmail, randomPassword } = require('../../../utils/data-creator')
+const mailerPlugin = require('../../../../plugins/mailer')
 
 function replaceDatabaseName(mongoUrl, databaseName) {
   return mongoUrl.replace(/\/[^/?]+(?=$|\?)/, `/${databaseName}`)
@@ -153,6 +154,7 @@ test('POST /auth/register - enforces single-use and email-bound invitations when
 
   // Admin creates an email-bound invite
   const targetEmail = randomEmail()
+  mailerPlugin.clearTestMessages()
   const createInviteRes = await adminContext.app.inject({
     method: 'POST',
     url: '/users/invites',
@@ -164,6 +166,12 @@ test('POST /auth/register - enforces single-use and email-bound invitations when
   assert.ok(inviteData.id)
   assert.ok(inviteData.inviteToken.includes('.'))
   assert.strictEqual(inviteData.email, targetEmail.toLowerCase())
+
+  // Invite email was dispatched via fastify.mailer.sendInviteMail
+  const sentInviteMails = mailerPlugin.getTestMessages()
+  assert.strictEqual(sentInviteMails.length, 1)
+  assert.strictEqual(sentInviteMails[0].to, targetEmail.toLowerCase())
+  assert.ok(sentInviteMails[0].text.includes(inviteData.inviteToken))
 
   // Admin lists invites (secretHash must not be exposed)
   const listInvitesRes = await adminContext.app.inject({
@@ -185,14 +193,32 @@ test('POST /auth/register - enforces single-use and email-bound invitations when
   })
   assert.strictEqual(wrongEmailRes.statusCode, 403)
 
-  // Matching email succeeds with 201
+  // Matching email succeeds with 201 and sets emailVerified: true immediately
+  const invitedUserUsername = randomUsername()
+  const invitedUserPassword = randomPassword()
   const validInviteRes = await registerUser(inviteApp, {
-    username: randomUsername(),
+    username: invitedUserUsername,
     email: targetEmail,
-    password: randomPassword(),
+    password: invitedUserPassword,
     inviteToken: inviteData.inviteToken,
   })
   assert.strictEqual(validInviteRes.statusCode, 201)
+
+  const invitedUserLoginRes = await inviteApp.inject({
+    method: 'POST',
+    url: '/auth/authenticate',
+    payload: { username: invitedUserUsername, password: invitedUserPassword },
+  })
+  assert.strictEqual(invitedUserLoginRes.statusCode, 200)
+  assert.strictEqual(invitedUserLoginRes.json().user.emailVerified, true)
+
+  const invitedUserMeRes = await inviteApp.inject({
+    method: 'GET',
+    url: '/users/me',
+    headers: { Authorization: `Bearer ${invitedUserLoginRes.json().access_token}` },
+  })
+  assert.strictEqual(invitedUserMeRes.statusCode, 200)
+  assert.strictEqual(invitedUserMeRes.json().data.emailVerified, true)
 
   // Non-admin cannot create, list, or revoke invites
   const regularUserContext = await setup(t, 'user', {
@@ -284,4 +310,108 @@ test('POST /auth/register - enforces single-use and email-bound invitations when
     inviteToken: secondInvite.inviteToken,
   })
   assert.strictEqual(revokedRegisterRes.statusCode, 403)
+})
+
+test('Open registration starts with emailVerified: false and completes verification via POST /auth/verify-email/request & /confirm', async (t) => {
+  const app = await buildApp(t, {
+    MONGO_URL: replaceDatabaseName(getTestMongoUrl(), 'login-test-db'),
+    REGISTRATION_MODE: 'open',
+  })
+
+  const username = randomUsername()
+  const email = randomEmail()
+  const password = randomPassword()
+
+  const regRes = await registerUser(app, { username, email, password })
+  assert.strictEqual(regRes.statusCode, 201)
+
+  const loginRes = await app.inject({
+    method: 'POST',
+    url: '/auth/authenticate',
+    payload: { username, password },
+  })
+  assert.strictEqual(loginRes.statusCode, 200)
+  const { access_token: accessToken, user } = loginRes.json()
+  assert.strictEqual(user.emailVerified, false)
+
+  const meBeforeRes = await app.inject({
+    method: 'GET',
+    url: '/users/me',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  assert.strictEqual(meBeforeRes.statusCode, 200)
+  assert.strictEqual(meBeforeRes.json().data.emailVerified, false)
+
+  // Request email verification link (via authenticated Bearer token without body email)
+  mailerPlugin.clearTestMessages()
+  const reqVerifyRes = await app.inject({
+    method: 'POST',
+    url: '/auth/verify-email/request',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    payload: {},
+  })
+  assert.strictEqual(reqVerifyRes.statusCode, 200)
+
+  const messages = mailerPlugin.getTestMessages()
+  assert.strictEqual(messages.length, 1)
+  assert.strictEqual(messages[0].to, email.toLowerCase())
+
+  const tokenMatch = messages[0].text.match(/Verification token:\s*([0-9a-f-]+\.[0-9a-f]+)/i)
+  assert.ok(tokenMatch, 'Expected verification token in email body')
+  const verifyToken = tokenMatch[1]
+
+  // Tampered token fails with 401
+  const badConfirmRes = await app.inject({
+    method: 'POST',
+    url: '/auth/verify-email/confirm',
+    payload: {
+      email,
+      token: `${verifyToken.split('.')[0]}.${'0'.repeat(64)}`,
+    },
+  })
+  assert.strictEqual(badConfirmRes.statusCode, 401)
+
+  // Valid token confirms and sets emailVerified: true
+  const confirmRes = await app.inject({
+    method: 'POST',
+    url: '/auth/verify-email/confirm',
+    payload: {
+      email,
+      token: verifyToken,
+    },
+  })
+  assert.strictEqual(confirmRes.statusCode, 200)
+  assert.strictEqual(confirmRes.json().verified, true)
+  assert.strictEqual(confirmRes.json().data.emailVerified, true)
+
+  // Re-using the same token is rejected with 401
+  const replayConfirmRes = await app.inject({
+    method: 'POST',
+    url: '/auth/verify-email/confirm',
+    payload: {
+      email,
+      token: verifyToken,
+    },
+  })
+  assert.strictEqual(replayConfirmRes.statusCode, 401)
+
+  // Subsequent GET /users/me reflects emailVerified: true
+  const meAfterRes = await app.inject({
+    method: 'GET',
+    url: '/users/me',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  assert.strictEqual(meAfterRes.statusCode, 200)
+  assert.strictEqual(meAfterRes.json().data.emailVerified, true)
+
+  // Updating email resets emailVerified back to false
+  const updatedEmail = randomEmail()
+  const updateEmailRes = await app.inject({
+    method: 'PUT',
+    url: '/users/me',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    payload: { email: updatedEmail },
+  })
+  assert.strictEqual(updateEmailRes.statusCode, 200)
+  assert.strictEqual(updateEmailRes.json().data.emailVerified, false)
 })

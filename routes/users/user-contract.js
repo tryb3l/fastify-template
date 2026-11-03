@@ -19,6 +19,7 @@ const USER_DETAIL_FIELDS = Object.freeze([
   'id',
   'username',
   'email',
+  'emailVerified',
   'firstName',
   'lastName',
   'role',
@@ -31,6 +32,7 @@ const USER_AUTH_SESSION_FIELDS = Object.freeze([
   'id',
   'username',
   'email',
+  'emailVerified',
   'role',
   'credentialsVersion',
 ])
@@ -40,6 +42,7 @@ const USER_AUTH_WITH_HASH_FIELDS = Object.freeze([
   'id',
   'username',
   'email',
+  'emailVerified',
   'role',
   'hash',
   'password',
@@ -113,6 +116,10 @@ function buildUserSchemas() {
           readOnly: true,
         },
         ...userBaseProperties,
+        emailVerified: {
+          type: 'boolean',
+          readOnly: true,
+        },
         role: {
           type: 'string',
           enum: [...USER_ROLES],

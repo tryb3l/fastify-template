@@ -188,8 +188,29 @@ test('DELETE /users/me 204 - Cascade purges notebooks, folders, notes, disk atta
     .catch(() => false)
   assert.strictEqual(existsBeforeDelete, true)
 
+  // Verify dailyActivity telemetry exists before deleteUser
+  const summaryBeforeDelRes = await actor.app.inject({
+    method: 'GET',
+    url: '/dashboard/summary',
+    headers: { Authorization: `Bearer ${actor.accessToken}` },
+  })
+  assert.strictEqual(summaryBeforeDelRes.statusCode, 200)
+  assert.strictEqual(summaryBeforeDelRes.json().data.velocity14Days.totals.notesCreated, 1)
+
   const delRes = await deleteCurrentUser(actor.app, actor.accessToken)
   assert.strictEqual(delRes.statusCode, 204)
+
+  const client = new MongoClient(actor.mongoUrl)
+  await client.connect()
+  try {
+    const remainingActivity = await client
+      .db()
+      .collection('dailyActivity')
+      .countDocuments({ userId: actor.userId })
+    assert.strictEqual(remainingActivity, 0, 'Expected dailyActivity to be purged on deleteUser')
+  } finally {
+    await client.close()
+  }
 
   const existsAfterDelete = await fs
     .access(blobPath)

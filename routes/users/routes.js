@@ -51,6 +51,15 @@ module.exports = async function userRoutes(fastify) {
         createdBy: request.user._id || request.user.id,
       })
 
+      if (invite.email && fastify.mailer?.sendInviteMail) {
+        await fastify.mailer.sendInviteMail({
+          to: invite.email,
+          inviteToken: invite.inviteToken,
+          role: invite.role,
+          expiresAt: invite.expiresAt,
+        })
+      }
+
       reply.code(201)
       return { data: invite }
     },

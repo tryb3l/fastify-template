@@ -241,6 +241,10 @@ module.exports = fp(
 
         await flashcards.insertOne(card)
 
+        if (typeof fastify.recordDailyActivity === 'function') {
+          await fastify.recordDailyActivity(userId, { flashcardsCreated: 1 }, now)
+        }
+
         if (fastify.auditLog && request) {
           fastify.auditLog({
             request,
@@ -460,6 +464,10 @@ module.exports = fp(
           { returnDocument: 'after', projection: { _id: 0, userId: 0 } },
         )
         const updatedCard = normalizeFlashcardDoc(updateResult?.value ?? updateResult)
+
+        if (typeof fastify.recordDailyActivity === 'function') {
+          await fastify.recordDailyActivity(userId, { flashcardsReviewed: 1 }, now)
+        }
 
         // Bidirectional parent Note readiness coupling
         const [noteCards, parentNote] = await Promise.all([
