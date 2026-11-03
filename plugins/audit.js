@@ -7,7 +7,7 @@ const pendingAuditWrites = new Set()
 
 async function flushAuditLogs() {
   while (pendingAuditWrites.size > 0) {
-    await Promise.allSettled(Array.from(pendingAuditWrites))
+    await Promise.allSettled(pendingAuditWrites)
   }
 }
 
@@ -45,6 +45,7 @@ const auditPlugin = fp(
           }
         }
 
+        const log = request?.log || fastify.log
         const payload = {
           userId: userId || request?.user?._id || request?.user?.id || null,
           action,
@@ -53,10 +54,7 @@ const auditPlugin = fp(
           requestId: request?.id || null,
           ipAddress: request?.ip || null,
           createdAt: instantToDate(nowInstant()),
-        }
-
-        if (boundedDetails !== undefined) {
-          payload.details = boundedDetails
+          details: boundedDetails !== undefined ? boundedDetails : null,
         }
 
         const auditWrite = new Promise((resolve) => {
@@ -64,10 +62,7 @@ const auditPlugin = fp(
             try {
               await auditLogs.insertOne(payload)
             } catch (err) {
-              request?.log?.warn(
-                { err, action, resourceType, resourceId },
-                'Failed to write audit event',
-              )
+              log.warn({ err, action, resourceType, resourceId }, 'Failed to write audit event')
             } finally {
               resolve()
             }

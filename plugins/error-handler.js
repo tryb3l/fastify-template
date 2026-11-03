@@ -5,20 +5,27 @@ const { instantFromDate, instantToIsoString } = require('../utils/time')
 
 module.exports = fp(
   async function errorHandlerPlugin(fastify) {
-    fastify.addHook('onRequest', async (req, reply) => {
+    fastify.addHook('onRequest', (req, reply, done) => {
       reply.header('x-request-id', req.id)
       req.log.info({ req }, 'incoming request')
+      done()
     })
 
-    fastify.addHook('onResponse', async (req, reply) => {
+    fastify.addHook('onResponse', (req, reply, done) => {
       req.log.info({ req, res: reply }, 'request completed')
+      done()
     })
 
     fastify.setErrorHandler((err, req, reply) => {
       const statusCode = err.statusCode || (reply.statusCode >= 400 ? reply.statusCode : 500)
-      reply.code(statusCode)
-
       const logLevel = statusCode >= 500 ? 'error' : 'warn'
+
+      if (reply.sent || reply.raw?.headersSent) {
+        req.log[logLevel]({ req, res: reply, err }, err.message)
+        return
+      }
+
+      reply.code(statusCode)
       req.log[logLevel]({ req, res: reply, err }, err.message)
 
       if (statusCode === 410 && err.syncCode) {
@@ -29,42 +36,46 @@ module.exports = fp(
       }
 
       if (statusCode === 409 && err.conflictCode) {
-        const conflictPayload = {
+        if (err.currentRevision !== undefined && err.currentModifiedAt !== undefined) {
+          return reply.send({
+            message: err.message,
+            code: err.conflictCode,
+            currentRevision: err.currentRevision,
+            currentModifiedAt:
+              err.currentModifiedAt instanceof Date
+                ? instantToIsoString(instantFromDate(err.currentModifiedAt))
+                : err.currentModifiedAt,
+          })
+        }
+        return reply.send({
           message: err.message,
           code: err.conflictCode,
-        }
-
-        if (err.currentRevision !== undefined) {
-          conflictPayload.currentRevision = err.currentRevision
-        }
-
-        if (err.currentModifiedAt !== undefined) {
-          conflictPayload.currentModifiedAt =
-            err.currentModifiedAt instanceof Date
-              ? instantToIsoString(instantFromDate(err.currentModifiedAt))
-              : err.currentModifiedAt
-        }
-
-        return reply.send(conflictPayload)
+        })
       }
 
-      const errorResponse = {
+      if (err.validation) {
+        return reply.send({
+          statusCode,
+          error: err.error || err.name || 'Error',
+          message: 'Validation failed',
+          requestId: req.id,
+          details: err.validation,
+        })
+      }
+
+      let message = err.message
+      if (statusCode >= 500) {
+        message = 'Fatal error. Contact the support team.'
+      } else if (statusCode === 429) {
+        message = 'You hit the rate limit! Slow down please!'
+      }
+
+      reply.send({
         statusCode,
         error: err.error || err.name || 'Error',
-        message: statusCode < 500 ? err.message : 'An unexpected error occurred',
+        message,
         requestId: req.id,
-      }
-
-      if (statusCode >= 500) {
-        errorResponse.message = 'Fatal error. Contact the support team.'
-      } else if (statusCode === 429) {
-        errorResponse.message = 'You hit the rate limit! Slow down please!'
-      } else if (err.validation) {
-        errorResponse.message = 'Validation failed'
-        errorResponse.details = err.validation
-      }
-
-      reply.send(errorResponse)
+      })
     })
 
     fastify.setNotFoundHandler((req, reply) => {

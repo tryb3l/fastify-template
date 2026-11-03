@@ -5,6 +5,7 @@ const assert = require('node:assert')
 const { MongoClient } = require('mongodb')
 const { setup } = require('../../../utils/setup-user')
 const { flushAuditLogs } = require('../../../utils/audit')
+const { addInstantDuration, compareInstants, nowInstant } = require('../../../../utils/time')
 
 async function readAuditLogs(mongoUrl, filter) {
   const client = new MongoClient(mongoUrl)
@@ -18,9 +19,9 @@ async function readAuditLogs(mongoUrl, filter) {
 }
 
 async function waitForAuditLogs(mongoUrl, filter, minimumCount = 1) {
-  const deadline = Date.now() + 1500
+  const deadline = addInstantDuration(nowInstant(), { milliseconds: 1500 })
 
-  while (Date.now() < deadline) {
+  while (compareInstants(nowInstant(), deadline) < 0) {
     const logs = await readAuditLogs(mongoUrl, filter)
     if (logs.length >= minimumCount) {
       return logs

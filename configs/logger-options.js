@@ -1,13 +1,16 @@
 'use strict'
+
+const pino = require('pino')
+
 module.exports = {
   level: process.env.LOG_LEVEL || 'info',
-  timestamp: () => `,"time":"${new Date().toISOString()}"`,
+  timestamp: pino.stdTimeFunctions.isoTime,
   redact: {
     censor: '*****',
     paths: ['req.headers.authorization', 'req.body.password', 'req.body.email'],
   },
   serializers: {
-    req: function (request) {
+    req: function serializeRequest(request) {
       const shouldLogBody = request.routeOptions?.config?.logBody === true
       return {
         method: request.method,
@@ -22,7 +25,7 @@ module.exports = {
         remotePort: request.socket?.remotePort,
       }
     },
-    res: function (reply) {
+    res: function serializeReply(reply) {
       return {
         statusCode: reply.statusCode,
         responseTime: typeof reply.elapsedTime === 'number' ? reply.elapsedTime : undefined,

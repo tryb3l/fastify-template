@@ -1,6 +1,7 @@
 'use strict'
 
 const fp = require('fastify-plugin')
+const v8 = require('node:v8')
 const underPressure = require('@fastify/under-pressure')
 
 module.exports = fp(
@@ -30,7 +31,11 @@ module.exports = fp(
       healthCheck: async function (fastifyInstance) {
         try {
           await fastifyInstance.mongo.db.command({ ping: 1 })
-          return { status: 'ok', database: 'connected', memory: process.memoryUsage().heapUsed }
+          return {
+            status: 'ok',
+            database: 'connected',
+            memory: v8.getHeapStatistics().used_heap_size,
+          }
         } catch (err) {
           fastifyInstance.log.error({ err }, 'Health check failed: MongoDB unreachable')
           return false

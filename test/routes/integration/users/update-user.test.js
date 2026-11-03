@@ -6,6 +6,7 @@ const { MongoClient } = require('mongodb')
 const { setup } = require('../../../utils/setup-user')
 const { randomUsername } = require('../../../utils/data-creator')
 const { flushAuditLogs } = require('../../../utils/audit')
+const { addInstantDuration, compareInstants, nowInstant } = require('../../../../utils/time')
 
 async function readAuditLogs(mongoUrl, filter) {
   const client = new MongoClient(mongoUrl)
@@ -19,13 +20,15 @@ async function readAuditLogs(mongoUrl, filter) {
 }
 
 async function waitForAuditLogs(mongoUrl, filter, minimumCount = 1) {
-  const deadline = Date.now() + 1500
+  const deadline = addInstantDuration(nowInstant(), { milliseconds: 1500 })
 
-  while (Date.now() < deadline) {
+  while (compareInstants(nowInstant(), deadline) < 0) {
     const logs = await readAuditLogs(mongoUrl, filter)
     if (logs.length >= minimumCount) {
       return logs
     }
+
+    await new Promise((resolve) => setTimeout(resolve, 25))
   }
 
   return await readAuditLogs(mongoUrl, filter)
@@ -72,7 +75,7 @@ test('PUT /users/me 409 - Conflict when updating username or email to an existin
 
 test('PUT /users/me 200 - Email change increments credentialsVersion and invalidates old token', async (t) => {
   const actor = await setup(t, 'user')
-  const newEmail = `updated-${Date.now()}@example.com`
+  const newEmail = `updated-${nowInstant().epochMilliseconds}@example.com`
 
   const updateRes = await actor.app.inject({
     method: 'PUT',

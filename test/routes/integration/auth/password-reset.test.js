@@ -7,6 +7,7 @@ const { setup } = require('../../../utils/setup-user')
 const { randomPassword } = require('../../../utils/data-creator')
 const { buildRefreshTokenCookieHeader, issueCsrfContext } = require('../../../utils/csrf')
 const { flushAuditLogs } = require('../../../utils/audit')
+const { addInstantDuration, compareInstants, nowInstant } = require('../../../../utils/time')
 const mailerPlugin = require('../../../../plugins/mailer')
 
 function extractResetToken(messageText) {
@@ -43,9 +44,9 @@ async function readAuditLogs(mongoUrl, filter) {
 }
 
 async function waitForAuditLogs(mongoUrl, filter, minimumCount = 1) {
-  const deadline = Date.now() + 1500
+  const deadline = addInstantDuration(nowInstant(), { milliseconds: 1500 })
 
-  while (Date.now() < deadline) {
+  while (compareInstants(nowInstant(), deadline) < 0) {
     const logs = await readAuditLogs(mongoUrl, filter)
     if (logs.length >= minimumCount) {
       return logs

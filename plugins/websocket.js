@@ -13,7 +13,12 @@ module.exports = fp(
     })
 
     const eventBus = new EventEmitter()
-    eventBus.setMaxListeners(0) // Remove memory leak warnings for dynamic sockets
+    eventBus.setMaxListeners(0)
+
+    fastify.addHook('onClose', (_instance, done) => {
+      eventBus.removeAllListeners()
+      done()
+    })
 
     fastify.decorate('eventBus', eventBus)
 
