@@ -44,7 +44,7 @@ module.exports = async function (fastify, opts) {
       },
     )
 
-    fastify.addHook('onClose', (instance, done) => {
+    fastify.addHook('onClose', (_instance, done) => {
       closeListeners.uninstall()
       done()
     })
