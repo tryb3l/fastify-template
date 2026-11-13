@@ -48,9 +48,9 @@ function sanitizeCsvCellValue(value) {
   return value
 }
 
-function createCsvImportError(message) {
+function createCsvImportError(message, statusCode = 400) {
   const error = new Error(message)
-  error.statusCode = 400
+  error.statusCode = statusCode
   return error
 }
 
@@ -194,22 +194,12 @@ async function importNotesFromCsvStream(
   onBatch,
   batchSize = CSV_IMPORT_BATCH_SIZE,
 ) {
-  const insertedIds = []
-  let pendingNotes = []
+  const validatedNotes = []
   let headers
   let rowNumber = 0
 
-  const flushPendingNotes = async () => {
-    if (pendingNotes.length === 0) {
-      return
-    }
-
-    const batchIds = await onBatch(pendingNotes)
-    insertedIds.push(...batchIds)
-    pendingNotes = []
-  }
-
-  const csvStream = readableStream.pipe(
+  const csvStream = compose(
+    readableStream,
     csvParse({
       bom: true,
       skip_empty_lines: true,
@@ -219,19 +209,23 @@ async function importNotesFromCsvStream(
 
   try {
     for await (const line of csvStream) {
+      if (readableStream.truncated) {
+        throw createCsvImportError('CSV file exceeds the maximum allowed upload size', 413)
+      }
+
       if (!headers) {
         headers = buildNoteImportHeaders(line)
         continue
       }
 
       rowNumber += 1
-      pendingNotes.push(mapNoteImportRow(headers, line, rowNumber))
-
-      if (pendingNotes.length >= batchSize) {
-        await flushPendingNotes()
-      }
+      validatedNotes.push(mapNoteImportRow(headers, line, rowNumber))
     }
   } catch (err) {
+    if (readableStream.truncated || err.statusCode === 413) {
+      throw createCsvImportError('CSV file exceeds the maximum allowed upload size', 413)
+    }
+
     if (err.statusCode === 400 || err.code?.startsWith('CSV_')) {
       throw createCsvImportError(err.message)
     }
@@ -239,11 +233,21 @@ async function importNotesFromCsvStream(
     throw err
   }
 
+  if (readableStream.truncated) {
+    throw createCsvImportError('CSV file exceeds the maximum allowed upload size', 413)
+  }
+
   if (!headers) {
     throw createCsvImportError('CSV must include a header row')
   }
 
-  await flushPendingNotes()
+  const insertedIds = []
+  for (let offset = 0; offset < validatedNotes.length; offset += batchSize) {
+    const batch = validatedNotes.slice(offset, offset + batchSize)
+    const batchIds = await onBatch(batch)
+    insertedIds.push(...batchIds)
+  }
+
   return insertedIds
 }
 

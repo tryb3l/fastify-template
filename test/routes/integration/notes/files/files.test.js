@@ -1212,3 +1212,87 @@ test('DELETE /files/:fileId 204 & Quota 413 - Deletes single attachment with rev
   })
   assert.strictEqual(intruderDelRes.statusCode, 404)
 })
+
+test('GET /files/:fileId 200 & 206 - Streams attachments uncompressed with exact Content-Length even when Accept-Encoding requests compression', async (t) => {
+  const { app, accessToken, note } = await createNote(t)
+  // > 1024 bytes so global @fastify/compress threshold (1024) would compress if not opted out
+  const content = '0123456789ABCDEF'.repeat(128) // 2048 bytes
+  const form = new FormData()
+  const fileName = 'uncompressed-range.txt'
+  form.append('file', Buffer.from(content), {
+    filename: fileName,
+    contentType: 'text/plain',
+  })
+
+  const uploadRes = await uploadNoteFile(app, accessToken, note.data.id, form)
+  assert.strictEqual(uploadRes.statusCode, 201)
+  const fileId = uploadRes.json().files[0].fileId
+  registerFileCleanup(t, fileId, fileName)
+
+  const fullRes = await app.inject({
+    method: 'GET',
+    url: `${ROUTE_PREFIX}/${fileId}?noteId=${note.data.id}`,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Accept-Encoding': 'br, gzip, deflate',
+    },
+  })
+  assert.strictEqual(fullRes.statusCode, 200)
+  assert.strictEqual(fullRes.headers['content-encoding'], undefined)
+  assert.strictEqual(Number(fullRes.headers['content-length']), content.length)
+  assert.strictEqual(fullRes.body, content)
+
+  const rangeRes = await app.inject({
+    method: 'GET',
+    url: `${ROUTE_PREFIX}/${fileId}?noteId=${note.data.id}`,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Accept-Encoding': 'br, gzip, deflate',
+      Range: 'bytes=0-1535',
+    },
+  })
+  assert.strictEqual(rangeRes.statusCode, 206)
+  assert.strictEqual(rangeRes.headers['content-encoding'], undefined)
+  assert.strictEqual(rangeRes.headers['content-range'], `bytes 0-1535/${content.length}`)
+  assert.strictEqual(Number(rangeRes.headers['content-length']), 1536)
+  assert.strictEqual(rangeRes.body, content.slice(0, 1536))
+})
+
+test('POST /files/import 413 - Rejects CSV exceeding MAX_UPLOAD_BYTES without persisting partial Note rows', async (t) => {
+  const userCtx = await setup(t, 'user', {
+    MAX_UPLOAD_BYTES: 120,
+  })
+
+  const rows = [
+    'title,body',
+    '"First imported note","Short body 1"',
+    '"Second imported note","Short body 2"',
+    '"Third imported note","This row pushes the CSV well past 120 bytes of MAX_UPLOAD_BYTES"',
+  ].join('\n')
+
+  const form = new FormData()
+  form.append('file', Buffer.from(rows, 'utf8'), {
+    filename: 'oversized.csv',
+    contentType: 'text/csv',
+  })
+
+  const importRes = await userCtx.app.inject({
+    method: 'POST',
+    url: `${ROUTE_PREFIX}/import`,
+    headers: {
+      Authorization: `Bearer ${userCtx.accessToken}`,
+      ...form.getHeaders(),
+    },
+    payload: form,
+  })
+
+  assert.strictEqual(importRes.statusCode, 413)
+
+  const listRes = await userCtx.app.inject({
+    method: 'GET',
+    url: '/notes',
+    headers: { Authorization: `Bearer ${userCtx.accessToken}` },
+  })
+  assert.strictEqual(listRes.statusCode, 200)
+  assert.strictEqual(listRes.json().totalCount, 0)
+})
