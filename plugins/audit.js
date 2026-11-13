@@ -31,36 +31,35 @@ const auditPlugin = fp(
     fastify.decorate(
       'auditLog',
       function auditLog({ request, action, userId, resourceType, resourceId, details }) {
-        let boundedDetails
-        if (details !== undefined) {
-          try {
-            const serialized = JSON.stringify(details)
-            if (serialized.length <= 2048) {
-              boundedDetails = details
-            } else {
-              boundedDetails = { truncated: true }
-            }
-          } catch {
-            boundedDetails = { truncated: true }
-          }
-        }
-
         const log = request?.log || fastify.log
-        const payload = {
-          userId: userId || request?.user?._id || request?.user?.id || null,
-          action,
-          resourceType,
-          resourceId,
-          requestId: request?.id || null,
-          ipAddress: request?.ip || null,
-          createdAt: instantToDate(nowInstant()),
-          details: boundedDetails !== undefined ? boundedDetails : null,
-        }
+        const resolvedUserId = userId || request?.user?._id || request?.user?.id || null
+        const requestId = request?.id || null
+        const ipAddress = request?.ip || null
+        const createdAt = instantToDate(nowInstant())
 
         const auditWrite = new Promise((resolve) => {
           setImmediate(async () => {
             try {
-              await auditLogs.insertOne(payload)
+              let boundedDetails = null
+              if (details !== undefined) {
+                try {
+                  const serialized = JSON.stringify(details)
+                  boundedDetails = serialized.length <= 2048 ? details : { truncated: true }
+                } catch {
+                  boundedDetails = { truncated: true }
+                }
+              }
+
+              await auditLogs.insertOne({
+                userId: resolvedUserId,
+                action,
+                resourceType,
+                resourceId,
+                requestId,
+                ipAddress,
+                createdAt,
+                details: boundedDetails,
+              })
             } catch (err) {
               log.warn({ err, action, resourceType, resourceId }, 'Failed to write audit event')
             } finally {

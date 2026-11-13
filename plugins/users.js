@@ -67,7 +67,7 @@ async function usersPlugin(fastify) {
 
   const usersDataSource = {
     async createUser(userData) {
-      fastify.log.info('Entering createUser method')
+      fastify.log.debug('Entering createUser method')
       const _id = randomUUIDv7()
       const now = instantToDate(nowInstant())
       const documentToInsert = {
@@ -84,7 +84,7 @@ async function usersPlugin(fastify) {
       }
       try {
         const result = await users.insertOne(documentToInsert)
-        fastify.log.info('Exiting createUser method')
+        fastify.log.debug('Exiting createUser method')
         return result.insertedId
       } catch (error) {
         if (error.code === 11000) {
@@ -96,7 +96,7 @@ async function usersPlugin(fastify) {
     },
 
     async readUser(identifier) {
-      fastify.log.info('Entering readUser method')
+      fastify.log.debug('Entering readUser method')
       const normalized = normalizeIdentifier(identifier)
       try {
         const user = await users.findOne(
@@ -115,7 +115,7 @@ async function usersPlugin(fastify) {
             },
           },
         )
-        fastify.log.info('Exiting readUser method')
+        fastify.log.debug('Exiting readUser method')
         return user ? { ...user, id: String(user.id || user._id) } : null
       } catch (error) {
         fastify.log.error({ error }, 'Error reading user')
@@ -124,7 +124,7 @@ async function usersPlugin(fastify) {
     },
 
     async readUserForPasswordReset(email) {
-      fastify.log.info('Entering readUserForPasswordReset method')
+      fastify.log.debug('Entering readUserForPasswordReset method')
       const normalizedEmail = normalizeIdentifier(email)
       try {
         const user = await users.findOne(
@@ -141,7 +141,7 @@ async function usersPlugin(fastify) {
             },
           },
         )
-        fastify.log.info('Exiting readUserForPasswordReset method')
+        fastify.log.debug('Exiting readUserForPasswordReset method')
         return user
       } catch (error) {
         fastify.log.error({ error }, 'Error reading user for password reset')
@@ -150,7 +150,7 @@ async function usersPlugin(fastify) {
     },
 
     async readUserWithHash(identifier) {
-      fastify.log.info('Entering readUserWithHash method')
+      fastify.log.debug('Entering readUserWithHash method')
       const normalized = normalizeIdentifier(identifier)
       try {
         const user = await users.findOne(
@@ -159,7 +159,7 @@ async function usersPlugin(fastify) {
             projection: USER_AUTH_WITH_HASH_PROJECTION,
           },
         )
-        fastify.log.info('Exiting readUserWithHash method')
+        fastify.log.debug('Exiting readUserWithHash method')
         return user ? { ...user, id: String(user.id || user._id) } : null
       } catch (error) {
         fastify.log.error({ error }, 'Error reading user with hash')
@@ -168,7 +168,7 @@ async function usersPlugin(fastify) {
     },
 
     async listUsers({ filter = {}, skip = 0, limit = 10 } = {}) {
-      fastify.log.info('Entering listUsers method')
+      fastify.log.debug('Entering listUsers method')
       try {
         const normalizedFilter = { ...filter }
         if (typeof normalizedFilter.username === 'string') {
@@ -182,7 +182,7 @@ async function usersPlugin(fastify) {
           .skip(skip)
           .limit(limit)
           .toArray()
-        fastify.log.info('Exiting listUsers method')
+        fastify.log.debug('Exiting listUsers method')
         return usersList.map(normalizePublicUser)
       } catch (error) {
         fastify.log.error({ error }, 'Error listing users')
@@ -191,7 +191,7 @@ async function usersPlugin(fastify) {
     },
 
     async countUsers({ filter = {} } = {}) {
-      fastify.log.info('Entering countUsers method')
+      fastify.log.debug('Entering countUsers method')
       try {
         const normalizedFilter = { ...filter }
         if (typeof normalizedFilter.username === 'string') {
@@ -199,7 +199,7 @@ async function usersPlugin(fastify) {
         }
         const queryFilter = { ...normalizedFilter, deleted: { $ne: true } }
         const count = await users.countDocuments(queryFilter)
-        fastify.log.info('Exiting countUsers method')
+        fastify.log.debug('Exiting countUsers method')
         return count
       } catch (error) {
         fastify.log.error({ error }, 'Error counting users')
@@ -208,7 +208,7 @@ async function usersPlugin(fastify) {
     },
 
     async readUserDetails(id) {
-      fastify.log.info('Entering readUserDetails method')
+      fastify.log.debug('Entering readUserDetails method')
       try {
         const user = await users.findOne(
           { _id: id, deleted: { $ne: true } },
@@ -216,7 +216,7 @@ async function usersPlugin(fastify) {
             projection: USER_DETAIL_PROJECTION,
           },
         )
-        fastify.log.info('Exiting readUserDetails method')
+        fastify.log.debug('Exiting readUserDetails method')
         return normalizePublicUser(user)
       } catch (error) {
         fastify.log.error({ error }, 'Error reading user details')
@@ -225,14 +225,14 @@ async function usersPlugin(fastify) {
     },
 
     async readUserById(id) {
-      fastify.log.info('Entering readUserById method')
+      fastify.log.debug('Entering readUserById method')
       const useCache = typeof fastify.cacheGet === 'function' && Boolean(id)
       const cacheKey = useCache ? buildUserCacheKey(id) : null
 
       if (useCache) {
         const cached = await fastify.cacheGet(cacheKey)
         if (cached && cached.item) {
-          fastify.log.info('User cache HIT - Serving from RAM')
+          fastify.log.debug('User cache HIT - Serving from RAM')
           return cached.item
         }
       }
@@ -250,7 +250,7 @@ async function usersPlugin(fastify) {
             await fastify.cacheSet(cacheKey, user, USER_CACHE_TTL_MS)
           }
         }
-        fastify.log.info('Exiting readUserById method')
+        fastify.log.debug('Exiting readUserById method')
         return user
       } catch (error) {
         fastify.log.error(
@@ -262,7 +262,7 @@ async function usersPlugin(fastify) {
     },
 
     async updateUser(id, newUser) {
-      fastify.log.info('Entering updateUser method')
+      fastify.log.debug('Entering updateUser method')
       const normalizedUpdate = { ...newUser }
       if (typeof normalizedUpdate.username === 'string') {
         normalizedUpdate.username = normalizeIdentifier(normalizedUpdate.username)
@@ -317,7 +317,7 @@ async function usersPlugin(fastify) {
       try {
         const result = await users.updateOne({ _id: id, deleted: { $ne: true } }, updateDoc)
         await invalidateUserCache(id)
-        fastify.log.info('Exiting updateUser method')
+        fastify.log.debug('Exiting updateUser method')
         return result
       } catch (error) {
         if (error.code === 11000) {
@@ -329,7 +329,7 @@ async function usersPlugin(fastify) {
     },
 
     async deleteUser(id) {
-      fastify.log.info('Entering deleteUser method')
+      fastify.log.debug('Entering deleteUser method')
       try {
         const now = instantToDate(nowInstant())
         const res = await users.updateOne(
@@ -354,7 +354,7 @@ async function usersPlugin(fastify) {
         )
 
         if (res.modifiedCount === 0) {
-          fastify.log.info(
+          fastify.log.debug(
             { userId: id },
             "User for delete does not exist or user can't be deleted",
           )
@@ -388,7 +388,7 @@ async function usersPlugin(fastify) {
           this.deleteRevokedTokens(id),
         ])
 
-        fastify.log.info('Exiting deleteUser method')
+        fastify.log.debug('Exiting deleteUser method')
         return true
       } catch (error) {
         fastify.log.error({ error, id }, 'Error deleting user')
@@ -501,10 +501,10 @@ async function usersPlugin(fastify) {
     },
 
     async checkIfRevoked(jti) {
-      fastify.log.info('Entering checkIfRevoked method')
+      fastify.log.debug('Entering checkIfRevoked method')
       try {
         const token = await revokedTokens.findOne({ _id: jti }, { projection: { _id: 1 } })
-        fastify.log.info('Exiting checkIfRevoked method')
+        fastify.log.debug('Exiting checkIfRevoked method')
         return token !== null
       } catch (error) {
         fastify.log.error({ error, jti }, 'Database check revoke failure')
@@ -513,7 +513,7 @@ async function usersPlugin(fastify) {
     },
 
     async revokeToken(jti, exp, userId) {
-      fastify.log.info('Entering revokeToken method')
+      fastify.log.debug('Entering revokeToken method')
       try {
         const expirationDate = new Date(exp * 1000)
 
@@ -523,10 +523,10 @@ async function usersPlugin(fastify) {
           expiresAt: expirationDate,
         })
 
-        fastify.log.info({ jti }, 'Token added to TTL blocklist')
+        fastify.log.debug({ jti }, 'Token added to TTL blocklist')
       } catch (error) {
         if (error.code === 11000) {
-          fastify.log.info({ jti }, 'Token was already revoked')
+          fastify.log.debug({ jti }, 'Token was already revoked')
           return
         }
         fastify.log.error({ error, jti }, 'Database failure on token revoke')
@@ -535,14 +535,14 @@ async function usersPlugin(fastify) {
     },
 
     async deleteRevokedTokens(userId) {
-      fastify.log.info('Entering deleteRevokedTokens method')
+      fastify.log.debug('Entering deleteRevokedTokens method')
       try {
         const deleteResult = await revokedTokens.deleteMany({ userId })
-        fastify.log.info(
+        fastify.log.debug(
           { userId, result: deleteResult },
           'Tokens removed (many on specific user id) on DB/Store',
         )
-        fastify.log.info('Exiting deleteRevokedTokens method')
+        fastify.log.debug('Exiting deleteRevokedTokens method')
       } catch (error) {
         fastify.log.error({ error, userId }, 'Error on bulk token revoke status')
         throw error
@@ -550,7 +550,7 @@ async function usersPlugin(fastify) {
     },
 
     async initiatePasswordReset(userId, resetId, secretHash, requestedAt, expiresAt) {
-      fastify.log.info({ userId, resetId }, 'Entering initiatePasswordReset method')
+      fastify.log.debug({ userId, resetId }, 'Entering initiatePasswordReset method')
       const result = await users.updateOne(
         { _id: userId, deleted: { $ne: true } },
         {
@@ -565,12 +565,12 @@ async function usersPlugin(fastify) {
           },
         },
       )
-      fastify.log.info('Exiting initiatePasswordReset method')
+      fastify.log.debug('Exiting initiatePasswordReset method')
       return result.modifiedCount === 1
     },
 
     async verifyAndExecutePasswordReset(resetId, secretHash, newHash, maxAttempts) {
-      fastify.log.info({ resetId }, 'Entering verifyAndExecutePasswordReset method')
+      fastify.log.debug({ resetId }, 'Entering verifyAndExecutePasswordReset method')
 
       const now = instantToDate(nowInstant())
       const result = await users.findOneAndUpdate(
@@ -604,12 +604,12 @@ async function usersPlugin(fastify) {
         await invalidateUserCache(user._id)
       }
 
-      fastify.log.info('Exiting verifyAndExecutePasswordReset method')
+      fastify.log.debug('Exiting verifyAndExecutePasswordReset method')
       return user
     },
 
     async incrementPasswordResetFailedAttempts(resetId, maxAttempts) {
-      fastify.log.info({ resetId }, 'Entering incrementPasswordResetFailedAttempts method')
+      fastify.log.debug({ resetId }, 'Entering incrementPasswordResetFailedAttempts method')
 
       const now = instantToDate(nowInstant())
       const result = await users.findOneAndUpdate(
@@ -639,7 +639,7 @@ async function usersPlugin(fastify) {
 
       const user = getFindOneAndUpdateValue(result)
 
-      fastify.log.info('Exiting incrementPasswordResetFailedAttempts method')
+      fastify.log.debug('Exiting incrementPasswordResetFailedAttempts method')
       return user
     },
 
