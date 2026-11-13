@@ -3,6 +3,7 @@
 const fp = require('fastify-plugin')
 const crypto = require('node:crypto')
 const { hashPassword } = require('../routes/auth/generate-hash')
+const { resolvePrimaryFrontendUrl } = require('../utils/url')
 const {
   addInstantDuration,
   compareInstants,
@@ -14,10 +15,7 @@ const {
 async function passwordResetPlugin(fastify) {
   fastify.log.info('Starting registration of password-reset service plugin')
 
-  const frontendBaseUrl = String(fastify.config.FRONTEND_URL || '')
-    .split(',')[0]
-    .trim()
-    .replace(/\/+$/, '')
+  const frontendBaseUrl = resolvePrimaryFrontendUrl(fastify.config.FRONTEND_URL)
   const ttlMinutes = Math.max(1, Number(fastify.config.passwordReset?.ttlMinutes || 60))
   const requestCooldownMs =
     Math.max(0, Number(fastify.config.passwordReset?.requestCooldownSeconds || 0)) * 1000
