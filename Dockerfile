@@ -8,6 +8,7 @@ COPY package.json package-lock.json ./
 ARG NPM_TOKEN
 RUN if [ -n "$NPM_TOKEN" ]; then echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > .npmrc; fi && \
     npm ci --omit=dev --ignore-scripts && \
+    node -e "require('argon2')" && \
     rm -f .npmrc
 
 # --- Stage 2 Prod runner ---
@@ -18,6 +19,7 @@ RUN apk update && apk add --no-cache dumb-init
 ENV HOME=/home/app
 ENV APP_HOME=$HOME/node/
 ENV NODE_ENV=production
+ENV UV_THREADPOOL_SIZE=8
 ENV NODE_OPTIONS="--max-heap-size=1024"
 
 RUN addgroup -S node && adduser -S node -G node

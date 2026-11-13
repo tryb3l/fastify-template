@@ -73,7 +73,7 @@ Requires real SMTP settings (`SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER
 make up
 ```
 
-The production compose file exposes the backend on `http://localhost:3042` (`3042:3000`). Stop the stack with:
+The production compose file exposes the backend on `http://localhost:3042` (`3042:3000`). When running behind a reverse proxy or load balancer (such as Nginx, Caddy, or Cloudflare), set `TRUST_PROXY` in `.env` (for example `TRUST_PROXY=127.0.0.1,172.16.0.0/12` or a hop count like `TRUST_PROXY=1`) so rate limiting and audit logs resolve real client IPs from `X-Forwarded-For`; when unset or `false`, `X-Forwarded-For` is ignored. MongoDB connection pool bounds default to `MONGO_MAX_POOL_SIZE=20` and `MONGO_MIN_POOL_SIZE=2` and can be tuned via `.env` for managed Cloud MongoDB tiers. Stop the stack with:
 
 ```sh
 make down
@@ -109,7 +109,7 @@ Run `make` (or `make help`) to list documented targets:
 | `make test`                | Run the managed test suite (starts an isolated test MongoDB on port `27018`)   |
 | `make test-cov`            | Run the managed test suite with coverage                                       |
 | `make test-ci`             | Run `node --run test:ci` directly without starting Docker containers           |
-| `make lint`                | Run ESLint                                                                     |
+| `make lint`                | Run Oxlint                                                                     |
 | `make verify`              | Run `lint` followed by `test`                                                  |
 | `make runtime-status`      | Show human-readable status for managed local runtimes                          |
 | `make runtime-status-json` | Emit plain-text JSON status for managed local runtimes                         |

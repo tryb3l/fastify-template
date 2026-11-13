@@ -59,8 +59,11 @@
       "default": "admin@notes.local"
     },
     "ADMIN_PASSWORD": {
+      "type": "string"
+    },
+    "TRUST_PROXY": {
       "type": "string",
-      "default": "changeme123"
+      "default": "false"
     },
     "MAIL_FROM": {
       "type": "string"
@@ -109,6 +112,34 @@
     "USER_STORAGE_QUOTA_BYTES": {
       "type": "integer",
       "default": 524288000
+    },
+    "MAX_HEAP_USED_BYTES": {
+      "type": "integer",
+      "default": 750000000
+    },
+    "MAX_RSS_BYTES": {
+      "type": "integer",
+      "default": 1200000000
+    },
+    "CACHE_MAX_ENTRIES": {
+      "type": "integer",
+      "default": 2000
+    },
+    "ARGON2_MAX_CONCURRENCY": {
+      "type": "integer",
+      "default": 2
+    },
+    "ARGON2_MAX_QUEUE": {
+      "type": "integer",
+      "default": 32
+    },
+    "MONGO_MAX_POOL_SIZE": {
+      "type": "integer",
+      "default": 20
+    },
+    "MONGO_MIN_POOL_SIZE": {
+      "type": "integer",
+      "default": 2
     }
   }
 }
