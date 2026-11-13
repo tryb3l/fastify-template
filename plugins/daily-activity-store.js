@@ -152,30 +152,20 @@ module.exports = fp(
       const startDateKey = dateKeys84[0]
       const endDateKey = dateKeys84[dateKeys84.length - 1]
 
-      const [dueFlashcardsCount, activeContainerDocs, allUserNotes, activityDocs] =
+      const [dueFlashcardsCount, inboxNoteCount, activeContainerDocs, activityDocs] =
         await Promise.all([
           flashcards.countDocuments({
             userId,
             nextReviewAt: { $lte: now },
           }),
+          notes.countDocuments({
+            userId,
+            notebookId: null,
+            folderId: null,
+          }),
           notebooks
             .find({ userId, status: { $ne: 'archived' } }, { projection: { _id: 0, userId: 0 } })
             .sort({ modifiedAt: -1 })
-            .toArray(),
-          notes
-            .find(
-              { userId },
-              {
-                projection: {
-                  _id: 0,
-                  id: 1,
-                  notebookId: 1,
-                  readiness: 1,
-                  noteType: 1,
-                  links: 1,
-                },
-              },
-            )
             .toArray(),
           dailyActivity
             .find(
@@ -187,18 +177,65 @@ module.exports = fp(
 
       const allNotesById = new Map()
       const notesByNotebook = new Map()
-      let inboxNoteCount = 0
 
-      for (const note of allUserNotes) {
-        allNotesById.set(note.id, note)
-        const nbId = note.notebookId ?? null
-        if (nbId === null) {
-          inboxNoteCount += 1
-        } else {
+      if (activeContainerDocs.length > 0) {
+        const activeContainerIds = activeContainerDocs.map((nb) => nb.id)
+        const activeContainerNotes = await notes
+          .find(
+            { userId, notebookId: { $in: activeContainerIds } },
+            {
+              projection: {
+                _id: 0,
+                id: 1,
+                notebookId: 1,
+                readiness: 1,
+                noteType: 1,
+                links: 1,
+              },
+            },
+          )
+          .toArray()
+
+        for (const note of activeContainerNotes) {
+          allNotesById.set(note.id, note)
+          const nbId = note.notebookId
           if (!notesByNotebook.has(nbId)) {
             notesByNotebook.set(nbId, [])
           }
           notesByNotebook.get(nbId).push(note)
+        }
+
+        const externalTargetIds = new Set()
+        for (const note of activeContainerNotes) {
+          if (Array.isArray(note.links)) {
+            for (let j = 0; j < note.links.length; j += 1) {
+              const targetId = note.links[j]?.targetId
+              if (targetId && !allNotesById.has(targetId)) {
+                externalTargetIds.add(targetId)
+              }
+            }
+          }
+        }
+
+        if (externalTargetIds.size > 0) {
+          const externalTargetNotes = await notes
+            .find(
+              { userId, id: { $in: Array.from(externalTargetIds) } },
+              {
+                projection: {
+                  _id: 0,
+                  id: 1,
+                  notebookId: 1,
+                  readiness: 1,
+                  noteType: 1,
+                },
+              },
+            )
+            .toArray()
+
+          for (const extNote of externalTargetNotes) {
+            allNotesById.set(extNote.id, extNote)
+          }
         }
       }
 
