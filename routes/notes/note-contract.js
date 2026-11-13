@@ -248,7 +248,11 @@ function buildNoteSchemas() {
       $id: 'schema:note:list:query',
       additionalProperties: false,
       properties: {
-        title: { type: 'string' },
+        title: {
+          type: 'string',
+          minLength: 1,
+          maxLength: NOTE_CONSTRAINTS.TITLE_MAX_LENGTH,
+        },
         readiness: { type: 'string', enum: [...NOTE_READINESS_VALUES] },
         noteType: { type: 'string', enum: [...NOTE_TYPES] },
         notebookId: { type: 'string', format: 'uuid' },

@@ -40,8 +40,10 @@ module.exports = fp(
 
     await fastify.register(fastifyJwt, jwtConfig)
 
+    fastify.decorateRequest('accessTokenExp', null)
+
     fastify.decorate('authenticate', async function (request) {
-      fastify.log.info('Entering authenticate method')
+      fastify.log.debug('Entering authenticate method')
 
       let decoded
       try {
@@ -84,21 +86,22 @@ module.exports = fp(
       }
 
       request.user = user
-      fastify.log.info('Exiting authenticate method')
+      request.accessTokenExp = typeof decoded.exp === 'number' ? decoded.exp * 1000 : null
+      fastify.log.debug('Exiting authenticate method')
     })
 
     fastify.decorate('authorize', function (allowedRoles) {
       return async function (request) {
-        fastify.log.info('Entering authorize method')
+        fastify.log.debug('Entering authorize method')
         if (!request.user || !allowedRoles.includes(request.user.role)) {
           throw fastify.httpErrors.forbidden('You are not authorized to access this resource')
         }
-        fastify.log.info('Exiting authorize method')
+        fastify.log.debug('Exiting authorize method')
       }
     })
 
     fastify.decorateRequest('generateTokens', async function (user) {
-      fastify.log.info('Entering generateTokens method')
+      fastify.log.debug('Entering generateTokens method')
       const payload = {
         sub: user._id,
         username: user.username,
@@ -122,18 +125,18 @@ module.exports = fp(
         },
       )
 
-      fastify.log.info('Exiting generateTokens method')
+      fastify.log.debug('Exiting generateTokens method')
       return { accessToken, refreshToken }
     })
 
     fastify.decorateRequest('revokeToken', async function (jti, exp, userId) {
-      fastify.log.info('Entering revokeToken method')
+      fastify.log.debug('Entering revokeToken method')
       await fastify.usersDataSource.revokeToken(jti, exp, userId)
-      fastify.log.info({ jti }, 'Token revoked successfully')
+      fastify.log.debug({ jti }, 'Token revoked successfully')
     })
 
     fastify.decorate('verifyRefreshToken', async function (request, reply) {
-      fastify.log.info('Entering verifyRefreshToken method')
+      fastify.log.debug('Entering verifyRefreshToken method')
       const token = request.cookies?.refreshToken
 
       if (!token) {
