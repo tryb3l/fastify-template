@@ -7,7 +7,13 @@ module.exports = {
   timestamp: pino.stdTimeFunctions.isoTime,
   redact: {
     censor: '*****',
-    paths: ['req.headers.authorization', 'req.body.password', 'req.body.email'],
+    paths: [
+      'req.headers.authorization',
+      'req.headers.cookie',
+      'res.headers["set-cookie"]',
+      'req.body.password',
+      'req.body.email',
+    ],
   },
   serializers: {
     req: function serializeRequest(request) {
@@ -26,8 +32,14 @@ module.exports = {
       }
     },
     res: function serializeReply(reply) {
+      const setCookie =
+        typeof reply.getHeader === 'function'
+          ? reply.getHeader('set-cookie')
+          : reply.raw?.getHeader?.('set-cookie')
+
       return {
         statusCode: reply.statusCode,
+        ...(setCookie !== undefined ? { headers: { 'set-cookie': setCookie } } : {}),
         responseTime: typeof reply.elapsedTime === 'number' ? reply.elapsedTime : undefined,
       }
     },
