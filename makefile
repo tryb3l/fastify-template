@@ -102,7 +102,7 @@ LOAD_ENV = set -a; \
 VALIDATE_REQUIRED_ENV = missing_vars=""; \
 	$(LOAD_ENV) \
 	for var in $(REQUIRED_ENV_VARS); do \
-		eval "value=\$${$$var:-}"; \
+		eval "value=\$$$$var"; \
 		if [ -z "$$value" ]; then \
 			missing_vars="$$missing_vars $$var"; \
 		fi; \
