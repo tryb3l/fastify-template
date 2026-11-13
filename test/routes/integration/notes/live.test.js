@@ -390,3 +390,141 @@ test('WS /notes/:id/live does not broadcast NOTE_UPDATED on a no-op autosave', a
   assert.strictEqual(noopUpdateRes.json().data.revision, 1)
   await noMessagePromise
 })
+
+test('WS /notes/:id/live broadcasts identical pre-serialized NOTE_UPDATED payload to multiple subscribers', async (t) => {
+  const { app, accessToken } = await setup(t, 'user')
+  const port = await listenOnRandomPort(app)
+  const noteId = await createOwnedNote(app, accessToken, {
+    title: 'Multi-Subscriber Note',
+    body: 'initial body',
+  })
+
+  const ws1 = createLiveWebSocket(port, `/notes/live/${noteId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  const ws2 = createLiveWebSocket(port, `/notes/live/${noteId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  await Promise.all([waitForSocketOpen(ws1), waitForSocketOpen(ws2)])
+
+  const msg1Promise = readJsonMessageAndClose(ws1)
+  const msg2Promise = readJsonMessageAndClose(ws2)
+
+  const updateRes = await app.inject({
+    method: 'PUT',
+    url: `/notes/${noteId}`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+    payload: {
+      title: 'Broadcast Once To All',
+      body: 'updated body for all clients',
+      expectedRevision: 1,
+    },
+  })
+  assert.strictEqual(updateRes.statusCode, 200)
+
+  const [msg1, msg2] = await Promise.all([msg1Promise, msg2Promise])
+  assert.deepStrictEqual(msg1, msg2)
+  assert.strictEqual(msg1.type, 'NOTE_UPDATED')
+  assert.strictEqual(msg1.payload.title, 'Broadcast Once To All')
+  assert.strictEqual(msg1.payload.revision, 2)
+})
+
+test('WS /notes/:id/live closes with 1008 and stops delivering NOTE_UPDATED after credentialsVersion increments', async (t) => {
+  const { app, accessToken, username, password } = await setup(t, 'user')
+  const port = await listenOnRandomPort(app)
+  const noteId = await createOwnedNote(app, accessToken, {
+    title: 'Revocation Target Note',
+    body: 'before credential rotation',
+  })
+
+  const staleWs = createLiveWebSocket(port, `/notes/live/${noteId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  await waitForSocketOpen(staleWs)
+
+  const receivedMessages = []
+  staleWs.on('message', (msg) => {
+    receivedMessages.push(msg.toString())
+  })
+  const closeCodePromise = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      staleWs.close()
+      reject(new Error('Timed out waiting for stale WebSocket to close with 1008'))
+    }, 2000)
+    staleWs.once('close', (code) => {
+      clearTimeout(timer)
+      resolve(code)
+    })
+  })
+
+  // Changing the user email increments credentialsVersion and invalidates the old session
+  const newEmail = randomEmail(10, 5)
+  const emailChangeRes = await app.inject({
+    method: 'PUT',
+    url: '/users/me',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    payload: { email: newEmail },
+  })
+  assert.strictEqual(emailChangeRes.statusCode, 200)
+
+  // Re-authenticate with the new session and update the Note over HTTP
+  const freshLoginRes = await app.inject({
+    method: 'POST',
+    url: '/auth/authenticate',
+    payload: { username, password },
+  })
+  assert.strictEqual(freshLoginRes.statusCode, 200)
+  const freshToken = freshLoginRes.json().access_token
+
+  const updateRes = await app.inject({
+    method: 'PUT',
+    url: `/notes/${noteId}`,
+    headers: { Authorization: `Bearer ${freshToken}` },
+    payload: {
+      title: 'Post-Rotation Confidential Edit',
+      body: 'stale socket must never receive this',
+      expectedRevision: 1,
+    },
+  })
+  assert.strictEqual(updateRes.statusCode, 200)
+
+  const closeCode = await closeCodePromise
+  assert.strictEqual(closeCode, 1008)
+  assert.deepStrictEqual(receivedMessages, [])
+})
+
+test('WS /notes/:id/live closes with 1008 when the watched Note is deleted', async (t) => {
+  const { app, accessToken } = await setup(t, 'user')
+  const port = await listenOnRandomPort(app)
+  const noteId = await createOwnedNote(app, accessToken, {
+    title: 'Delete Target Note',
+    body: 'socket should close when deleted',
+  })
+
+  const ws = createLiveWebSocket(port, `/notes/live/${noteId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  await waitForSocketOpen(ws)
+
+  const closeCodePromise = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      ws.close()
+      reject(new Error('Timed out waiting for WebSocket to close on Note delete'))
+    }, 2000)
+    ws.once('close', (code) => {
+      clearTimeout(timer)
+      resolve(code)
+    })
+  })
+
+  const deleteRes = await app.inject({
+    method: 'DELETE',
+    url: `/notes/${noteId}?expectedRevision=1`,
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  assert.strictEqual(deleteRes.statusCode, 204)
+
+  const closeCode = await closeCodePromise
+  assert.strictEqual(closeCode, 1008)
+})

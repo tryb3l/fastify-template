@@ -496,8 +496,10 @@ module.exports = fp(
           throw conflictError
         }
 
-        await notebooks.deleteOne({ id, userId })
-        await recordSyncTombstone(userId, 'notebook', id)
+        await Promise.all([
+          notebooks.deleteOne({ id, userId }),
+          recordSyncTombstone(userId, 'notebook', id),
+        ])
 
         if (fastify.auditLog) {
           fastify.auditLog({
@@ -695,8 +697,10 @@ module.exports = fp(
           throw conflictError
         }
 
-        await folders.deleteOne({ id, userId })
-        await recordSyncTombstone(userId, 'folder', id)
+        await Promise.all([
+          folders.deleteOne({ id, userId }),
+          recordSyncTombstone(userId, 'folder', id),
+        ])
 
         if (fastify.auditLog) {
           fastify.auditLog({

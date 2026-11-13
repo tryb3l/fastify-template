@@ -245,10 +245,13 @@ module.exports = fp(
           modifiedAt: now,
         }
 
-        await flashcards.insertOne(card)
-
         if (typeof fastify.recordDailyActivity === 'function') {
-          await fastify.recordDailyActivity(userId, { flashcardsCreated: 1 }, now)
+          await Promise.all([
+            flashcards.insertOne(card),
+            fastify.recordDailyActivity(userId, { flashcardsCreated: 1 }, now),
+          ])
+        } else {
+          await flashcards.insertOne(card)
         }
 
         if (fastify.auditLog && request) {
@@ -479,12 +482,11 @@ module.exports = fp(
         )
         const updatedCard = normalizeFlashcardDoc(updateResult?.value ?? updateResult)
 
-        if (typeof fastify.recordDailyActivity === 'function') {
-          await fastify.recordDailyActivity(userId, { flashcardsReviewed: 1 }, now)
-        }
-
-        // Bidirectional parent Note readiness coupling
-        const [noteCards, parentNote] = await Promise.all([
+        // Record daily activity and load parent Note readiness coupling inputs concurrently
+        const [, noteCards, parentNote] = await Promise.all([
+          typeof fastify.recordDailyActivity === 'function'
+            ? fastify.recordDailyActivity(userId, { flashcardsReviewed: 1 }, now)
+            : null,
           flashcards
             .find({ userId, noteId: existingCard.noteId }, { projection: { _id: 0, box: 1 } })
             .toArray(),
@@ -524,7 +526,7 @@ module.exports = fp(
             effectiveReadiness = targetReadiness
 
             if (fastify.eventBus && updatedParentNote) {
-              fastify.eventBus.emit(`note_updated:${existingCard.noteId}`, {
+              const eventMessage = {
                 type: 'NOTE_UPDATED',
                 payload: {
                   id: updatedParentNote.id,
@@ -536,7 +538,12 @@ module.exports = fp(
                   revision: updatedParentNote.revision,
                   modifiedAt: updatedParentNote.modifiedAt,
                 },
-              })
+              }
+              fastify.eventBus.emit(
+                `note_updated:${existingCard.noteId}`,
+                eventMessage,
+                JSON.stringify(eventMessage),
+              )
             }
           }
         }

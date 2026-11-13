@@ -12,15 +12,122 @@ const {
 
 const NOTE_CACHE_TTL_MS = 300_000
 const SYNC_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000
+const SYNC_DEFAULT_BATCH_LIMIT = 500
+const SYNC_MAX_BATCH_LIMIT = 1_000
+const SYNC_CURSOR_KEYS = ['notes', 'notebooks', 'folders', 'flashcards', 'tombstones']
+
+function decodeSyncCursor(rawCursor, sinceMs, nowMs, fastify) {
+  if (!rawCursor) {
+    return null
+  }
+
+  let parsed
+  try {
+    parsed = JSON.parse(Buffer.from(String(rawCursor), 'base64url').toString('utf8'))
+  } catch {
+    throw fastify.httpErrors.badRequest('Invalid sync cursor')
+  }
+
+  if (
+    !parsed ||
+    typeof parsed !== 'object' ||
+    parsed.v !== 1 ||
+    typeof parsed.t0 !== 'number' ||
+    !Number.isFinite(parsed.t0) ||
+    !parsed.s ||
+    typeof parsed.s !== 'object'
+  ) {
+    throw fastify.httpErrors.badRequest('Invalid sync cursor')
+  }
+
+  if (nowMs - parsed.t0 > SYNC_TOMBSTONE_TTL_MS || parsed.t0 > nowMs + 60_000) {
+    const goneErr = fastify.httpErrors.gone('Sync cursor expired; perform a full sync')
+    goneErr.syncCode = 'SYNC_CURSOR_EXPIRED'
+    throw goneErr
+  }
+
+  for (const key of SYNC_CURSOR_KEYS) {
+    const state = parsed.s[key]
+    if (!state || typeof state !== 'object' || typeof state.done !== 'boolean') {
+      throw fastify.httpErrors.badRequest('Invalid sync cursor')
+    }
+    if (state.done !== true) {
+      if (
+        typeof state.ts !== 'number' ||
+        !Number.isFinite(state.ts) ||
+        state.ts < sinceMs ||
+        typeof state.id !== 'string' ||
+        state.id.length === 0 ||
+        state.id.length > 128
+      ) {
+        throw fastify.httpErrors.badRequest('Invalid sync cursor')
+      }
+      if (nowMs - state.ts > SYNC_TOMBSTONE_TTL_MS || state.ts > nowMs + 60_000) {
+        const goneErr = fastify.httpErrors.gone('Sync cursor expired; perform a full sync')
+        goneErr.syncCode = 'SYNC_CURSOR_EXPIRED'
+        throw goneErr
+      }
+    }
+  }
+
+  return parsed
+}
+
+function encodeSyncCursor(t0, states) {
+  return Buffer.from(JSON.stringify({ v: 1, t0, s: states }), 'utf8').toString('base64url')
+}
+
+function buildSyncCollectionQuery(userId, sinceDate, cursorEntry, tsField, idField) {
+  if (!cursorEntry) {
+    return { userId, [tsField]: { $gte: sinceDate } }
+  }
+  if (cursorEntry.done === true) {
+    return null
+  }
+  const boundaryDate = new Date(cursorEntry.ts)
+  return {
+    userId,
+    $or: [
+      { [tsField]: { $gt: boundaryDate } },
+      { [tsField]: boundaryDate, [idField]: { $gt: cursorEntry.id } },
+    ],
+  }
+}
+
+function sliceSyncBatch(items, limit, tsField, idField) {
+  if (items.length <= limit) {
+    return {
+      sliced: items,
+      overflow: false,
+      nextState: { done: true, ts: 0, id: '' },
+      overflowTimestampMs: Infinity,
+    }
+  }
+
+  const sliced = items.slice(0, limit)
+  const lastIncluded = sliced[limit - 1]
+  const firstOverflow = items[limit]
+  const lastTs =
+    lastIncluded[tsField] instanceof Date
+      ? lastIncluded[tsField].getTime()
+      : Date.parse(lastIncluded[tsField])
+  const overflowTs =
+    firstOverflow[tsField] instanceof Date
+      ? firstOverflow[tsField].getTime()
+      : Date.parse(firstOverflow[tsField])
+
+  return {
+    sliced,
+    overflow: true,
+    nextState: { done: false, ts: lastTs, id: String(lastIncluded[idField]) },
+    overflowTimestampMs: overflowTs,
+  }
+}
 const VALID_LINK_RELATIONS = new Set(['parent', 'child', 'related'])
 const VALID_READINESS_SET = new Set(
   NOTE_READINESS_VALUES || ['to_review', 'in_progress', 'mastered'],
 )
 const VALID_NOTE_TYPES_SET = new Set(NOTE_TYPES || ['standard', 'post_mortem'])
-
-function escapeRegExp(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
 
 function areStringArraysEqual(a, b) {
   const arrA = Array.isArray(a) ? a : []
@@ -51,9 +158,9 @@ function areLinksEqual(a, b) {
 }
 
 const WIKI_LINK_REGEX =
-  /\[\[([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\|([^\]]{1,100}))?\]\]/gi
+  /\[\[([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\|([^[\]\r\n]{1,100}))?\]\]/gi
 const NOTE_URI_LINK_REGEX =
-  /\[([^\]]{1,100})\]\(note:\/\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\)/gi
+  /\[([^[\]\r\n]{1,100})\]\(note:\/\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\)/gi
 
 const normalizeNoteBody = (body) => (typeof body === 'string' ? body : '')
 
@@ -240,12 +347,12 @@ class ScopedNotesDataSource {
     return this.store.getMindMapGraph(options, this.userId)
   }
 
-  getWorkspaceSyncDelta(since) {
-    return this.store.getWorkspaceSyncDelta(since, this.userId)
+  getWorkspaceSyncDelta(since, options = {}) {
+    return this.store.getWorkspaceSyncDelta(since, this.userId, options)
   }
 }
 
-module.exports = fp(
+const notesStorePlugin = fp(
   async function notesStorePlugin(fastify) {
     fastify.log.info('Starting registration of notes-store plugin')
 
@@ -287,8 +394,16 @@ module.exports = fp(
     const notesDataSource = {
       _buildFilter(rawFilter = {}, userId) {
         const finalFilter = { userId }
-        if (rawFilter.title) {
-          finalFilter.title = new RegExp(escapeRegExp(rawFilter.title), 'i')
+        if (typeof rawFilter.title === 'string' && rawFilter.title.length > 0) {
+          const needle = rawFilter.title.toLowerCase()
+          finalFilter.$expr = {
+            $gte: [
+              {
+                $indexOfCP: [{ $toLower: { $ifNull: ['$title', ''] } }, { $literal: needle }],
+              },
+              0,
+            ],
+          }
         }
         if (rawFilter.readiness && VALID_READINESS_SET.has(rawFilter.readiness)) {
           finalFilter.readiness =
@@ -308,10 +423,10 @@ module.exports = fp(
       },
 
       async countNotes(filter = {}, userId) {
-        fastify.log.info('Entering countNotes method')
+        fastify.log.debug('Entering countNotes method')
         const finalFilter = this._buildFilter(filter, userId)
         const totalCount = await notes.countDocuments(finalFilter)
-        fastify.log.info('Exiting countNotes method')
+        fastify.log.debug('Exiting countNotes method')
         return totalCount
       },
 
@@ -319,7 +434,7 @@ module.exports = fp(
         { filter = {}, projection = {}, skip = 0, limit = 50, asStream = false } = {},
         userId,
       ) {
-        fastify.log.info('Entering listNotes method')
+        fastify.log.debug('Entering listNotes method')
         const finalFilter = this._buildFilter(filter, userId)
 
         const cursor = notes
@@ -330,11 +445,11 @@ module.exports = fp(
           })
           .sort({ modifiedAt: -1 })
         if (asStream) {
-          fastify.log.info('Exiting listNotes method with stream')
+          fastify.log.debug('Exiting listNotes method with stream')
           return cursor.stream()
         }
         const items = await cursor.toArray()
-        fastify.log.info('Exiting listNotes method')
+        fastify.log.debug('Exiting listNotes method')
         return items.map((item) => ({
           ...item,
           ...(Object.hasOwn(projection, 'readiness')
@@ -368,7 +483,7 @@ module.exports = fp(
         userId,
         request = null,
       ) {
-        fastify.log.info('Entering createNote method')
+        fastify.log.debug('Entering createNote method')
 
         let verifiedPlacement = { notebookId: null, folderId: null }
         if (
@@ -412,17 +527,20 @@ module.exports = fp(
           createdAt: now,
           modifiedAt: now,
         }
-        await notes.insertOne(note)
-
         if (typeof fastify.recordDailyActivity === 'function') {
-          await fastify.recordDailyActivity(
-            userId,
-            {
-              notesCreated: 1,
-              postMortemsCreated: normalizedNoteType === 'post_mortem' ? 1 : 0,
-            },
-            now,
-          )
+          await Promise.all([
+            notes.insertOne(note),
+            fastify.recordDailyActivity(
+              userId,
+              {
+                notesCreated: 1,
+                postMortemsCreated: normalizedNoteType === 'post_mortem' ? 1 : 0,
+              },
+              now,
+            ),
+          ])
+        } else {
+          await notes.insertOne(note)
         }
 
         if (fastify.auditLog && request) {
@@ -435,12 +553,12 @@ module.exports = fp(
           })
         }
 
-        fastify.log.info('Exiting createNote method')
+        fastify.log.debug('Exiting createNote method')
         return normalizePersistedNote(note)
       },
 
       async createNotes(noteList, userId, options = {}) {
-        fastify.log.info('Entering createNotes method')
+        fastify.log.debug('Entering createNotes method')
 
         const targetNotebookId = options.notebookId ?? null
         const targetFolderId = options.folderId ?? null
@@ -485,8 +603,6 @@ module.exports = fp(
           await verifyTargetNoteIdsExist(externalLinks, userId)
         }
 
-        await notes.insertMany(toInsert)
-
         if (typeof fastify.recordDailyActivity === 'function' && toInsert.length > 0) {
           let postMortemsCount = 0
           for (let i = 0; i < toInsert.length; i += 1) {
@@ -494,22 +610,27 @@ module.exports = fp(
               postMortemsCount += 1
             }
           }
-          await fastify.recordDailyActivity(
-            userId,
-            {
-              notesCreated: toInsert.length,
-              postMortemsCreated: postMortemsCount,
-            },
-            now,
-          )
+          await Promise.all([
+            notes.insertMany(toInsert),
+            fastify.recordDailyActivity(
+              userId,
+              {
+                notesCreated: toInsert.length,
+                postMortemsCreated: postMortemsCount,
+              },
+              now,
+            ),
+          ])
+        } else {
+          await notes.insertMany(toInsert)
         }
 
-        fastify.log.info('Exiting createNotes method')
+        fastify.log.debug('Exiting createNotes method')
         return toInsert.map((note) => note._id)
       },
 
       async readNote(id, userId, projection = {}) {
-        fastify.log.info('Entering readNote method')
+        fastify.log.debug('Entering readNote method')
         const useCache =
           Object.keys(projection).length === 0 && typeof fastify.cacheGet === 'function'
         const cacheKey = useCache ? buildNoteCacheKey(id, userId) : null
@@ -517,7 +638,7 @@ module.exports = fp(
         if (useCache) {
           const cached = await fastify.cacheGet(cacheKey)
           if (cached && cached.item) {
-            fastify.log.info('Cache HIT - Serving from RAM')
+            fastify.log.debug('Cache HIT - Serving from RAM')
             return cached.item
           }
         }
@@ -532,7 +653,7 @@ module.exports = fp(
           },
         )
         if (!note) {
-          fastify.log.info(`Note not found for ID: ${id} and User ID: ${userId}`)
+          fastify.log.debug(`Note not found for ID: ${id} and User ID: ${userId}`)
           throw fastify.httpErrors.notFound('Note not found')
         }
 
@@ -541,7 +662,7 @@ module.exports = fp(
           await fastify.cacheSet(cacheKey, normalized, NOTE_CACHE_TTL_MS)
         }
 
-        fastify.log.info('Exiting readNote method')
+        fastify.log.debug('Exiting readNote method')
         return normalized
       },
 
@@ -721,10 +842,13 @@ module.exports = fp(
 
         const normalized = normalizePersistedNote(updatedNote)
 
-        await invalidateNoteCache(id, userId)
-
         if (typeof fastify.recordDailyActivity === 'function') {
-          await fastify.recordDailyActivity(userId, { notesUpdated: 1 }, normalized.modifiedAt)
+          await Promise.all([
+            invalidateNoteCache(id, userId),
+            fastify.recordDailyActivity(userId, { notesUpdated: 1 }, normalized.modifiedAt),
+          ])
+        } else {
+          await invalidateNoteCache(id, userId)
         }
 
         if (fastify.eventBus) {
@@ -738,17 +862,18 @@ module.exports = fp(
             revision: normalized.revision,
             modifiedAt: normalized.modifiedAt,
           }
-          fastify.eventBus.emit(`note_updated:${id}`, {
+          const eventMessage = {
             type: 'NOTE_UPDATED',
             payload: sanitizedEventDTO,
-          })
+          }
+          fastify.eventBus.emit(`note_updated:${id}`, eventMessage, JSON.stringify(eventMessage))
         }
 
         return normalized
       },
 
       async deleteNote(id, userId, expectedRevision, request = null) {
-        fastify.log.info('Entering deleteNote method')
+        fastify.log.debug('Entering deleteNote method')
         const deleteResult = await notes.findOneAndDelete({
           id,
           userId,
@@ -770,7 +895,7 @@ module.exports = fp(
           )
 
           if (!existingNote) {
-            fastify.log.info(`Note not found for ID: ${id} and User ID: ${userId}`)
+            fastify.log.debug(`Note not found for ID: ${id} and User ID: ${userId}`)
             throw fastify.httpErrors.notFound('Note not found')
           }
 
@@ -783,63 +908,69 @@ module.exports = fp(
           throw conflictError
         }
 
-        await invalidateNoteCache(id, userId)
-
         const nowDeletedAt = instantToDate(nowInstant())
 
-        // Cascade delete any flashcards attached to this note and record tombstones
-        const noteFlashcards = await flashcards
-          .find({ userId, noteId: id }, { projection: { _id: 0, id: 1 } })
-          .toArray()
-        if (noteFlashcards.length > 0) {
-          await flashcards.deleteMany({ userId, noteId: id })
-          await syncTombstones.insertMany(
-            noteFlashcards.map((fc) => ({
-              _id: randomUUIDv7(),
-              userId,
-              entityType: 'flashcard',
-              entityId: fc.id,
-              deletedAt: nowDeletedAt,
-            })),
-          )
-        }
+        const cascadeFlashcardsPromise = (async () => {
+          const noteFlashcards = await flashcards
+            .find({ userId, noteId: id }, { projection: { _id: 0, id: 1 } })
+            .toArray()
+          if (noteFlashcards.length > 0) {
+            await Promise.all([
+              flashcards.deleteMany({ userId, noteId: id }),
+              syncTombstones.insertMany(
+                noteFlashcards.map((fc) => ({
+                  _id: randomUUIDv7(),
+                  userId,
+                  entityType: 'flashcard',
+                  entityId: fc.id,
+                  deletedAt: nowDeletedAt,
+                })),
+              ),
+            ])
+          }
+        })()
 
-        await syncTombstones.insertOne({
-          _id: randomUUIDv7(),
-          userId,
-          entityType: 'note',
-          entityId: id,
-          deletedAt: nowDeletedAt,
-        })
+        const cleanBacklinksPromise = (async () => {
+          const referencingNotes = await notes
+            .find({ userId, 'links.targetId': id }, { projection: { _id: 0, id: 1 } })
+            .toArray()
 
-        // Clean up any incoming links from other notes of the same user
-        const referencingNotes = await notes
-          .find({ userId, 'links.targetId': id }, { projection: { _id: 0, id: 1 } })
-          .toArray()
-
-        if (referencingNotes.length > 0) {
-          await notes.updateMany(
-            { userId, 'links.targetId': id },
-            {
-              $pull: {
-                links: { targetId: id },
-                explicitLinks: { targetId: id },
+          if (referencingNotes.length > 0) {
+            await notes.updateMany(
+              { userId, 'links.targetId': id },
+              {
+                $pull: {
+                  links: { targetId: id },
+                  explicitLinks: { targetId: id },
+                },
               },
-            },
-          )
-          await Promise.all(
-            referencingNotes.map((refNote) => invalidateNoteCache(refNote.id, userId)),
-          )
-        }
+            )
+            await Promise.all(
+              referencingNotes.map((refNote) => invalidateNoteCache(refNote.id, userId)),
+            )
+          }
+        })()
 
-        // Clean up any disk attachment blobs belonging to the deleted note
-        if (
+        const deleteAttachmentsPromise =
           fastify.notesFileManager &&
           Array.isArray(deletedNote.attachments) &&
           deletedNote.attachments.length > 0
-        ) {
-          await fastify.notesFileManager.deleteNoteAttachments(deletedNote.attachments)
-        }
+            ? fastify.notesFileManager.deleteNoteAttachments(deletedNote.attachments)
+            : null
+
+        await Promise.all([
+          invalidateNoteCache(id, userId),
+          cascadeFlashcardsPromise,
+          syncTombstones.insertOne({
+            _id: randomUUIDv7(),
+            userId,
+            entityType: 'note',
+            entityId: id,
+            deletedAt: nowDeletedAt,
+          }),
+          cleanBacklinksPromise,
+          deleteAttachmentsPromise,
+        ])
 
         if (fastify.auditLog) {
           fastify.auditLog({
@@ -851,7 +982,11 @@ module.exports = fp(
           })
         }
 
-        fastify.log.info('Exiting deleteNote method')
+        if (fastify.eventBus) {
+          fastify.eventBus.emit(`note_deleted:${id}`, { id })
+        }
+
+        fastify.log.debug('Exiting deleteNote method')
       },
 
       async addAttachments(id, attachments, userId) {
@@ -1182,7 +1317,7 @@ module.exports = fp(
         return new ScopedNotesDataSource(this, userId, request)
       },
 
-      async getWorkspaceSyncDelta(since, userId) {
+      async getWorkspaceSyncDelta(since, userId, options = {}) {
         const sinceMs = Date.parse(since)
         if (Number.isNaN(sinceMs)) {
           throw fastify.httpErrors.badRequest('Invalid since timestamp')
@@ -1195,53 +1330,137 @@ module.exports = fp(
           throw goneErr
         }
 
-        const serverTime = nowIsoInstantString()
+        const rawLimit = Number(options.limit ?? SYNC_DEFAULT_BATCH_LIMIT)
+        const effectiveLimit = Number.isFinite(rawLimit)
+          ? Math.min(Math.max(Math.trunc(rawLimit), 1), SYNC_MAX_BATCH_LIMIT)
+          : SYNC_DEFAULT_BATCH_LIMIT
+        const fetchLimit = effectiveLimit + 1
+
+        const decodedCursor = decodeSyncCursor(options.cursor, sinceMs, nowMs, fastify)
+
+        const syncStartMs = decodedCursor ? decodedCursor.t0 : Date.parse(nowIsoInstantString())
+        const cursorStates = decodedCursor ? decodedCursor.s : null
         const sinceDate = new Date(sinceMs)
 
-        const [upsertedNotes, upsertedNotebooks, upsertedFolders, upsertedFlashcards, tombstones] =
+        const notesQuery = buildSyncCollectionQuery(
+          userId,
+          sinceDate,
+          cursorStates?.notes,
+          'modifiedAt',
+          'id',
+        )
+        const notebooksQuery = buildSyncCollectionQuery(
+          userId,
+          sinceDate,
+          cursorStates?.notebooks,
+          'modifiedAt',
+          'id',
+        )
+        const foldersQuery = buildSyncCollectionQuery(
+          userId,
+          sinceDate,
+          cursorStates?.folders,
+          'modifiedAt',
+          'id',
+        )
+        const flashcardsQuery = buildSyncCollectionQuery(
+          userId,
+          sinceDate,
+          cursorStates?.flashcards,
+          'modifiedAt',
+          'id',
+        )
+        const tombstonesQuery = buildSyncCollectionQuery(
+          userId,
+          sinceDate,
+          cursorStates?.tombstones,
+          'deletedAt',
+          '_id',
+        )
+
+        const [rawNotes, rawNotebooks, rawFolders, rawFlashcards, rawTombstones] =
           await Promise.all([
-            notes
-              .find(
-                { userId, modifiedAt: { $gte: sinceDate } },
-                { projection: NOTE_DETAIL_PROJECTION },
-              )
-              .sort({ modifiedAt: 1 })
-              .toArray(),
-            notebooks
-              .find(
-                { userId, modifiedAt: { $gte: sinceDate } },
-                { projection: { _id: 0, userId: 0 } },
-              )
-              .sort({ modifiedAt: 1 })
-              .toArray(),
-            folders
-              .find(
-                { userId, modifiedAt: { $gte: sinceDate } },
-                { projection: { _id: 0, userId: 0 } },
-              )
-              .sort({ modifiedAt: 1 })
-              .toArray(),
-            flashcards
-              .find(
-                { userId, modifiedAt: { $gte: sinceDate } },
-                { projection: { _id: 0, userId: 0 } },
-              )
-              .sort({ modifiedAt: 1 })
-              .toArray(),
-            syncTombstones
-              .find(
-                { userId, deletedAt: { $gte: sinceDate } },
-                { projection: { _id: 0, entityType: 1, entityId: 1 } },
-              )
-              .toArray(),
+            notesQuery
+              ? notes
+                  .find(notesQuery, { projection: NOTE_DETAIL_PROJECTION })
+                  .sort({ modifiedAt: 1, id: 1 })
+                  .limit(fetchLimit)
+                  .toArray()
+              : [],
+            notebooksQuery
+              ? notebooks
+                  .find(notebooksQuery, { projection: { _id: 0, userId: 0 } })
+                  .sort({ modifiedAt: 1, id: 1 })
+                  .limit(fetchLimit)
+                  .toArray()
+              : [],
+            foldersQuery
+              ? folders
+                  .find(foldersQuery, { projection: { _id: 0, userId: 0 } })
+                  .sort({ modifiedAt: 1, id: 1 })
+                  .limit(fetchLimit)
+                  .toArray()
+              : [],
+            flashcardsQuery
+              ? flashcards
+                  .find(flashcardsQuery, { projection: { _id: 0, userId: 0 } })
+                  .sort({ modifiedAt: 1, id: 1 })
+                  .limit(fetchLimit)
+                  .toArray()
+              : [],
+            tombstonesQuery
+              ? syncTombstones
+                  .find(tombstonesQuery, {
+                    projection: { _id: 1, entityType: 1, entityId: 1, deletedAt: 1 },
+                  })
+                  .sort({ deletedAt: 1, _id: 1 })
+                  .limit(fetchLimit)
+                  .toArray()
+              : [],
           ])
+
+        const notesPage = sliceSyncBatch(rawNotes, effectiveLimit, 'modifiedAt', 'id')
+        const notebooksPage = sliceSyncBatch(rawNotebooks, effectiveLimit, 'modifiedAt', 'id')
+        const foldersPage = sliceSyncBatch(rawFolders, effectiveLimit, 'modifiedAt', 'id')
+        const flashcardsPage = sliceSyncBatch(rawFlashcards, effectiveLimit, 'modifiedAt', 'id')
+        const tombstonesPage = sliceSyncBatch(rawTombstones, effectiveLimit, 'deletedAt', '_id')
+
+        const hasMore =
+          notesPage.overflow ||
+          notebooksPage.overflow ||
+          foldersPage.overflow ||
+          flashcardsPage.overflow ||
+          tombstonesPage.overflow
+
+        let serverTime
+        let nextCursor = null
+
+        if (hasMore) {
+          const watermarkMs = Math.min(
+            notesPage.overflowTimestampMs,
+            notebooksPage.overflowTimestampMs,
+            foldersPage.overflowTimestampMs,
+            flashcardsPage.overflowTimestampMs,
+            tombstonesPage.overflowTimestampMs,
+          )
+          serverTime = new Date(watermarkMs).toISOString()
+          nextCursor = encodeSyncCursor(syncStartMs, {
+            notes: notesPage.nextState,
+            notebooks: notebooksPage.nextState,
+            folders: foldersPage.nextState,
+            flashcards: flashcardsPage.nextState,
+            tombstones: tombstonesPage.nextState,
+          })
+        } else {
+          serverTime = new Date(syncStartMs).toISOString()
+        }
 
         const deletedNotes = new Set()
         const deletedNotebooks = new Set()
         const deletedFolders = new Set()
         const deletedFlashcards = new Set()
 
-        for (const t of tombstones) {
+        for (const t of tombstonesPage.sliced) {
           if (t.entityType === 'note') deletedNotes.add(t.entityId)
           else if (t.entityType === 'notebook') deletedNotebooks.add(t.entityId)
           else if (t.entityType === 'folder') deletedFolders.add(t.entityId)
@@ -1250,12 +1469,14 @@ module.exports = fp(
 
         return {
           serverTime,
+          hasMore,
+          nextCursor,
           notes: {
-            upserted: upsertedNotes.map(normalizePersistedNote),
+            upserted: notesPage.sliced.map(normalizePersistedNote),
             deletedIds: Array.from(deletedNotes),
           },
           notebooks: {
-            upserted: upsertedNotebooks.map((nb) => ({
+            upserted: notebooksPage.sliced.map((nb) => ({
               id: nb.id,
               name: nb.name,
               description: nb.description ?? '',
@@ -1271,11 +1492,11 @@ module.exports = fp(
             deletedIds: Array.from(deletedNotebooks),
           },
           folders: {
-            upserted: upsertedFolders,
+            upserted: foldersPage.sliced,
             deletedIds: Array.from(deletedFolders),
           },
           flashcards: {
-            upserted: upsertedFlashcards.map((fc) => ({
+            upserted: flashcardsPage.sliced.map((fc) => ({
               id: fc.id,
               noteId: fc.noteId,
               front: fc.front,
@@ -1323,3 +1544,10 @@ module.exports = fp(
     },
   },
 )
+
+Object.defineProperty(notesStorePlugin, 'extractMarkdownLinks', {
+  value: extractMarkdownLinks,
+  enumerable: false,
+})
+
+module.exports = notesStorePlugin

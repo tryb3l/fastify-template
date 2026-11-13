@@ -38,13 +38,15 @@ module.exports = async function noteRoutes(fastify, opts) {
         if (folderId !== undefined) filter.folderId = folderId
       }
 
-      const notes = await request.notesDataSource.listNotes({
-        filter,
-        projection: NOTE_LIST_PROJECTION,
-        skip,
-        limit,
-      })
-      const totalCount = await request.notesDataSource.countNotes(filter)
+      const [notes, totalCount] = await Promise.all([
+        request.notesDataSource.listNotes({
+          filter,
+          projection: NOTE_LIST_PROJECTION,
+          skip,
+          limit,
+        }),
+        request.notesDataSource.countNotes(filter),
+      ])
       return { data: notes, totalCount }
     },
   })
@@ -65,6 +67,8 @@ module.exports = async function noteRoutes(fastify, opts) {
         required: ['since'],
         properties: {
           since: { type: 'string', format: 'date-time' },
+          limit: { type: 'integer', minimum: 1, maximum: 1000, default: 500 },
+          cursor: { type: 'string', minLength: 1, maxLength: 1024 },
         },
       },
       response: {
@@ -76,9 +80,19 @@ module.exports = async function noteRoutes(fastify, opts) {
             data: {
               type: 'object',
               additionalProperties: false,
-              required: ['serverTime', 'notes', 'notebooks', 'folders', 'flashcards'],
+              required: [
+                'serverTime',
+                'hasMore',
+                'nextCursor',
+                'notes',
+                'notebooks',
+                'folders',
+                'flashcards',
+              ],
               properties: {
                 serverTime: { type: 'string', format: 'date-time' },
+                hasMore: { type: 'boolean' },
+                nextCursor: { type: ['string', 'null'] },
                 notes: {
                   type: 'object',
                   additionalProperties: false,
@@ -179,7 +193,10 @@ module.exports = async function noteRoutes(fastify, opts) {
       },
     },
     handler: async function getWorkspaceSyncDeltaHandler(request) {
-      const delta = await request.notesDataSource.getWorkspaceSyncDelta(request.query.since)
+      const delta = await request.notesDataSource.getWorkspaceSyncDelta(request.query.since, {
+        limit: request.query.limit,
+        cursor: request.query.cursor,
+      })
       return { data: delta }
     },
   })
