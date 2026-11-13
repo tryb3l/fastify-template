@@ -355,6 +355,14 @@ test('Open registration starts with emailVerified: false and completes verificat
   const messages = mailerPlugin.getTestMessages()
   assert.strictEqual(messages.length, 1)
   assert.strictEqual(messages[0].to, email.toLowerCase())
+  assert.ok(
+    messages[0].text.includes('/verify-email/confirm#token='),
+    'Verification email link must pass token in URL fragment (#token=), not query string',
+  )
+  assert.ok(
+    !messages[0].text.includes('/verify-email/confirm?token='),
+    'Verification email link must not expose token in URL query string (?token=)',
+  )
 
   const tokenMatch = messages[0].text.match(/Verification token:\s*([0-9a-f-]+\.[0-9a-f]+)/i)
   assert.ok(tokenMatch, 'Expected verification token in email body')
@@ -371,7 +379,7 @@ test('Open registration starts with emailVerified: false and completes verificat
   })
   assert.strictEqual(badConfirmRes.statusCode, 401)
 
-  // Valid token confirms and sets emailVerified: true
+  // Valid token confirms and returns only { verified: true } without leaking user profile fields
   const confirmRes = await app.inject({
     method: 'POST',
     url: '/auth/verify-email/confirm',
@@ -381,8 +389,7 @@ test('Open registration starts with emailVerified: false and completes verificat
     },
   })
   assert.strictEqual(confirmRes.statusCode, 200)
-  assert.strictEqual(confirmRes.json().verified, true)
-  assert.strictEqual(confirmRes.json().data.emailVerified, true)
+  assert.deepStrictEqual(confirmRes.json(), { verified: true })
 
   // Re-using the same token is rejected with 401
   const replayConfirmRes = await app.inject({

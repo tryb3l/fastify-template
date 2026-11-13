@@ -2,6 +2,7 @@
 
 const fp = require('fastify-plugin')
 const nodemailer = require('nodemailer')
+const { resolvePrimaryFrontendUrl } = require('../utils/url')
 
 const MAX_CAPTURED_TEST_MESSAGES = 100
 const sentMessages = []
@@ -129,10 +130,7 @@ async function mailerPlugin(fastify) {
     },
 
     async sendInviteMail({ to, inviteToken, role = 'user', expiresAt }) {
-      const frontendBaseUrl = String(fastify.config?.FRONTEND_URL || '')
-        .split(',')[0]
-        .trim()
-        .replace(/\/+$/, '')
+      const frontendBaseUrl = resolvePrimaryFrontendUrl(fastify.config?.FRONTEND_URL)
       const inviteUrl = `${frontendBaseUrl}/register?inviteToken=${encodeURIComponent(inviteToken)}`
       const expiryStr =
         expiresAt instanceof Date ? expiresAt.toISOString() : String(expiresAt || '')

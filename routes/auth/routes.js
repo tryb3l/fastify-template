@@ -1,6 +1,7 @@
 'use strict'
 
 const { validatePassword, hashPassword } = require('../auth/generate-hash')
+const { resolvePrimaryFrontendUrl } = require('../../utils/url')
 
 module.exports = async function authRoutes(fastify) {
   fastify.post('/register', {
@@ -146,6 +147,9 @@ module.exports = async function authRoutes(fastify) {
       try {
         isMatch = await validatePassword(request.body.password, storedHash)
       } catch (err) {
+        if (err.statusCode === 503) {
+          throw err
+        }
         request.log.error({ err }, 'Password verification failed due to operational error')
         throw fastify.httpErrors.internalServerError('Authentication service error')
       }
@@ -408,11 +412,8 @@ module.exports = async function authRoutes(fastify) {
       })
 
       if (initiated && fastify.mailer?.sendEmailVerificationMail) {
-        const frontendBaseUrl = String(fastify.config?.FRONTEND_URL || '')
-          .split(',')[0]
-          .trim()
-          .replace(/\/+$/, '')
-        const rawVerifyUrl = `${frontendBaseUrl}/verify-email/confirm?token=${encodeURIComponent(initiated.token)}`
+        const frontendBaseUrl = resolvePrimaryFrontendUrl(fastify.config?.FRONTEND_URL)
+        const rawVerifyUrl = `${frontendBaseUrl}/verify-email/confirm#token=${encodeURIComponent(initiated.token)}`
         try {
           await fastify.mailer.sendEmailVerificationMail({
             to: initiated.email,
@@ -444,10 +445,9 @@ module.exports = async function authRoutes(fastify) {
         200: {
           type: 'object',
           additionalProperties: false,
-          required: ['verified', 'data'],
+          required: ['verified'],
           properties: {
             verified: { type: 'boolean' },
-            data: { $ref: 'schema:user#' },
           },
         },
       },
@@ -474,7 +474,6 @@ module.exports = async function authRoutes(fastify) {
 
       return {
         verified: true,
-        data: verifiedUser,
       }
     },
   })
