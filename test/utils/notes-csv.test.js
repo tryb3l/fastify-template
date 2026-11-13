@@ -2,9 +2,11 @@
 
 const test = require('node:test')
 const assert = require('node:assert')
+const { Readable } = require('node:stream')
 const {
   CSV_IMPORT_BATCH_SIZE,
   buildNoteImportHeaders,
+  importNotesFromCsvStream,
   mapNoteImportRow,
 } = require('../../utils/notes-csv')
 
@@ -148,4 +150,43 @@ test('mapNoteImportRow rejects note bodies above the 50000 character ceiling', (
 
 test('CSV import batching uses the documented chunk size', () => {
   assert.strictEqual(CSV_IMPORT_BATCH_SIZE, 500)
+})
+
+test('importNotesFromCsvStream propagates upstream Readable errors without hanging', async () => {
+  let step = 0
+  const failingStream = new Readable({
+    read() {
+      step += 1
+      if (step === 1) {
+        this.push('title,body\n"First note","Body one"\n')
+      } else {
+        this.destroy(new Error('Upstream socket reset'))
+      }
+    },
+  })
+
+  await assert.rejects(
+    () => importNotesFromCsvStream(failingStream, async () => ['id-1']),
+    /Upstream socket reset/,
+  )
+})
+
+test('importNotesFromCsvStream rejects with 413 when multipart stream is marked truncated', async () => {
+  const truncatedStream = Readable.from(['title,body\n"Valid row","Before truncation"\n'])
+  truncatedStream.truncated = true
+
+  const persistedBatches = []
+  await assert.rejects(
+    () =>
+      importNotesFromCsvStream(truncatedStream, async (batch) => {
+        persistedBatches.push(batch)
+        return ['id-1']
+      }),
+    (err) => {
+      assert.strictEqual(err.statusCode, 413)
+      return true
+    },
+  )
+
+  assert.strictEqual(persistedBatches.length, 0)
 })

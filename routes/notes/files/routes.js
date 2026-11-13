@@ -168,6 +168,7 @@ module.exports = async function fileRoutes(fastify) {
   fastify.route({
     method: 'GET',
     url: '/:fileId',
+    compress: false,
     schema: {
       tags: ['files'],
       summary: 'Download or stream an attachment (supports HTTP Range)',
@@ -186,11 +187,15 @@ module.exports = async function fileRoutes(fastify) {
         },
       },
       response: {
-        200: {
+        416: {
           type: 'object',
-        },
-        206: {
-          type: 'object',
+          additionalProperties: false,
+          required: ['statusCode', 'error', 'message'],
+          properties: {
+            statusCode: { type: 'integer' },
+            error: { type: 'string' },
+            message: { type: 'string' },
+          },
         },
       },
     },
