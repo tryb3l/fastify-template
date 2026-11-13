@@ -44,6 +44,22 @@ module.exports = fp(
       INVITE_TTL_HOURS: fastify.secrets.INVITE_TTL_HOURS || 168,
       MAX_UPLOAD_BYTES: fastify.secrets.MAX_UPLOAD_BYTES || 10_000_000,
       USER_STORAGE_QUOTA_BYTES: fastify.secrets.USER_STORAGE_QUOTA_BYTES || 524_288_000,
+      MAX_HEAP_USED_BYTES: fastify.secrets.MAX_HEAP_USED_BYTES || 750_000_000,
+      MAX_RSS_BYTES: fastify.secrets.MAX_RSS_BYTES || 1_200_000_000,
+      CACHE_MAX_ENTRIES: fastify.secrets.CACHE_MAX_ENTRIES || 2_000,
+      ARGON2_MAX_CONCURRENCY: fastify.secrets.ARGON2_MAX_CONCURRENCY || 2,
+      ARGON2_MAX_QUEUE:
+        typeof fastify.secrets.ARGON2_MAX_QUEUE === 'number'
+          ? fastify.secrets.ARGON2_MAX_QUEUE
+          : 32,
+      MONGO_MAX_POOL_SIZE:
+        typeof fastify.secrets.MONGO_MAX_POOL_SIZE === 'number'
+          ? fastify.secrets.MONGO_MAX_POOL_SIZE
+          : 20,
+      MONGO_MIN_POOL_SIZE:
+        typeof fastify.secrets.MONGO_MIN_POOL_SIZE === 'number'
+          ? fastify.secrets.MONGO_MIN_POOL_SIZE
+          : 2,
 
       ADMIN_EMAIL: fastify.secrets.ADMIN_EMAIL,
       ADMIN_PASSWORD: fastify.secrets.ADMIN_PASSWORD,

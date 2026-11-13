@@ -4,14 +4,32 @@ const fp = require('fastify-plugin')
 const v8 = require('node:v8')
 const underPressure = require('@fastify/under-pressure')
 
-module.exports = fp(
+const DEFAULT_MAX_HEAP_USED_BYTES = 750_000_000
+const DEFAULT_MAX_RSS_BYTES = 1_200_000_000
+
+function resolveUnderPressureThresholds(config = {}) {
+  const maxHeapUsedBytes =
+    Number(config.MAX_HEAP_USED_BYTES ?? process.env.MAX_HEAP_USED_BYTES) ||
+    DEFAULT_MAX_HEAP_USED_BYTES
+  const maxRssBytes =
+    Number(config.MAX_RSS_BYTES ?? process.env.MAX_RSS_BYTES) || DEFAULT_MAX_RSS_BYTES
+
+  return {
+    maxHeapUsedBytes,
+    maxRssBytes,
+  }
+}
+
+const underPressurePlugin = fp(
   async function underPressurePlugin(fastify) {
     fastify.log.info('Starting registration of under-pressure plugin')
 
+    const { maxHeapUsedBytes, maxRssBytes } = resolveUnderPressureThresholds(fastify.config)
+
     await fastify.register(underPressure, {
       maxEventLoopDelay: 1000,
-      maxHeapUsedBytes: 500_000_000,
-      maxRssBytes: 500_000_000,
+      maxHeapUsedBytes,
+      maxRssBytes,
       maxEventLoopUtilization: 0.98,
 
       message: 'Server is currently under heavy load. Please try again later.',
@@ -48,7 +66,11 @@ module.exports = fp(
   },
   {
     name: 'under-pressure',
-    dependencies: ['db-plugin'],
-    decorators: { fastify: ['mongo'] },
+    dependencies: ['application-config', 'db-plugin'],
+    decorators: { fastify: ['config', 'mongo'] },
   },
 )
+
+module.exports = Object.assign(underPressurePlugin, {
+  resolveUnderPressureThresholds,
+})

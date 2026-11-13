@@ -14,14 +14,19 @@ function extractTraceId(raw) {
   return match ? match[1] : null
 }
 
-function resolveHttpsOptions() {
-  if (process.env.HTTPS_ENABLED === 'false') {
+function resolveHttpsOptions(env = process.env) {
+  if (env.HTTPS_ENABLED === 'false') {
+    return null
+  }
+
+  const hasExplicitCertPaths = Boolean(env.HTTPS_KEY_PATH && env.HTTPS_CERT_PATH)
+  if (env.NODE_ENV === 'production' && env.HTTPS_ENABLED !== 'true' && !hasExplicitCertPaths) {
     return null
   }
 
   const defaultCertsDir = path.join(__dirname, '..', '.certs')
-  const keyPath = process.env.HTTPS_KEY_PATH || path.join(defaultCertsDir, 'localhost-key.pem')
-  const certPath = process.env.HTTPS_CERT_PATH || path.join(defaultCertsDir, 'localhost.pem')
+  const keyPath = env.HTTPS_KEY_PATH || path.join(defaultCertsDir, 'localhost-key.pem')
+  const certPath = env.HTTPS_CERT_PATH || path.join(defaultCertsDir, 'localhost.pem')
 
   if (!fs.existsSync(keyPath) || !fs.existsSync(certPath)) {
     return null
@@ -33,10 +38,43 @@ function resolveHttpsOptions() {
   }
 }
 
+function resolveTrustProxy(raw = process.env.TRUST_PROXY) {
+  if (raw === undefined || raw === null) {
+    return false
+  }
+  if (typeof raw === 'boolean') {
+    return raw
+  }
+  if (typeof raw === 'number') {
+    return Number.isInteger(raw) && raw > 0 ? raw : false
+  }
+
+  const trimmed = String(raw).trim()
+  if (trimmed === '' || trimmed.toLowerCase() === 'false' || trimmed === '0') {
+    return false
+  }
+  if (trimmed.toLowerCase() === 'true') {
+    return true
+  }
+  if (/^\d+$/.test(trimmed)) {
+    const hops = Number(trimmed)
+    return hops > 0 ? hops : false
+  }
+  if (trimmed.includes(',')) {
+    return trimmed
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+  }
+
+  return trimmed
+}
+
 const httpsOptions = resolveHttpsOptions()
 
-module.exports = {
+const serverOptions = {
   ...(httpsOptions ? { https: httpsOptions } : {}),
+  trustProxy: resolveTrustProxy(),
   logger: loggerOptions,
   childLoggerFactory(logger, bindings, opts, rawReq) {
     const traceId = extractTraceId(rawReq.headers?.traceparent)
@@ -61,3 +99,16 @@ module.exports = {
     },
   },
 }
+
+Object.defineProperties(serverOptions, {
+  resolveHttpsOptions: {
+    value: resolveHttpsOptions,
+    enumerable: false,
+  },
+  resolveTrustProxy: {
+    value: resolveTrustProxy,
+    enumerable: false,
+  },
+})
+
+module.exports = serverOptions
