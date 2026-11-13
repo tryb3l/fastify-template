@@ -242,3 +242,129 @@ test('GET /dashboard/summary - Aggregates inboxNoteCount, dueFlashcardsCount, ac
     flashcardsReviewed: 1,
   })
 })
+
+test('GET /dashboard/summary - Includes 1-hop external linked Notes from archived Notebooks and Inbox in active Campaign Readiness without counting unrelated archived Notes', async (t) => {
+  const customEnv = {
+    MONGO_URL: replaceDatabaseName(getTestMongoUrl(), 'dashboard-archived-links-db'),
+  }
+  const { app, accessToken } = await setup(t, 'user', customEnv)
+  const headers = { Authorization: `Bearer ${accessToken}` }
+
+  // 1. Create an Inbox Note ('mastered') and an unrelated Inbox Note ('to_review')
+  const linkedInboxRes = await app.inject({
+    method: 'POST',
+    url: '/notes',
+    headers,
+    payload: {
+      title: 'Linked Inbox Reference',
+      body: 'Canonical snippet in Inbox',
+      readiness: 'mastered',
+    },
+  })
+  assert.strictEqual(linkedInboxRes.statusCode, 201)
+  const linkedInboxId = linkedInboxRes.json().data.id
+
+  const unrelatedInboxRes = await app.inject({
+    method: 'POST',
+    url: '/notes',
+    headers,
+    payload: {
+      title: 'Unrelated Inbox Scratch',
+      body: 'Scratchpad',
+      readiness: 'to_review',
+    },
+  })
+  assert.strictEqual(unrelatedInboxRes.statusCode, 201)
+
+  // 2. Create an archived Notebook with 1 linked Note ('mastered') and 1 unrelated Note ('to_review')
+  const archivedNbRes = await app.inject({
+    method: 'POST',
+    url: '/notebooks',
+    headers,
+    payload: {
+      name: 'Archived University Notes',
+      mode: 'notebook',
+      status: 'archived',
+    },
+  })
+  assert.strictEqual(archivedNbRes.statusCode, 201)
+  const archivedNbId = archivedNbRes.json().data.id
+
+  const linkedArchivedNoteRes = await app.inject({
+    method: 'POST',
+    url: '/notes',
+    headers,
+    payload: {
+      title: 'OS Virtual Memory',
+      body: 'Page tables and TLB',
+      notebookId: archivedNbId,
+      readiness: 'mastered',
+    },
+  })
+  assert.strictEqual(linkedArchivedNoteRes.statusCode, 201)
+  const linkedArchivedNoteId = linkedArchivedNoteRes.json().data.id
+
+  const unrelatedArchivedNoteRes = await app.inject({
+    method: 'POST',
+    url: '/notes',
+    headers,
+    payload: {
+      title: 'Old Compiler Homework',
+      body: 'Unrelated archived note',
+      notebookId: archivedNbId,
+      readiness: 'to_review',
+    },
+  })
+  assert.strictEqual(unrelatedArchivedNoteRes.statusCode, 201)
+
+  // 3. Create an active Campaign with 1 direct Note ('to_review') linking 1-hop to both linkedInboxId and linkedArchivedNoteId
+  const activeCampRes = await app.inject({
+    method: 'POST',
+    url: '/notebooks',
+    headers,
+    payload: {
+      name: 'Systems Interview Campaign',
+      mode: 'campaign',
+    },
+  })
+  assert.strictEqual(activeCampRes.statusCode, 201)
+  const activeCampId = activeCampRes.json().data.id
+
+  const campNoteRes = await app.inject({
+    method: 'POST',
+    url: '/notes',
+    headers,
+    payload: {
+      title: 'Memory Management Prep',
+      body: `See [[${linkedInboxId}]] and [[${linkedArchivedNoteId}]]`,
+      notebookId: activeCampId,
+      readiness: 'to_review',
+    },
+  })
+  assert.strictEqual(campNoteRes.statusCode, 201)
+
+  const summaryRes = await app.inject({
+    method: 'GET',
+    url: '/dashboard/summary',
+    headers,
+  })
+  assert.strictEqual(summaryRes.statusCode, 200)
+  const summary = summaryRes.json().data
+
+  assert.strictEqual(summary.inboxNoteCount, 2)
+  assert.strictEqual(summary.activeNotebooks.length, 0)
+  assert.strictEqual(summary.activeCampaigns.length, 1)
+
+  const camp = summary.activeCampaigns[0]
+  assert.strictEqual(camp.id, activeCampId)
+  assert.strictEqual(camp.totalNoteCount, 1)
+  // 1 direct ('to_review' = 0) + 2 external ('mastered' = 1.0 each) -> 2 / 3 = 67%, blocks = 7
+  assert.deepStrictEqual(camp.readiness, {
+    toReviewCount: 1,
+    inProgressCount: 0,
+    masteredCount: 2,
+    totalCount: 3,
+    scorePercent: 67,
+    blocks: 7,
+  })
+})

@@ -151,8 +151,10 @@ module.exports = async function userRoutes(fastify) {
       const { skip, limit, username } = request.query
       const filter = username ? { username } : {}
 
-      const users = await fastify.usersDataSource.listUsers({ filter, skip, limit })
-      const totalCount = await fastify.usersDataSource.countUsers({ filter })
+      const [users, totalCount] = await Promise.all([
+        fastify.usersDataSource.listUsers({ filter, skip, limit }),
+        fastify.usersDataSource.countUsers({ filter }),
+      ])
 
       return { data: users, totalCount }
     },
