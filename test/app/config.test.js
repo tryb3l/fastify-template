@@ -11,7 +11,10 @@ const migration008 = require('../../migrations/008-esr-flashcard-drill-index')
 const cachePlugin = require('../../plugins/cache')
 const configPlugin = require('../../plugins/config')
 const { resolveMongoPoolOptions } = require('../../plugins/db')
+const flashcardsStorePlugin = require('../../plugins/flashcards-store')
 const mailerPlugin = require('../../plugins/mailer')
+const notebooksStorePlugin = require('../../plugins/notebooks-store')
+const notesStorePlugin = require('../../plugins/notes-store')
 const { resolveUnderPressureThresholds } = require('../../plugins/under-pressure')
 const usersPlugin = require('../../plugins/users')
 const { buildApp, getTestEnv } = require('../test-setup')
@@ -309,6 +312,188 @@ describe('Application configuration', () => {
     assert.equal(raceFindCalls, 1)
     assert.equal(inFlightResult.id, 'u-race')
     assert.equal(raceApp.cacheGet('user:u-race'), null)
+  })
+
+  test('readNote coalesces cold reads, bypasses custom projections, enforces cache decorator metadata, and resists Leitner/edit stale-write races', async (t) => {
+    // Arrange 1: verify strict decorator check when cacheFetch/cacheDelete are absent
+    const fp = require('fastify-plugin')
+    const missingDecoratorApp = Fastify({ logger: false })
+    t.after(async () => {
+      await missingDecoratorApp.close().catch(() => {})
+    })
+    missingDecoratorApp.decorate('mongo', { db: { collection: () => ({}) } })
+    await missingDecoratorApp.register(fp(async () => {}, { name: 'db-plugin' }))
+    await missingDecoratorApp.register(fp(async () => {}, { name: 'app-cache' }))
+    missingDecoratorApp.register(usersPlugin)
+
+    // Arrange 2: gated Notes + Flashcards store app to exercise coalescing & mid-flight invalidation
+    let noteFindOneCalls = 0
+    let releaseNoteGate = () => {}
+    let nextNoteFindGate = Promise.resolve()
+    const noteState = {
+      id: '01950000-0000-7000-8000-000000000099',
+      userId: 'u1',
+      title: 'Distributed Consensus',
+      body: 'Raft leader election notes',
+      tags: ['systems'],
+      notebookId: null,
+      folderId: null,
+      readiness: 'to_review',
+      noteType: 'standard',
+      explicitLinks: [],
+      links: [],
+      attachments: [],
+      revision: 1,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      modifiedAt: new Date('2026-01-01T00:00:00.000Z'),
+    }
+    const cardState = {
+      _id: '01950000-0000-7000-8000-000000000199',
+      id: '01950000-0000-7000-8000-000000000199',
+      userId: 'u1',
+      noteId: noteState.id,
+      front: 'What guarantees safety in Raft?',
+      back: 'Election restriction + leader completeness',
+      box: 3,
+      reviewCount: 2,
+      lapseCount: 0,
+      lastRating: 'good',
+      nextReviewAt: new Date('2026-01-01T00:00:00.000Z'),
+      lastReviewedAt: new Date('2026-01-01T00:00:00.000Z'),
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      modifiedAt: new Date('2026-01-01T00:00:00.000Z'),
+    }
+
+    const storeApp = Fastify({ logger: false })
+    t.after(async () => {
+      await storeApp.close()
+    })
+    storeApp.decorate('httpErrors', {
+      badRequest: (msg) => Object.assign(new Error(msg), { statusCode: 400 }),
+      notFound: (msg) => Object.assign(new Error(msg), { statusCode: 404 }),
+      conflict: (msg) => Object.assign(new Error(msg), { statusCode: 409 }),
+    })
+    await storeApp.register(configPlugin, {
+      configData: buildConfigData({ CACHE_MAX_ENTRIES: '16' }),
+    })
+    await storeApp.register(cachePlugin)
+    await storeApp.register(
+      fp(
+        async (instance) => {
+          instance.decorate('mongo', {
+            db: {
+              collection(name) {
+                if (name === 'notes') {
+                  return {
+                    async findOne(filter) {
+                      noteFindOneCalls += 1
+                      const snapshot = { ...noteState }
+                      const gate = nextNoteFindGate
+                      nextNoteFindGate = Promise.resolve()
+                      await gate
+                      if (filter.id !== noteState.id || filter.userId !== noteState.userId) {
+                        return null
+                      }
+                      return snapshot
+                    },
+                    async findOneAndUpdate(_filter, update) {
+                      if (update?.$set?.readiness) {
+                        noteState.readiness = update.$set.readiness
+                      }
+                      if (update?.$inc?.revision) {
+                        noteState.revision += update.$inc.revision
+                      }
+                      return { ...noteState }
+                    },
+                  }
+                }
+                if (name === 'flashcards') {
+                  return {
+                    async findOne(filter) {
+                      return filter.id === cardState.id ? { ...cardState } : null
+                    },
+                    async findOneAndUpdate(_filter, update) {
+                      Object.assign(cardState, update.$set)
+                      if (update.$inc?.reviewCount) {
+                        cardState.reviewCount += update.$inc.reviewCount
+                      }
+                      return { ...cardState }
+                    },
+                    find() {
+                      return {
+                        toArray: async () => [{ box: cardState.box }],
+                      }
+                    },
+                  }
+                }
+                return {
+                  findOne: async () => null,
+                  insertOne: async () => ({ insertedId: '1' }),
+                }
+              },
+            },
+          })
+        },
+        { name: 'db-plugin' },
+      ),
+    )
+    await storeApp.register(
+      fp(
+        async (instance) => {
+          instance.decorate('notesFileManager', { deleteNoteAttachments: async () => {} })
+        },
+        { name: 'notes-file-manager' },
+      ),
+    )
+    await storeApp.register(notebooksStorePlugin)
+    await storeApp.register(flashcardsStorePlugin)
+    await storeApp.register(notesStorePlugin)
+    await storeApp.ready()
+
+    // Act & Assert 1: missing cache decorators fail Fastify boot
+    await assert.rejects(
+      () => missingDecoratorApp.ready(),
+      (err) =>
+        err.code === 'FST_ERR_PLUGIN_NOT_PRESENT_IN_INSTANCE' && /cacheDelete/.test(err.message),
+    )
+
+    // Act 2: concurrent cold readNote calls coalesce into 1 findOne, while projection reads bypass cache
+    nextNoteFindGate = new Promise((resolve) => {
+      releaseNoteGate = resolve
+    })
+    const coldNote1 = storeApp.notesDataSource.readNote(noteState.id, 'u1')
+    const coldNote2 = storeApp.notesDataSource.readNote(noteState.id, 'u1')
+    releaseNoteGate()
+    const [noteRes1, noteRes2] = await Promise.all([coldNote1, coldNote2])
+    await storeApp.notesDataSource.readNote(noteState.id, 'u1', { title: 1 })
+
+    // Assert 2
+    assert.equal(noteFindOneCalls, 2)
+    assert.equal(noteRes1.revision, 1)
+    assert.equal(noteRes2.revision, 1)
+    assert.equal(storeApp.cacheGet(`note:${noteState.id}:u1`)?.readiness, 'to_review')
+
+    // Act 3: Leitner Drill Flashcard review promotes Note Readiness to mastered while slow readNote is in flight
+    storeApp.cacheDelete(`note:${noteState.id}:u1`)
+    nextNoteFindGate = new Promise((resolve) => {
+      releaseNoteGate = resolve
+    })
+    const staleInFlightNoteRead = storeApp.notesDataSource.readNote(noteState.id, 'u1')
+    await Promise.resolve()
+    const reviewOutcome = await storeApp.flashcardsDataSource.reviewFlashcard(
+      cardState.id,
+      'good',
+      'u1',
+    )
+    releaseNoteGate()
+    const staleCallerNote = await staleInFlightNoteRead
+    const freshNoteAfterDrill = await storeApp.notesDataSource.readNote(noteState.id, 'u1')
+
+    // Assert 3: caller gets pre-review snapshot without AbortError, cache was NOT poisoned, and fresh read sees mastered!
+    assert.equal(reviewOutcome.noteReadiness, 'mastered')
+    assert.equal(staleCallerNote.readiness, 'to_review')
+    assert.equal(freshNoteAfterDrill.readiness, 'mastered')
+    assert.equal(storeApp.cacheGet(`note:${noteState.id}:u1`)?.readiness, 'mastered')
   })
 
   test('.dockerignore excludes local TLS keys, uploads, git, node_modules, and runtime dirs', () => {

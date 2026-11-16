@@ -198,6 +198,80 @@ describe('createBoundedLruCache', () => {
     assert.equal(cache.get('user:race'), null)
   })
 
+  test('propagates 404 rejections without wedging slots and preserves fresh revision on slot reuse after mid-flight delete', async () => {
+    // Arrange
+    const cache = createBoundedLruCache({ maxEntries: 2 })
+    let releaseNotFound
+    const notFoundGate = new Promise((resolve) => {
+      releaseNotFound = resolve
+    })
+    let missingQueries = 0
+
+    // Act 1: concurrent cold fetches where loader throws 404
+    const nf1 = cache.fetch(
+      'note:missing:u1',
+      async () => {
+        missingQueries += 1
+        await notFoundGate
+        throw Object.assign(new Error('Note not found'), { statusCode: 404 })
+      },
+      60_000,
+    )
+    const nf2 = cache.fetch(
+      'note:missing:u1',
+      async () => {
+        missingQueries += 1
+        throw Object.assign(new Error('Note not found'), { statusCode: 404 })
+      },
+      60_000,
+    )
+    releaseNotFound()
+
+    // Assert 1: both callers receive 404 from 1 query and slot is usable afterward
+    await assert.rejects(() => nf1, { statusCode: 404 })
+    await assert.rejects(() => nf2, { statusCode: 404 })
+    assert.equal(missingQueries, 1)
+    assert.equal(cache.get('note:missing:u1'), null)
+
+    // Act 2: slow rev-1 read invalidated mid-flight, rev-2 read reuses freed slot and finishes before rev-1
+    let releaseOldRev
+    let releaseFreshRev
+    const oldRevGate = new Promise((resolve) => {
+      releaseOldRev = resolve
+    })
+    const freshRevGate = new Promise((resolve) => {
+      releaseFreshRev = resolve
+    })
+
+    const slowStaleRead = cache.fetch(
+      'note:n1:u1',
+      async () => {
+        await oldRevGate
+        return { id: 'n1', revision: 1, readiness: 'to_review' }
+      },
+      60_000,
+    )
+    cache.delete('note:n1:u1')
+    const freshRead = cache.fetch(
+      'note:n1:u1',
+      async () => {
+        await freshRevGate
+        return { id: 'n1', revision: 2, readiness: 'mastered' }
+      },
+      60_000,
+    )
+
+    releaseFreshRev()
+    const freshResult = await freshRead
+    releaseOldRev()
+    const staleCallerResult = await slowStaleRead
+
+    // Assert 2: slow caller resolves cleanly without overwriting fresh revision 2 in RAM
+    assert.deepEqual(staleCallerResult, { id: 'n1', revision: 1, readiness: 'to_review' })
+    assert.deepEqual(freshResult, { id: 'n1', revision: 2, readiness: 'mastered' })
+    assert.deepEqual(cache.get('note:n1:u1'), { id: 'n1', revision: 2, readiness: 'mastered' })
+  })
+
   test('publishes cache metrics over node:diagnostics_channel when subscribed', (t) => {
     // Arrange
     const events = []

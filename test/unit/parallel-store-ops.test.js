@@ -190,9 +190,10 @@ test('notes-store, notebooks-store, and flashcards-store parallelize independent
       collection: (name) => collections[name],
     },
   })
-  app.decorate('cacheGet', async () => null)
-  app.decorate('cacheSet', async () => {})
+  app.decorate('cacheGet', () => null)
+  app.decorate('cacheSet', () => {})
   app.decorate('cacheDelete', () => tracker.track(async () => {}))
+  app.decorate('cacheFetch', async (_key, loader) => loader())
   app.decorate('recordDailyActivity', () => tracker.track(async () => {}))
   app.decorate('notesFileManager', {
     deleteNoteAttachments: () => tracker.track(async () => {}),

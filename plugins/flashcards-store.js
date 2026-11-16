@@ -568,7 +568,7 @@ module.exports = fp(
     dependencies: ['db-plugin', 'notebooks-store', 'app-cache'],
     name: 'flashcards-store',
     decorators: {
-      fastify: ['mongo', 'notebooksDataSource'],
+      fastify: ['mongo', 'notebooksDataSource', 'cacheDelete'],
     },
   },
 )
