@@ -806,6 +806,6 @@ module.exports = fp(usersPlugin, {
   name: 'users-store',
   dependencies: ['db-plugin', 'app-cache'],
   decorators: {
-    fastify: ['mongo'],
+    fastify: ['mongo', 'cacheDelete', 'cacheFetch'],
   },
 })

@@ -632,38 +632,36 @@ const notesStorePlugin = fp(
       async readNote(id, userId, projection = {}) {
         fastify.log.debug('Entering readNote method')
         const useCache =
-          Object.keys(projection).length === 0 && typeof fastify.cacheGet === 'function'
-        const cacheKey = useCache ? buildNoteCacheKey(id, userId) : null
+          Object.keys(projection).length === 0 && typeof fastify.cacheFetch === 'function'
 
-        if (useCache) {
-          const cached = await fastify.cacheGet(cacheKey)
-          if (cached) {
-            fastify.log.debug('Cache HIT - Serving from RAM')
-            return cached
-          }
-        }
-
-        const note = await notes.findOne(
-          { id: id, userId: userId },
-          {
-            projection: {
-              ...NOTE_DETAIL_PROJECTION,
-              ...projection,
+        const loadNoteFromDb = async () => {
+          const note = await notes.findOne(
+            { id: id, userId: userId },
+            {
+              projection: {
+                ...NOTE_DETAIL_PROJECTION,
+                ...projection,
+              },
             },
-          },
-        )
-        if (!note) {
-          fastify.log.debug(`Note not found for ID: ${id} and User ID: ${userId}`)
-          throw fastify.httpErrors.notFound('Note not found')
+          )
+          if (!note) {
+            fastify.log.debug(`Note not found for ID: ${id} and User ID: ${userId}`)
+            throw fastify.httpErrors.notFound('Note not found')
+          }
+
+          return normalizePersistedNote(note)
         }
 
-        const normalized = normalizePersistedNote(note)
-        if (useCache && typeof fastify.cacheSet === 'function') {
-          await fastify.cacheSet(cacheKey, normalized, NOTE_CACHE_TTL_MS)
-        }
+        const resolvedNote = useCache
+          ? await fastify.cacheFetch(
+              buildNoteCacheKey(id, userId),
+              loadNoteFromDb,
+              NOTE_CACHE_TTL_MS,
+            )
+          : await loadNoteFromDb()
 
         fastify.log.debug('Exiting readNote method')
-        return normalized
+        return resolvedNote
       },
 
       async updateNote(id, newNote, userId) {
@@ -1540,7 +1538,14 @@ const notesStorePlugin = fp(
     ],
     name: 'notes-store',
     decorators: {
-      fastify: ['mongo', 'notebooksDataSource', 'notesFileManager', 'flashcardsDataSource'],
+      fastify: [
+        'mongo',
+        'notebooksDataSource',
+        'notesFileManager',
+        'flashcardsDataSource',
+        'cacheDelete',
+        'cacheFetch',
+      ],
     },
   },
 )
