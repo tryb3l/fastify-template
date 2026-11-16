@@ -5,14 +5,9 @@ const {
   DEFAULT_CACHE_MAX_ENTRIES,
   DEFAULT_CACHE_MAX_BYTES,
   DEFAULT_CACHE_MAX_ENTRY_BYTES,
+  isUserCacheKey,
   createBoundedLruCache,
 } = require('../utils/lru-cache')
-
-const USER_PARTITION_PREFIX = 'user:'
-
-function isUserCacheKey(key) {
-  return typeof key === 'string' && key.startsWith(USER_PARTITION_PREFIX)
-}
 
 module.exports = fp(
   async function cachePlugin(fastify, opts = {}) {

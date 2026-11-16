@@ -9,12 +9,9 @@ const {
   USER_AUTH_WITH_HASH_PROJECTION,
   USER_DETAIL_PROJECTION,
 } = require('../routes/users/user-contract')
+const { buildUserCacheKey } = require('../utils/lru-cache')
 
 const USER_CACHE_TTL_MS = 300_000
-
-function buildUserCacheKey(userId) {
-  return `user:${userId}`
-}
 
 function normalizeIdentifier(value) {
   return typeof value === 'string' ? value.trim().toLowerCase() : value
@@ -55,7 +52,7 @@ async function usersPlugin(fastify) {
   }
 
   async function invalidateUserCache(userId) {
-    if (typeof fastify.cacheDelete !== 'function' || !userId) {
+    if (!userId) {
       return
     }
     try {
@@ -244,10 +241,11 @@ async function usersPlugin(fastify) {
       }
 
       try {
-        const resolvedUser =
-          typeof fastify.cacheFetch === 'function'
-            ? await fastify.cacheFetch(buildUserCacheKey(id), loadUserFromDb, USER_CACHE_TTL_MS)
-            : await loadUserFromDb()
+        const resolvedUser = await fastify.cacheFetch(
+          buildUserCacheKey(id),
+          loadUserFromDb,
+          USER_CACHE_TTL_MS,
+        )
         fastify.log.debug('Exiting readUserById method')
         return resolvedUser
       } catch (error) {

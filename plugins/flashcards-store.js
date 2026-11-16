@@ -5,6 +5,7 @@ const crypto = require('node:crypto')
 const { randomUUIDv7 } = crypto
 const { instantToDate, nowInstant } = require('../utils/time')
 const { LEITNER_BOX_INTERVAL_DAYS } = require('../routes/flashcards/flashcard-contract')
+const { buildNoteCacheKey } = require('../utils/lru-cache')
 
 function normalizeFlashcardDoc(card) {
   return {
@@ -90,11 +91,11 @@ module.exports = fp(
     const syncTombstones = fastify.mongo.db.collection('syncTombstones')
 
     async function invalidateNoteCache(noteId, userId) {
-      if (typeof fastify.cacheDelete !== 'function' || !noteId || !userId) {
+      if (!noteId || !userId) {
         return
       }
       try {
-        await fastify.cacheDelete(`note:${noteId}:${userId}`)
+        await fastify.cacheDelete(buildNoteCacheKey(noteId, userId))
       } catch (err) {
         fastify.log.warn({ err, noteId, userId }, 'Failed to invalidate note cache key')
       }
