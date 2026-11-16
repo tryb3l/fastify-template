@@ -6,8 +6,8 @@ const path = require('node:path')
 const ansiPattern = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g')
 const EXPECTED_STYLED_PASS = '\u001b[1m\u001b[92m✔ passes\u001b[39m\u001b[22m'
 
-const { styles: createTextStyles } = require('../scripts/colors')
-const { createStyledNodeTestReporter } = require('./styled-node-test-reporter')
+const { styles: createTextStyles } = require('../../scripts/colors')
+const { createStyledNodeTestReporter } = require('../styled-node-test-reporter')
 
 function stripAnsi(value) {
   return value.replace(ansiPattern, '')

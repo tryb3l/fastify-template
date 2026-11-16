@@ -67,7 +67,7 @@ function createBoundedLruCache(maxEntries = DEFAULT_CACHE_MAX_ENTRIES) {
   }
 }
 
-module.exports = fp(
+const cachePlugin = fp(
   async function cachePlugin(fastify) {
     fastify.log.info('Starting registration of cache plugin')
 
@@ -94,3 +94,7 @@ module.exports = fp(
     dependencies: ['application-config'],
   },
 )
+
+module.exports = Object.assign(cachePlugin, {
+  createBoundedLruCache,
+})

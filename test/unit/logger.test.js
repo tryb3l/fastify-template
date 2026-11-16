@@ -7,7 +7,7 @@ const { PassThrough } = require('node:stream')
 const Fastify = require('fastify')
 const serverOptions = require('../../configs/server-options')
 const errorHandlerPlugin = require('../../plugins/error-handler')
-const { randomString, randomStringWithPrefix } = require('./data-creator')
+const { randomString, randomStringWithPrefix } = require('../utils/data-creator')
 
 async function buildLoggedApp(t, stream) {
   const app = Fastify({

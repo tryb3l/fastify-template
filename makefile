@@ -209,6 +209,26 @@ dev-trace: check-env init-certs start-docker ## Start the managed local backend 
 test: init-certs start-docker ## Run the managed local test suite
 	$(NODE) --run test
 
+.PHONY: test-unit
+test-unit: ## Run pure unit tests without Docker or migrations
+	$(NODE) --run test:unit
+
+.PHONY: test-app
+test-app: init-certs start-docker ## Run application and plugin test suites
+	$(NODE) --run test:app
+
+.PHONY: test-endpoints
+test-endpoints: init-certs start-docker ## Run endpoint contract test suites
+	$(NODE) --run test:endpoints
+
+.PHONY: test-crud
+test-crud: init-certs start-docker ## Run CRUD lifecycle test suites
+	$(NODE) --run test:crud
+
+.PHONY: test-e2e
+test-e2e: init-certs start-docker ## Run end-to-end workflow test suites
+	$(NODE) --run test:e2e
+
 .PHONY: test-ci
 test-ci: ## Run tests in CI mode (no Docker, no managed runtime)
 	$(NODE) --run test:ci

@@ -3,6 +3,7 @@
 const test = require('node:test')
 const assert = require('node:assert')
 const fs = require('node:fs/promises')
+const os = require('node:os')
 const path = require('node:path')
 const {
   cryptoRandom,
@@ -117,16 +118,17 @@ test('Hash serialization and deserialization formatting', () => {
   )
 })
 
-test('MD5 file hashing creates correct hash from streams', async () => {
-  const tempFilePath = path.join(__dirname, 'test-temp-file.txt')
+test('MD5 file hashing creates correct hash from streams', async (t) => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fastify-crypto-md5-'))
+  t.after(async () => {
+    await fs.rm(tempDir, { recursive: true, force: true })
+  })
+
+  const tempFilePath = path.join(tempDir, 'sample.txt')
   const fileContent = 'hello world'
   const expectedMd5 = '5eb63bbbe01eeed093cb22bb8f5acdc3'
 
-  try {
-    await fs.writeFile(tempFilePath, fileContent)
-    const fileHash = await md5(tempFilePath)
-    assert.strictEqual(fileHash, expectedMd5, 'MD5 hash of file content should match known value')
-  } finally {
-    await fs.unlink(tempFilePath).catch(() => {})
-  }
+  await fs.writeFile(tempFilePath, fileContent)
+  const fileHash = await md5(tempFilePath)
+  assert.strictEqual(fileHash, expectedMd5, 'MD5 hash of file content should match known value')
 })

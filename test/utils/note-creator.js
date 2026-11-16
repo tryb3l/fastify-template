@@ -1,11 +1,11 @@
 'use strict'
 
-const assert = require('node:assert')
+const assert = require('node:assert/strict')
 const { randomString } = require('./data-creator')
-const { setup } = require('./setup-user')
+const { seedUser } = require('./setup-user')
 
 async function createNote(t, noteData = {}) {
-  const { app, accessToken, refreshToken, mongoUrl } = await setup(t)
+  const { app, accessToken, refreshToken, mongoUrl, userId } = await seedUser(t)
 
   const defaultNoteData = {
     title: randomString(10),
@@ -25,13 +25,13 @@ async function createNote(t, noteData = {}) {
     payload: payload,
   })
 
-  assert.strictEqual(
+  assert.equal(
     response.statusCode,
     201,
     `Failed to create note: ${response.statusCode} - ${response.payload}`,
   )
 
-  return { note: response.json(), app, accessToken, refreshToken, mongoUrl }
+  return { note: response.json(), app, accessToken, refreshToken, mongoUrl, userId }
 }
 
 module.exports = { createNote }

@@ -16,7 +16,7 @@ const {
   getRuntimeStatus,
   modeKey,
   runtimeDir: moduleRuntimeDir,
-} = require('../scripts/managed-spawn')
+} = require('../../scripts/managed-spawn')
 
 // -- Utils -----------------------------------------------------------------
 

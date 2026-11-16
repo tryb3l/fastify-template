@@ -7,7 +7,7 @@ const os = require('node:os')
 const path = require('node:path')
 const { spawnSync } = require('node:child_process')
 
-const repoRoot = path.join(__dirname, '..')
+const repoRoot = path.join(__dirname, '..', '..')
 const ansiPattern = new RegExp(`${String.fromCharCode(27)}[[0-9;]*m`, 'g')
 
 function createTempDir(t) {
@@ -41,13 +41,16 @@ function parseEnvFile(filePath) {
 }
 
 function runMake(args, options = {}) {
+  const { NODE: _inheritedNode, ...inheritedEnv } = process.env
+  const env = {
+    ...inheritedEnv,
+    ...options.env,
+  }
+
   const result = spawnSync('make', args, {
     cwd: repoRoot,
     encoding: 'utf8',
-    env: {
-      ...process.env,
-      ...options.env,
-    },
+    env,
   })
 
   return {
@@ -322,4 +325,31 @@ test('make dev ensures docker is running before starting the backend runtime', (
   assert.strictEqual(result.status, 0, result.output)
   assert.ok(result.output.includes('Docker is ready.'), result.output)
   assert.ok(result.output.includes('NODE_ARGV:--run dev'), result.output)
+})
+
+test('make test-unit runs node --run test:unit without invoking docker', (t) => {
+  const tempDir = createTempDir(t)
+  const binDir = path.join(tempDir, 'bin')
+
+  fs.mkdirSync(binDir)
+  fs.writeFileSync(
+    path.join(binDir, 'docker'),
+    ['#!/bin/sh', 'echo "DOCKER_SHOULD_NOT_RUN"', 'exit 1'].join('\n'),
+    { mode: 0o755 },
+  )
+  fs.writeFileSync(
+    path.join(binDir, 'node'),
+    ['#!/bin/sh', 'printf "NODE_ARGV:%s\\n" "$*"'].join('\n'),
+    { mode: 0o755 },
+  )
+
+  const result = runMake(['test-unit'], {
+    env: {
+      PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+    },
+  })
+
+  assert.strictEqual(result.status, 0, result.output)
+  assert.ok(!result.output.includes('DOCKER_SHOULD_NOT_RUN'), result.output)
+  assert.ok(result.output.includes('NODE_ARGV:--run test:unit'), result.output)
 })
