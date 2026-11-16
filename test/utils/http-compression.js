@@ -49,6 +49,7 @@ async function getCompressedResponse({ port, path, accessToken, encoding }) {
         port,
         path,
         method: 'GET',
+        agent: false,
         ...(isHttps ? { rejectUnauthorized: false } : {}),
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -58,6 +59,8 @@ async function getCompressedResponse({ port, path, accessToken, encoding }) {
       (response) => {
         const chunks = []
 
+        response.once('error', reject)
+
         response.on('data', (chunk) => {
           chunks.push(chunk)
         })
@@ -66,12 +69,16 @@ async function getCompressedResponse({ port, path, accessToken, encoding }) {
           const rawBody = Buffer.concat(chunks)
           const contentEncoding = response.headers['content-encoding']
 
-          resolve({
-            statusCode: response.statusCode,
-            headers: response.headers,
-            rawBody,
-            body: decodeResponseBody(rawBody, contentEncoding).toString('utf8'),
-          })
+          try {
+            resolve({
+              statusCode: response.statusCode,
+              headers: response.headers,
+              rawBody,
+              body: decodeResponseBody(rawBody, contentEncoding).toString('utf8'),
+            })
+          } catch (err) {
+            reject(err)
+          }
         })
       },
     )

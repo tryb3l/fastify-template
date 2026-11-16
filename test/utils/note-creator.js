@@ -4,8 +4,9 @@ const assert = require('node:assert/strict')
 const { randomString } = require('./data-creator')
 const { seedUser } = require('./setup-user')
 
-async function createNote(t, noteData = {}) {
-  const { app, accessToken, refreshToken, mongoUrl, userId } = await seedUser(t)
+async function createNote(t, noteData = {}, seedOptions = {}) {
+  const actor = await seedUser(t, seedOptions)
+  const { app, accessToken } = actor
 
   const defaultNoteData = {
     title: randomString(10),
@@ -22,7 +23,7 @@ async function createNote(t, noteData = {}) {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${accessToken}`,
     },
-    payload: payload,
+    payload,
   })
 
   assert.equal(
@@ -31,7 +32,7 @@ async function createNote(t, noteData = {}) {
     `Failed to create note: ${response.statusCode} - ${response.payload}`,
   )
 
-  return { note: response.json(), app, accessToken, refreshToken, mongoUrl, userId }
+  return { note: response.json(), ...actor }
 }
 
 module.exports = { createNote }
