@@ -4,7 +4,7 @@ const { describe, test } = require('node:test')
 const assert = require('node:assert/strict')
 const FormData = require('form-data')
 const { buildMarkdownNote } = require('../../utils/markdown-note')
-const { buildImportCsv, buildUploadForm } = require('../../utils/notes-files-helpers')
+const { buildImportCsv, buildUploadForm } = require('../../utils/notes-files')
 const { seedUser } = require('../../utils/setup-user')
 
 describe('POST /files/import', () => {

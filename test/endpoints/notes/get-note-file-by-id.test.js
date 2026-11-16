@@ -6,7 +6,7 @@ const fs = require('node:fs/promises')
 const path = require('node:path')
 const { randomUUIDv7 } = require('node:crypto')
 const { createNote } = require('../../utils/note-creator')
-const { buildWavBuffer, uploadNoteAttachment } = require('../../utils/notes-files-helpers')
+const { buildWavBuffer, uploadNoteAttachment } = require('../../utils/notes-files')
 const { seedUser } = require('../../utils/setup-user')
 
 describe('GET /files/:fileId', () => {

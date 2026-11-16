@@ -5,7 +5,7 @@ const assert = require('node:assert/strict')
 const { buildApp } = require('../../test-setup')
 const { randomEmail, randomPassword, randomUsername } = require('../../utils/data-creator')
 const { setup } = require('../../utils/setup-user')
-const { extractEmailVerificationToken } = require('../../utils/auth-helpers')
+const { extractEmailVerificationToken } = require('../../utils/auth-tokens')
 const mailerPlugin = require('../../../plugins/mailer')
 
 const EXPECTED_MESSAGE =

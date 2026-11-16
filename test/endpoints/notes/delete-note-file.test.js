@@ -4,7 +4,7 @@ const { describe, test } = require('node:test')
 const assert = require('node:assert/strict')
 const { randomUUIDv7 } = require('node:crypto')
 const { createNote } = require('../../utils/note-creator')
-const { fileExists, uploadNoteAttachment } = require('../../utils/notes-files-helpers')
+const { fileExists, uploadNoteAttachment } = require('../../utils/notes-files')
 const { seedUser } = require('../../utils/setup-user')
 
 describe('DELETE /files/:fileId', () => {

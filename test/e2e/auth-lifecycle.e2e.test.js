@@ -7,13 +7,13 @@ const mailerPlugin = require('../../plugins/mailer')
 const { buildApp } = require('../test-setup')
 const { setup } = require('../utils/setup-user')
 const { randomEmail, randomPassword, randomUsername } = require('../utils/data-creator')
-const { extractEmailVerificationToken, extractResetToken } = require('../utils/auth-helpers')
+const { extractEmailVerificationToken, extractResetToken } = require('../utils/auth-tokens')
 const {
   buildRefreshTokenCookieHeader,
   findRefreshCookie,
   issueCsrfContext,
 } = require('../utils/csrf')
-const { buildUploadForm, fileExists, registerFileCleanup } = require('../utils/notes-files-helpers')
+const { buildUploadForm, fileExists, registerFileCleanup } = require('../utils/notes-files')
 
 describe('Authentication, recovery, and cascade account deletion E2E workflow', () => {
   test('completes open registration, email verification, CSRF refresh rotation, password reset invalidating prior sessions, and self-delete cascade freeing PII', async (t) => {

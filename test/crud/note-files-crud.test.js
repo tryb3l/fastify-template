@@ -3,7 +3,7 @@
 const { describe, test } = require('node:test')
 const assert = require('node:assert/strict')
 const { createNote } = require('../utils/note-creator')
-const { buildUploadForm, fileExists, registerFileCleanup } = require('../utils/notes-files-helpers')
+const { buildUploadForm, fileExists, registerFileCleanup } = require('../utils/notes-files')
 
 describe('Note Attachments CRUD lifecycle', () => {
   test('uploads an attachment, verifies metadata on Note and streams bytes, deletes attachment, and confirms 404 and disk cleanup', async (t) => {

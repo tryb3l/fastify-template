@@ -8,7 +8,7 @@ const {
   buildWavBuffer,
   fileExists,
   registerFileCleanup,
-} = require('../utils/notes-files-helpers')
+} = require('../utils/notes-files')
 const { seedUser } = require('../utils/setup-user')
 
 describe('Container-scoped CSV portability and media attachment streaming E2E workflow', () => {

@@ -49,7 +49,7 @@ function createTempTestTree(t) {
   return root
 }
 
-describe('test/run-tests.js CLI and discovery helpers', () => {
+describe('test/run-tests.js CLI and discovery utilities', () => {
   test('parseCliArgs parses flags, --scope, and positional substring filters', () => {
     // Arrange
     const argv = ['--scope=endpoints', '--coverage', '--', 'users', 'put-note']

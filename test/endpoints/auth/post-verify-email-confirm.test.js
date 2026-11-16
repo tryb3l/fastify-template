@@ -5,7 +5,7 @@ const assert = require('node:assert/strict')
 const { randomUUIDv7 } = require('node:crypto')
 const { buildApp } = require('../../test-setup')
 const { setup } = require('../../utils/setup-user')
-const { extractEmailVerificationToken, flipFirstHexChar } = require('../../utils/auth-helpers')
+const { extractEmailVerificationToken, flipFirstHexChar } = require('../../utils/auth-tokens')
 const mailerPlugin = require('../../../plugins/mailer')
 
 describe('POST /auth/verify-email/confirm', () => {
