@@ -4,7 +4,7 @@ const { describe, test } = require('node:test')
 const assert = require('node:assert/strict')
 const diagnosticsChannel = require('node:diagnostics_channel')
 
-const { createBoundedLruCache } = require('../../utils/lru-cache')
+const { createBoundedLruCache, estimateEntryBytes } = require('../../utils/lru-cache')
 
 function createManualClock(initialMs = 1_000_000) {
   let currentMs = initialMs
@@ -294,5 +294,65 @@ describe('createBoundedLruCache', () => {
     assert.deepEqual(hit, { id: 'dc' })
     assert.equal(miss, null)
     assert.ok(events.length >= 3)
+  })
+
+  test('estimates V8 Note byte weights in O(1), evicts by maxBytes budget, and passes oversized entries through without evicting hot Notes', async () => {
+    // Arrange
+    const maxLengthNote = {
+      id: 'n-50k',
+      title: 'A'.repeat(50),
+      body: 'B'.repeat(50_000),
+      tags: ['systems', 'v8'],
+      attachments: [{ id: 'att-1' }],
+      links: [
+        { targetNoteId: 'n-2', relation: 'related' },
+        { targetNoteId: 'n-3', relation: 'child' },
+      ],
+    }
+    const cache = createBoundedLruCache({
+      maxEntries: 50,
+      maxBytes: 25_000,
+      maxEntryBytes: 20_000,
+    })
+
+    // Act 1: compute O(1) Note weight + generic fallback weights
+    const noteBytes = estimateEntryBytes(maxLengthNote)
+    const stringBytes = estimateEntryBytes('hello')
+    const genericBytes = estimateEntryBytes({ custom: 'abcd', count: 42 })
+
+    // Assert 1: 512 + 50*2 + 50000*2 + 2*64 + 1*256 + 2*128 = 101252
+    assert.equal(noteBytes, 101_252)
+    assert.equal(stringBytes, 10)
+    assert.ok(Number.isSafeInteger(genericBytes) && genericBytes >= 256)
+
+    // Act 2: insert 3 ~10KB Notes into a 25KB byte budget (well below maxEntries=50)
+    const makeTenKbNote = (id) => ({
+      id,
+      title: id,
+      body: 'x'.repeat(4_800),
+      tags: [],
+      attachments: [],
+      links: [],
+    })
+    cache.set('note:1:u1', makeTenKbNote('1'), 60_000)
+    cache.set('note:2:u1', makeTenKbNote('2'), 60_000)
+    assert.equal(cache.get('note:1:u1')?.id, '1') // refresh note:1 so note:2 becomes LRU
+    cache.set('note:3:u1', makeTenKbNote('3'), 60_000)
+
+    // Assert 2: note:2 evicted by byte budget while note:1 and note:3 remain
+    assert.equal(cache.get('note:2:u1'), null)
+    assert.equal(cache.get('note:1:u1')?.id, '1')
+    assert.equal(cache.get('note:3:u1')?.id, '3')
+
+    // Act 3: oversized fetch (> maxEntryBytes=20KB) returns value to caller without evicting hot Notes
+    const oversizedFetched = await cache.fetch('note:huge:u1', async () => maxLengthNote, 60_000)
+    // Oversized set on existing key clears stale value under that key without evicting neighbors
+    cache.set('note:3:u1', maxLengthNote, 60_000)
+
+    // Assert 3
+    assert.equal(oversizedFetched.id, 'n-50k')
+    assert.equal(cache.get('note:huge:u1'), null)
+    assert.equal(cache.get('note:3:u1'), null)
+    assert.equal(cache.get('note:1:u1')?.id, '1')
   })
 })

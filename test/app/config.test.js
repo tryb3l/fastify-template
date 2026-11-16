@@ -96,15 +96,18 @@ describe('Application configuration', () => {
       'MAX_HEAP_USED_BYTES',
       'MAX_RSS_BYTES',
       'CACHE_MAX_ENTRIES',
+      'CACHE_MAX_BYTES',
       'REGISTRATION_MODE',
       'MAX_UPLOAD_BYTES',
       'USER_STORAGE_QUOTA_BYTES',
     ])
     const defaultApp = Fastify({ logger: false })
     const overrideApp = Fastify({ logger: false })
+    const invalidBytesApp = Fastify({ logger: false })
     t.after(async () => {
       await defaultApp.close()
       await overrideApp.close()
+      await invalidBytesApp.close().catch(() => {})
     })
 
     // Act
@@ -116,8 +119,12 @@ describe('Application configuration', () => {
         MAX_HEAP_USED_BYTES: '800000000',
         MAX_RSS_BYTES: '1300000000',
         CACHE_MAX_ENTRIES: '500',
+        CACHE_MAX_BYTES: '16000000',
         REGISTRATION_MODE: 'open',
       }),
+    })
+    invalidBytesApp.register(configPlugin, {
+      configData: buildConfigData({ CACHE_MAX_BYTES: '512' }),
     })
 
     // Assert
@@ -126,6 +133,7 @@ describe('Application configuration', () => {
     assert.equal(defaultApp.config.MAX_HEAP_USED_BYTES, 750_000_000)
     assert.equal(defaultApp.config.MAX_RSS_BYTES, 1_200_000_000)
     assert.equal(defaultApp.config.CACHE_MAX_ENTRIES, 2_000)
+    assert.equal(defaultApp.config.CACHE_MAX_BYTES, 32_000_000)
     assert.equal(defaultApp.config.REGISTRATION_MODE, 'invite')
     assert.equal(defaultApp.config.MAX_UPLOAD_BYTES, 10_000_000)
     assert.equal(defaultApp.config.USER_STORAGE_QUOTA_BYTES, 524_288_000)
@@ -133,7 +141,9 @@ describe('Application configuration', () => {
     assert.equal(overrideApp.config.MAX_HEAP_USED_BYTES, 800_000_000)
     assert.equal(overrideApp.config.MAX_RSS_BYTES, 1_300_000_000)
     assert.equal(overrideApp.config.CACHE_MAX_ENTRIES, 500)
+    assert.equal(overrideApp.config.CACHE_MAX_BYTES, 16_000_000)
     assert.equal(overrideApp.config.REGISTRATION_MODE, 'open')
+    await assert.rejects(() => invalidBytesApp.ready())
   })
 
   test('cache plugin enforces bounded LRU eviction, user-vs-entity partition isolation, and monotonic TTL expiration', async (t) => {
@@ -181,6 +191,41 @@ describe('Application configuration', () => {
     app.cacheSet('note:short:u1', { id: 'short' }, 15)
     nowMs += 20
     assert.equal(app.cacheGet('note:short:u1'), null)
+
+    // Act & Assert: entity partition enforces CACHE_MAX_BYTES byte budget while user:* stays exempt
+    const byteBoundedApp = Fastify({ logger: false })
+    t.after(async () => {
+      await byteBoundedApp.close()
+    })
+    await byteBoundedApp.register(configPlugin, {
+      configData: buildConfigData({
+        CACHE_MAX_ENTRIES: '100',
+        CACHE_MAX_BYTES: '20000',
+      }),
+    })
+    await byteBoundedApp.register(cachePlugin)
+
+    byteBoundedApp.cacheSet('user:u-hot', { id: 'u-hot', role: 'admin' }, 60_000)
+    byteBoundedApp.cacheSet(
+      'note:big-1:u1',
+      { id: 'big-1', title: 'T1', body: 'a'.repeat(4_000), tags: [], attachments: [], links: [] },
+      60_000,
+    )
+    byteBoundedApp.cacheSet(
+      'note:big-2:u1',
+      { id: 'big-2', title: 'T2', body: 'b'.repeat(4_000), tags: [], attachments: [], links: [] },
+      60_000,
+    )
+    byteBoundedApp.cacheSet(
+      'note:big-3:u1',
+      { id: 'big-3', title: 'T3', body: 'c'.repeat(4_000), tags: [], attachments: [], links: [] },
+      60_000,
+    )
+
+    assert.equal(byteBoundedApp.cacheGet('note:big-1:u1'), null)
+    assert.equal(byteBoundedApp.cacheGet('note:big-2:u1')?.id, 'big-2')
+    assert.equal(byteBoundedApp.cacheGet('note:big-3:u1')?.id, 'big-3')
+    assert.equal(byteBoundedApp.cacheGet('user:u-hot')?.id, 'u-hot')
   })
 
   test('authenticated user-session lookups coalesce cold reads and prevent stale writes on concurrent invalidation', async (t) => {

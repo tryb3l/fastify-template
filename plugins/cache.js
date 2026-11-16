@@ -1,7 +1,12 @@
 'use strict'
 
 const fp = require('fastify-plugin')
-const { DEFAULT_CACHE_MAX_ENTRIES, createBoundedLruCache } = require('../utils/lru-cache')
+const {
+  DEFAULT_CACHE_MAX_ENTRIES,
+  DEFAULT_CACHE_MAX_BYTES,
+  DEFAULT_CACHE_MAX_ENTRY_BYTES,
+  createBoundedLruCache,
+} = require('../utils/lru-cache')
 
 const USER_PARTITION_PREFIX = 'user:'
 
@@ -14,6 +19,7 @@ module.exports = fp(
     fastify.log.info('Starting registration of cache plugin')
 
     const maxEntries = fastify.config.CACHE_MAX_ENTRIES ?? DEFAULT_CACHE_MAX_ENTRIES
+    const maxBytes = fastify.config.CACHE_MAX_BYTES ?? DEFAULT_CACHE_MAX_BYTES
     const sharedClockOptions = {
       perf: opts.perf,
       ttlResolution: opts.ttlResolution,
@@ -25,6 +31,8 @@ module.exports = fp(
     })
     const entityPartition = createBoundedLruCache({
       maxEntries,
+      maxBytes,
+      maxEntryBytes: DEFAULT_CACHE_MAX_ENTRY_BYTES,
       ...sharedClockOptions,
     })
 
