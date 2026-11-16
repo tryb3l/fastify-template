@@ -13,7 +13,9 @@ const configPlugin = require('../../plugins/config')
 const { resolveMongoPoolOptions } = require('../../plugins/db')
 const mailerPlugin = require('../../plugins/mailer')
 const { resolveUnderPressureThresholds } = require('../../plugins/under-pressure')
+const usersPlugin = require('../../plugins/users')
 const { buildApp, getTestEnv } = require('../test-setup')
+const { seedUser } = require('../utils/setup-user')
 
 function buildConfigData(env = {}) {
   return {
@@ -116,6 +118,8 @@ describe('Application configuration', () => {
     })
 
     // Assert
+    assert.equal(getTestEnv().CACHE_MAX_ENTRIES, '64')
+    assert.equal(getTestEnv({ CACHE_MAX_ENTRIES: undefined }).CACHE_MAX_ENTRIES, undefined)
     assert.equal(defaultApp.config.MAX_HEAP_USED_BYTES, 750_000_000)
     assert.equal(defaultApp.config.MAX_RSS_BYTES, 1_200_000_000)
     assert.equal(defaultApp.config.CACHE_MAX_ENTRIES, 2_000)
@@ -129,10 +133,14 @@ describe('Application configuration', () => {
     assert.equal(overrideApp.config.REGISTRATION_MODE, 'open')
   })
 
-  test('cache plugin enforces bounded LRU eviction and TTL expiration', async (t) => {
+  test('cache plugin enforces bounded LRU eviction, user-vs-entity partition isolation, and monotonic TTL expiration', async (t) => {
     // Arrange
-    t.mock.timers.enable({ apis: ['Date'] })
-    t.mock.timers.setTime(1_000_000)
+    let nowMs = 1_000_000
+    const clock = {
+      now() {
+        return nowMs
+      },
+    }
     const app = Fastify({ logger: false })
     t.after(async () => {
       await app.close()
@@ -140,31 +148,167 @@ describe('Application configuration', () => {
     await app.register(configPlugin, {
       configData: buildConfigData({ CACHE_MAX_ENTRIES: '3' }),
     })
-    await app.register(cachePlugin)
+    await app.register(cachePlugin, {
+      perf: clock,
+      ttlResolution: 0,
+    })
 
-    // Act
-    await app.cacheSet('note:1:u1', { id: '1' }, 60_000)
-    await app.cacheSet('note:2:u1', { id: '2' }, 60_000)
-    await app.cacheSet('note:3:u1', { id: '3' }, 60_000)
-    const hit1 = await app.cacheGet('note:1:u1')
-    await app.cacheSet('note:4:u1', { id: '4' }, 60_000)
+    // Act: populate user session keys and churn entity keys past CACHE_MAX_ENTRIES
+    app.cacheSet('user:u1', { id: 'u1', role: 'member' }, 60_000)
+    app.cacheSet('user:u2', { id: 'u2', role: 'admin' }, 60_000)
+    app.cacheSet('note:1:u1', { id: '1' }, 60_000)
+    app.cacheSet('note:2:u1', { id: '2' }, 60_000)
+    app.cacheSet('note:3:u1', { id: '3' }, 60_000)
+    const hit1 = app.cacheGet('note:1:u1')
+    app.cacheSet('note:4:u1', { id: '4' }, 60_000)
+
+    // Assert: raw values returned without wrapper metadata, note:2 evicted, user:* sessions untouched
+    assert.deepEqual(hit1, { id: '1' })
+    assert.equal(app.cacheGet('note:2:u1'), null)
+    assert.deepEqual(app.cacheGet('note:1:u1'), { id: '1' })
+    assert.deepEqual(app.cacheGet('note:3:u1'), { id: '3' })
+    assert.deepEqual(app.cacheGet('note:4:u1'), { id: '4' })
+    assert.deepEqual(app.cacheGet('user:u1'), { id: 'u1', role: 'member' })
+    assert.deepEqual(app.cacheGet('user:u2'), { id: 'u2', role: 'admin' })
+
+    // Act & Assert: explicit delete and deterministic monotonic TTL expiration
+    app.cacheDelete('note:3:u1')
+    assert.equal(app.cacheGet('note:3:u1'), null)
+
+    app.cacheSet('note:short:u1', { id: 'short' }, 15)
+    nowMs += 20
+    assert.equal(app.cacheGet('note:short:u1'), null)
+  })
+
+  test('authenticated user-session lookups coalesce cold reads and prevent stale writes on concurrent invalidation', async (t) => {
+    // Arrange: real HTTP app for parallel cold-session burst + gated store for mid-flight invalidation race
+    const actor = await seedUser(t)
+    const httpApp = actor.app
+    const authHeaders = { authorization: `Bearer ${actor.accessToken}` }
+    httpApp.cacheDelete(`user:${actor.userId}`)
+
+    let findOneCalls = 0
+    let releaseLookup
+    const lookupGate = new Promise((resolve) => {
+      releaseLookup = resolve
+    })
+    const fp = require('fastify-plugin')
+    const gatedApp = Fastify({ logger: false })
+    t.after(async () => {
+      await gatedApp.close()
+    })
+    await gatedApp.register(configPlugin, {
+      configData: buildConfigData({ CACHE_MAX_ENTRIES: '8' }),
+    })
+    await gatedApp.register(cachePlugin)
+    await gatedApp.register(
+      fp(
+        async (instance) => {
+          instance.decorate('mongo', {
+            db: {
+              collection(name) {
+                if (name !== 'users') {
+                  return {}
+                }
+                return {
+                  async findOne(filter) {
+                    findOneCalls += 1
+                    await lookupGate
+                    if (filter._id === 'missing-user') {
+                      return null
+                    }
+                    return {
+                      _id: filter._id,
+                      username: 'alice',
+                      email: 'alice@example.com',
+                      role: 'member',
+                      credentialsVersion: 1,
+                    }
+                  },
+                }
+              },
+            },
+          })
+        },
+        { name: 'db-plugin' },
+      ),
+    )
+    await gatedApp.register(usersPlugin)
+    await gatedApp.ready()
+
+    // Act 1: parallel cold HTTP requests populate and share user:<id> cache entry
+    const [me1, me2, me3] = await Promise.all([
+      httpApp.inject({ method: 'GET', url: '/users/me', headers: authHeaders }),
+      httpApp.inject({ method: 'GET', url: '/users/me', headers: authHeaders }),
+      httpApp.inject({ method: 'GET', url: '/users/me', headers: authHeaders }),
+    ])
+
+    // Act 2: coalesced cold readUserById + mid-flight cacheDelete race
+    const coldReadA = gatedApp.usersDataSource.readUserById('u-coalesced')
+    const coldReadB = gatedApp.usersDataSource.readUserById('u-coalesced')
+    releaseLookup()
+    const [resolvedA, resolvedB] = await Promise.all([coldReadA, coldReadB])
+
+    let releaseRaceLookup
+    lookupGate.then(() => {})
+    let raceFindCalls = 0
+    const raceApp = Fastify({ logger: false })
+    t.after(async () => {
+      await raceApp.close()
+    })
+    const raceGate = new Promise((resolve) => {
+      releaseRaceLookup = resolve
+    })
+    await raceApp.register(configPlugin, {
+      configData: buildConfigData({ CACHE_MAX_ENTRIES: '8' }),
+    })
+    await raceApp.register(cachePlugin)
+    await raceApp.register(
+      fp(
+        async (instance) => {
+          instance.decorate('mongo', {
+            db: {
+              collection() {
+                return {
+                  async findOne(filter) {
+                    raceFindCalls += 1
+                    await raceGate
+                    return {
+                      _id: filter._id,
+                      username: 'bob',
+                      email: 'bob@example.com',
+                      role: 'member',
+                      credentialsVersion: 1,
+                    }
+                  },
+                }
+              },
+            },
+          })
+        },
+        { name: 'db-plugin' },
+      ),
+    )
+    await raceApp.register(usersPlugin)
+    await raceApp.ready()
+
+    const inFlightUserRead = raceApp.usersDataSource.readUserById('u-race')
+    raceApp.cacheDelete('user:u-race')
+    releaseRaceLookup()
+    const inFlightResult = await inFlightUserRead
 
     // Assert
-    assert.deepEqual(hit1?.item, { id: '1' })
-    assert.equal(typeof hit1?.stored, 'number')
-    assert.equal(typeof hit1?.ttl, 'number')
-    assert.equal(await app.cacheGet('note:2:u1'), null)
-    assert.deepEqual((await app.cacheGet('note:1:u1'))?.item, { id: '1' })
-    assert.deepEqual((await app.cacheGet('note:3:u1'))?.item, { id: '3' })
-    assert.deepEqual((await app.cacheGet('note:4:u1'))?.item, { id: '4' })
-
-    // Act & Assert: explicit delete and deterministic TTL expiration
-    await app.cacheDelete('note:3:u1')
-    assert.equal(await app.cacheGet('note:3:u1'), null)
-
-    await app.cacheSet('note:short:u1', { id: 'short' }, 15)
-    t.mock.timers.tick(20)
-    assert.equal(await app.cacheGet('note:short:u1'), null)
+    assert.equal(me1.statusCode, 200)
+    assert.equal(me2.statusCode, 200)
+    assert.equal(me3.statusCode, 200)
+    assert.equal(httpApp.cacheGet(`user:${actor.userId}`)?.id, actor.userId)
+    assert.equal(findOneCalls, 1)
+    assert.equal(resolvedA.id, 'u-coalesced')
+    assert.equal(resolvedB.id, 'u-coalesced')
+    assert.equal(gatedApp.cacheGet('user:u-coalesced')?.id, 'u-coalesced')
+    assert.equal(raceFindCalls, 1)
+    assert.equal(inFlightResult.id, 'u-race')
+    assert.equal(raceApp.cacheGet('user:u-race'), null)
   })
 
   test('.dockerignore excludes local TLS keys, uploads, git, node_modules, and runtime dirs', () => {

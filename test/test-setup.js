@@ -18,6 +18,7 @@ function getDefaultEnv() {
     REGISTRATION_MODE: resolveEnvDefault(process.env.REGISTRATION_MODE, 'open'),
     MONGO_MIN_POOL_SIZE: resolveEnvDefault(process.env.MONGO_MIN_POOL_SIZE, '1'),
     MONGO_MAX_POOL_SIZE: resolveEnvDefault(process.env.MONGO_MAX_POOL_SIZE, '4'),
+    CACHE_MAX_ENTRIES: resolveEnvDefault(process.env.CACHE_MAX_ENTRIES, '64'),
   }
 }
 

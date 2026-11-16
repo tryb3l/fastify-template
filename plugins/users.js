@@ -226,18 +226,11 @@ async function usersPlugin(fastify) {
 
     async readUserById(id) {
       fastify.log.debug('Entering readUserById method')
-      const useCache = typeof fastify.cacheGet === 'function' && Boolean(id)
-      const cacheKey = useCache ? buildUserCacheKey(id) : null
-
-      if (useCache) {
-        const cached = await fastify.cacheGet(cacheKey)
-        if (cached && cached.item) {
-          fastify.log.debug('User cache HIT - Serving from RAM')
-          return cached.item
-        }
+      if (!id) {
+        return null
       }
 
-      try {
+      const loadUserFromDb = async () => {
         const user = await users.findOne(
           { _id: id, deleted: { $ne: true } },
           {
@@ -246,12 +239,17 @@ async function usersPlugin(fastify) {
         )
         if (user) {
           user.id = String(user.id || user._id)
-          if (useCache && typeof fastify.cacheSet === 'function') {
-            await fastify.cacheSet(cacheKey, user, USER_CACHE_TTL_MS)
-          }
         }
-        fastify.log.debug('Exiting readUserById method')
         return user
+      }
+
+      try {
+        const resolvedUser =
+          typeof fastify.cacheFetch === 'function'
+            ? await fastify.cacheFetch(buildUserCacheKey(id), loadUserFromDb, USER_CACHE_TTL_MS)
+            : await loadUserFromDb()
+        fastify.log.debug('Exiting readUserById method')
+        return resolvedUser
       } catch (error) {
         fastify.log.error(
           { error, id },

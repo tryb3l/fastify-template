@@ -637,9 +637,9 @@ const notesStorePlugin = fp(
 
         if (useCache) {
           const cached = await fastify.cacheGet(cacheKey)
-          if (cached && cached.item) {
+          if (cached) {
             fastify.log.debug('Cache HIT - Serving from RAM')
-            return cached.item
+            return cached
           }
         }
 
