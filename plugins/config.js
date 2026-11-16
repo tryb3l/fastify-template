@@ -47,6 +47,7 @@ module.exports = fp(
       MAX_HEAP_USED_BYTES: fastify.secrets.MAX_HEAP_USED_BYTES || 750_000_000,
       MAX_RSS_BYTES: fastify.secrets.MAX_RSS_BYTES || 1_200_000_000,
       CACHE_MAX_ENTRIES: fastify.secrets.CACHE_MAX_ENTRIES || 2_000,
+      CACHE_MAX_BYTES: fastify.secrets.CACHE_MAX_BYTES || 32_000_000,
       ARGON2_MAX_CONCURRENCY: fastify.secrets.ARGON2_MAX_CONCURRENCY || 2,
       ARGON2_MAX_QUEUE:
         typeof fastify.secrets.ARGON2_MAX_QUEUE === 'number'

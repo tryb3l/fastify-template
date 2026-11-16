@@ -123,7 +123,13 @@
     },
     "CACHE_MAX_ENTRIES": {
       "type": "integer",
+      "minimum": 1,
       "default": 2000
+    },
+    "CACHE_MAX_BYTES": {
+      "type": "integer",
+      "minimum": 1024,
+      "default": 32000000
     },
     "ARGON2_MAX_CONCURRENCY": {
       "type": "integer",
