@@ -8,7 +8,7 @@ const { randomEmail } = require('../utils/data-creator')
 describe('User Invitations CRUD lifecycle', () => {
   test('creates an invitation, lists active metadata without secretHash, revokes it, and confirms revocation state', async (t) => {
     // Arrange
-    const admin = await seedUser(t, 'admin')
+    const admin = await seedUser(t, { role: 'admin' })
     const inviteEmail = randomEmail(10, 5)
 
     // Create (POST /users/invites)

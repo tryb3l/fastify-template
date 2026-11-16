@@ -13,7 +13,7 @@ const {
   findRefreshCookie,
   issueCsrfContext,
 } = require('../utils/csrf')
-const { buildUploadForm, fileExists, registerFileCleanup } = require('../utils/notes-files')
+const { buildUploadForm, fileExists, registerAttachmentCleanup } = require('../utils/notes-files')
 
 describe('Authentication, recovery, and cascade account deletion E2E workflow', () => {
   test('completes open registration, email verification, CSRF refresh rotation, password reset invalidating prior sessions, and self-delete cascade freeing PII', async (t) => {
@@ -209,12 +209,10 @@ describe('Authentication, recovery, and cascade account deletion E2E workflow', 
     })
     assert.equal(uploadRes.statusCode, 201)
     const uploadedFile = uploadRes.json().files[0]
-    const blobPath = registerFileCleanup(
-      t,
-      uploadedFile.fileId,
-      uploadedFile.originalFilename,
-      app.notesFileManager.uploadDir,
-    )
+    const blobPath = registerAttachmentCleanup(t, {
+      ...uploadedFile,
+      uploadDir: app.notesFileManager.uploadDir,
+    })
     assert.equal(await fileExists(blobPath), true)
 
     // 6. Self-delete (DELETE /users/me) cascade purges all tenant data, blobs, and frees PII

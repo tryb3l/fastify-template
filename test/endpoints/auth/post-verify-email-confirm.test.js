@@ -5,7 +5,7 @@ const assert = require('node:assert/strict')
 const { randomUUIDv7 } = require('node:crypto')
 const { buildApp } = require('../../test-setup')
 const { setup } = require('../../utils/setup-user')
-const { extractEmailVerificationToken, flipFirstHexChar } = require('../../utils/auth-tokens')
+const { extractEmailVerificationToken, invalidateTokenSecret } = require('../../utils/auth-tokens')
 const mailerPlugin = require('../../../plugins/mailer')
 
 describe('POST /auth/verify-email/confirm', () => {
@@ -125,7 +125,7 @@ describe('POST /auth/verify-email/confirm', () => {
     })
     const token = extractEmailVerificationToken(mailerPlugin.getTestMessages()[0].text)
     const separator = token.indexOf('.')
-    const tamperedToken = `${token.slice(0, separator)}.${flipFirstHexChar(token.slice(separator + 1))}`
+    const tamperedToken = `${token.slice(0, separator)}.${invalidateTokenSecret(token.slice(separator + 1))}`
 
     // Act
     const response = await app.inject({

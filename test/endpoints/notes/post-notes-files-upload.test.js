@@ -10,7 +10,7 @@ const {
   buildUploadForm,
   buildWavBuffer,
   fileExists,
-  registerFileCleanup,
+  registerAttachmentCleanup,
 } = require('../../utils/notes-files')
 const { seedUser } = require('../../utils/setup-user')
 
@@ -43,12 +43,10 @@ describe('POST /files/upload', () => {
     assert.equal(body.message, 'Files uploaded successfully')
     assert.equal(body.files.length, 1)
     const uploadedFile = body.files[0]
-    const serverPath = registerFileCleanup(
-      t,
-      uploadedFile.fileId,
-      uploadedFile.originalFilename,
-      app.notesFileManager.uploadDir,
-    )
+    const serverPath = registerAttachmentCleanup(t, {
+      ...uploadedFile,
+      uploadDir: app.notesFileManager.uploadDir,
+    })
     assert.equal(await fileExists(serverPath), true)
     assert.equal(uploadedFile.originalFilename, 'test-upload-file.txt')
     assert.equal(uploadedFile.mimeType, 'text/plain')
@@ -81,12 +79,10 @@ describe('POST /files/upload', () => {
     // Assert
     assert.equal(response.statusCode, 201)
     const uploaded = response.json().files[0]
-    const serverPath = registerFileCleanup(
-      t,
-      uploaded.fileId,
-      uploaded.originalFilename,
-      app.notesFileManager.uploadDir,
-    )
+    const serverPath = registerAttachmentCleanup(t, {
+      ...uploaded,
+      uploadDir: app.notesFileManager.uploadDir,
+    })
     assert.equal(await fileExists(serverPath), true)
     assert.equal(uploaded.mimeType, 'text/csv')
   })
@@ -117,12 +113,10 @@ describe('POST /files/upload', () => {
     // Assert
     assert.equal(response.statusCode, 201)
     const uploaded = response.json().files[0]
-    const serverPath = registerFileCleanup(
-      t,
-      uploaded.fileId,
-      uploaded.originalFilename,
-      app.notesFileManager.uploadDir,
-    )
+    const serverPath = registerAttachmentCleanup(t, {
+      ...uploaded,
+      uploadDir: app.notesFileManager.uploadDir,
+    })
     assert.equal(await fileExists(serverPath), true)
     assert.equal(uploaded.mimeType, 'video/mp4')
   })
@@ -149,12 +143,10 @@ describe('POST /files/upload', () => {
     // Assert
     assert.equal(wavResponse.statusCode, 201)
     const wavFile = wavResponse.json().files[0]
-    const wavPath = registerFileCleanup(
-      t,
-      wavFile.fileId,
-      wavFile.originalFilename,
-      app.notesFileManager.uploadDir,
-    )
+    const wavPath = registerAttachmentCleanup(t, {
+      ...wavFile,
+      uploadDir: app.notesFileManager.uploadDir,
+    })
     assert.equal(await fileExists(wavPath), true)
     assert.equal(wavFile.mimeType, 'audio/wav')
     assert.equal(wavFile.size, 64)
@@ -182,12 +174,10 @@ describe('POST /files/upload', () => {
     // Assert
     assert.equal(pngResponse.statusCode, 201)
     const pngFile = pngResponse.json().files[0]
-    const pngPath = registerFileCleanup(
-      t,
-      pngFile.fileId,
-      pngFile.originalFilename,
-      app.notesFileManager.uploadDir,
-    )
+    const pngPath = registerAttachmentCleanup(t, {
+      ...pngFile,
+      uploadDir: app.notesFileManager.uploadDir,
+    })
     assert.equal(await fileExists(pngPath), true)
     assert.equal(pngFile.mimeType, 'image/png')
   })

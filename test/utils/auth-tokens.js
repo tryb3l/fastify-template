@@ -17,7 +17,7 @@ function extractResetToken(messageText) {
   }
 }
 
-function flipFirstHexChar(secret) {
+function invalidateTokenSecret(secret) {
   const replacement = secret[0] === 'a' ? 'b' : 'a'
   return `${replacement}${secret.slice(1)}`
 }
@@ -31,5 +31,5 @@ function extractEmailVerificationToken(messageText) {
 module.exports = {
   extractEmailVerificationToken,
   extractResetToken,
-  flipFirstHexChar,
+  invalidateTokenSecret,
 }

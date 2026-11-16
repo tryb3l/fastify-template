@@ -100,10 +100,10 @@ module.exports = fp(
       }
     })
 
-    fastify.decorateRequest('generateTokens', async function (user) {
+    async function generateTokens(user) {
       fastify.log.debug('Entering generateTokens method')
       const payload = {
-        sub: user._id,
+        sub: user._id ?? user.id,
         username: user.username,
         role: user.role,
         cv: user.credentialsVersion ?? 0,
@@ -127,7 +127,10 @@ module.exports = fp(
 
       fastify.log.debug('Exiting generateTokens method')
       return { accessToken, refreshToken }
-    })
+    }
+
+    fastify.decorate('generateTokens', generateTokens)
+    fastify.decorateRequest('generateTokens', generateTokens)
 
     fastify.decorateRequest('revokeToken', async function (jti, exp, userId) {
       fastify.log.debug('Entering revokeToken method')
@@ -193,7 +196,7 @@ module.exports = fp(
     name: 'authentication-plugin',
     dependencies: ['application-config', 'cookie-plugin', 'users-store'],
     decorators: {
-      fastify: ['config'],
+      fastify: ['config', 'usersDataSource'],
     },
   },
 )

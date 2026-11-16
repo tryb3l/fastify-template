@@ -3,7 +3,7 @@
 const { describe, test } = require('node:test')
 const assert = require('node:assert/strict')
 const { createNote } = require('../utils/note-creator')
-const { buildUploadForm, fileExists, registerFileCleanup } = require('../utils/notes-files')
+const { buildUploadForm, fileExists, registerAttachmentCleanup } = require('../utils/notes-files')
 
 describe('Note Attachments CRUD lifecycle', () => {
   test('uploads an attachment, verifies metadata on Note and streams bytes, deletes attachment, and confirms 404 and disk cleanup', async (t) => {
@@ -32,12 +32,10 @@ describe('Note Attachments CRUD lifecycle', () => {
     })
     assert.equal(uploadRes.statusCode, 201)
     const uploadedFile = uploadRes.json().files[0]
-    const serverPath = registerFileCleanup(
-      t,
-      uploadedFile.fileId,
-      uploadedFile.originalFilename,
-      app.notesFileManager.uploadDir,
-    )
+    const serverPath = registerAttachmentCleanup(t, {
+      ...uploadedFile,
+      uploadDir: app.notesFileManager.uploadDir,
+    })
     assert.equal(await fileExists(serverPath), true)
 
     // Read metadata on Note (GET /notes/:id) & stream attachment (GET /files/:fileId)

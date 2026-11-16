@@ -5,7 +5,7 @@ const assert = require('node:assert/strict')
 const { randomUUIDv7 } = require('node:crypto')
 const { buildApp } = require('../../test-setup')
 const { setup } = require('../../utils/setup-user')
-const { extractResetToken, flipFirstHexChar } = require('../../utils/auth-tokens')
+const { extractResetToken, invalidateTokenSecret } = require('../../utils/auth-tokens')
 const mailerPlugin = require('../../../plugins/mailer')
 
 describe('POST /auth/reset-password/validate', () => {
@@ -78,7 +78,7 @@ describe('POST /auth/reset-password/validate', () => {
       payload: { email },
     })
     const { resetId, secret } = extractResetToken(mailerPlugin.getTestMessages()[0].text)
-    const invalidSecret = flipFirstHexChar(secret)
+    const invalidSecret = invalidateTokenSecret(secret)
 
     // Act
     const response = await app.inject({
@@ -150,7 +150,7 @@ describe('POST /auth/reset-password/validate', () => {
       payload: { email },
     })
     const { resetId, secret } = extractResetToken(mailerPlugin.getTestMessages()[0].text)
-    const invalidSecret = flipFirstHexChar(secret)
+    const invalidSecret = invalidateTokenSecret(secret)
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const failedAttempt = await app.inject({

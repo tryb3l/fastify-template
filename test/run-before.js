@@ -1,9 +1,9 @@
 'use strict'
 
-const dockerHelper = require('./test-setup-docker')
+const setupDocker = require('./test-setup-docker')
 
-const docker = dockerHelper()
-const { Containers } = dockerHelper
+const docker = setupDocker()
+const { Containers } = setupDocker
 const args = new Set(process.argv.slice(2))
 const mode = args.has('--mode=dev') ? 'dev' : 'test'
 

@@ -7,7 +7,7 @@ const {
   buildUploadForm,
   buildWavBuffer,
   fileExists,
-  registerFileCleanup,
+  registerAttachmentCleanup,
 } = require('../utils/notes-files')
 const { seedUser } = require('../utils/setup-user')
 
@@ -148,12 +148,10 @@ describe('Container-scoped CSV portability and media attachment streaming E2E wo
     })
     assert.equal(uploadWavRes.statusCode, 201)
     const wavFile = uploadWavRes.json().files[0]
-    const wavDiskPath = registerFileCleanup(
-      t,
-      wavFile.fileId,
-      wavFile.originalFilename,
-      actor.app.notesFileManager.uploadDir,
-    )
+    const wavDiskPath = registerAttachmentCleanup(t, {
+      ...wavFile,
+      uploadDir: actor.app.notesFileManager.uploadDir,
+    })
     assert.equal(await fileExists(wavDiskPath), true)
 
     const rangeRes = await actor.app.inject({
@@ -218,12 +216,10 @@ describe('Container-scoped CSV portability and media attachment streaming E2E wo
     })
     assert.equal(secondUploadRes.statusCode, 201)
     const secondFile = secondUploadRes.json().files[0]
-    const secondDiskPath = registerFileCleanup(
-      t,
-      secondFile.fileId,
-      secondFile.originalFilename,
-      actor.app.notesFileManager.uploadDir,
-    )
+    const secondDiskPath = registerAttachmentCleanup(t, {
+      ...secondFile,
+      uploadDir: actor.app.notesFileManager.uploadDir,
+    })
     assert.equal(await fileExists(secondDiskPath), true)
 
     // 6. Deleting the parent Note unlinks remaining physical disk blobs automatically

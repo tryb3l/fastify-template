@@ -84,7 +84,7 @@ test('instantToFileStamp formats a UTC-safe file stamp', () => {
   assert.strictEqual(fileStamp, '2026-05-06T12-34-56-789Z')
 })
 
-test('now helpers return Temporal-aligned ISO and file-safe timestamp shapes', () => {
+test('now utilities return Temporal-aligned ISO and file-safe timestamp shapes', () => {
   // Act
   const isoString = nowIsoInstantString()
   const fileStamp = nowFileStamp()

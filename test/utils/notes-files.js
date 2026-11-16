@@ -47,7 +47,11 @@ function buildWavBuffer(payloadLength = 20) {
   return wavBuffer
 }
 
-function uploadFilePath(fileId, originalFilename, uploadDir = path.join(process.cwd(), 'uploads')) {
+function resolveAttachmentPath({
+  fileId,
+  originalFilename,
+  uploadDir = path.join(process.cwd(), 'uploads'),
+}) {
   const extension = path.extname(originalFilename) || '.bin'
   return path.join(uploadDir, `${fileId}${extension}`)
 }
@@ -61,8 +65,8 @@ async function fileExists(filePath) {
   }
 }
 
-function registerFileCleanup(t, fileId, originalFilename, uploadDir) {
-  const serverPath = uploadFilePath(fileId, originalFilename, uploadDir)
+function registerAttachmentCleanup(t, attachment) {
+  const serverPath = resolveAttachmentPath(attachment)
   t.after(async () => {
     await fs.unlink(serverPath).catch(() => {})
   })
@@ -98,10 +102,13 @@ async function uploadNoteAttachment(
   })
   assert.equal(response.statusCode, 201, response.payload)
   const uploadedFile = response.json().files[0]
-  const uploadDir = app.notesFileManager?.uploadDir
+  const attachment = {
+    ...uploadedFile,
+    uploadDir: app.notesFileManager?.uploadDir,
+  }
   const serverPath = t
-    ? registerFileCleanup(t, uploadedFile.fileId, uploadedFile.originalFilename, uploadDir)
-    : uploadFilePath(uploadedFile.fileId, uploadedFile.originalFilename, uploadDir)
+    ? registerAttachmentCleanup(t, attachment)
+    : resolveAttachmentPath(attachment)
 
   return { uploadedFile, serverPath, response }
 }
@@ -112,7 +119,7 @@ module.exports = {
   buildUploadForm,
   buildWavBuffer,
   fileExists,
-  registerFileCleanup,
-  uploadFilePath,
+  registerAttachmentCleanup,
+  resolveAttachmentPath,
   uploadNoteAttachment,
 }

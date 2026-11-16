@@ -1,13 +1,16 @@
 'use strict'
 
 const assert = require('node:assert/strict')
-const { randomUUIDv7 } = require('node:crypto')
 const { hashPassword } = require('../../routes/auth/generate-hash')
 const { buildApp, getTestMongoUrl } = require('../test-setup')
 const { randomUsername, randomEmail, randomPassword } = require('./data-creator')
 
 const SEEDED_USER_PASSWORD = 'SeededUserPass!123'
 let cachedSeedPasswordHashPromise = null
+
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
 
 function getSeededPasswordHash() {
   if (!cachedSeedPasswordHashPromise) {
@@ -59,23 +62,9 @@ async function setup(t, role = 'user', env = {}) {
   return { app, accessToken, refreshToken, userId, username, email, password, mongoUrl }
 }
 
-function normalizeSeedUserOptions(optionsOrRole = {}, envArg = {}) {
-  if (typeof optionsOrRole === 'string') {
-    if (envArg === null || typeof envArg !== 'object' || Array.isArray(envArg)) {
-      throw new TypeError('seedUser env override must be a plain object')
-    }
-    return {
-      app: null,
-      role: optionsOrRole,
-      emailVerified: true,
-      username: randomUsername(12),
-      email: randomEmail(10, 5),
-      env: envArg,
-    }
-  }
-
-  if (optionsOrRole === null || typeof optionsOrRole !== 'object' || Array.isArray(optionsOrRole)) {
-    throw new TypeError('seedUser second argument must be a role string or an options object')
+function normalizeSeedUserOptions(options = {}) {
+  if (!isPlainObject(options)) {
+    throw new TypeError('seedUser options must be a plain object')
   }
 
   const {
@@ -85,14 +74,18 @@ function normalizeSeedUserOptions(optionsOrRole = {}, envArg = {}) {
     username = randomUsername(12),
     email = randomEmail(10, 5),
     env = {},
-  } = optionsOrRole
+  } = options
+
+  if (!isPlainObject(env)) {
+    throw new TypeError('seedUser options.env must be a plain object')
+  }
 
   return { app, role, emailVerified, username, email, env }
 }
 
-// Mode B: Fast domain actor seeding using a worker-cached real Argon2id hash,
-// public usersDataSource.createUser decorator, and signed production-shape JWTs
-async function seedUser(t, optionsOrRole = {}, envArg = {}) {
+// Mode B: Fast domain actor seeding using a worker-cached real Argon2id hash
+// and public usersDataSource + generateTokens Fastify decorators
+async function seedUser(t, options = {}) {
   const {
     app: providedApp,
     role,
@@ -100,7 +93,7 @@ async function seedUser(t, optionsOrRole = {}, envArg = {}) {
     username,
     email,
     env,
-  } = normalizeSeedUserOptions(optionsOrRole, envArg)
+  } = normalizeSeedUserOptions(options)
   const mongoUrl = getTestMongoUrl(env)
   const normalizedUsername = username.trim().toLowerCase()
   const normalizedEmail = email.trim().toLowerCase()
@@ -116,29 +109,8 @@ async function seedUser(t, optionsOrRole = {}, envArg = {}) {
     hash,
     role,
   })
-
-  const jwtPayload = {
-    sub: userId,
-    username: normalizedUsername,
-    role,
-    cv: 0,
-  }
-
-  const accessToken = app.jwt.sign(
-    { ...jwtPayload, type: 'access' },
-    {
-      jti: randomUUIDv7(),
-      expiresIn: app.config.jwt.accessExpireIn || '1h',
-    },
-  )
-
-  const refreshToken = app.jwt.sign(
-    { ...jwtPayload, type: 'refresh' },
-    {
-      jti: randomUUIDv7(),
-      expiresIn: app.config.jwt.refreshExpireIn || '30d',
-    },
-  )
+  const user = await app.usersDataSource.readUserById(userId)
+  const { accessToken, refreshToken } = await app.generateTokens(user)
 
   return {
     app,
@@ -157,5 +129,4 @@ module.exports = {
   normalizeSeedUserOptions,
   seedUser,
   setup,
-  setupHttpUser: setup,
 }

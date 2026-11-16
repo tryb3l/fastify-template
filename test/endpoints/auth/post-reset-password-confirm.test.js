@@ -8,7 +8,7 @@ const { buildApp } = require('../../test-setup')
 const { setup } = require('../../utils/setup-user')
 const { randomPassword } = require('../../utils/data-creator')
 const { buildRefreshTokenCookieHeader, issueCsrfContext } = require('../../utils/csrf')
-const { extractResetToken, flipFirstHexChar } = require('../../utils/auth-tokens')
+const { extractResetToken, invalidateTokenSecret } = require('../../utils/auth-tokens')
 const mailerPlugin = require('../../../plugins/mailer')
 
 describe('POST /auth/reset-password/confirm', () => {
@@ -141,7 +141,7 @@ describe('POST /auth/reset-password/confirm', () => {
       payload: { email },
     })
     const { resetId, secret } = extractResetToken(mailerPlugin.getTestMessages()[0].text)
-    const invalidSecret = flipFirstHexChar(secret)
+    const invalidSecret = invalidateTokenSecret(secret)
 
     // Act
     const response = await app.inject({

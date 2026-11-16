@@ -250,27 +250,30 @@ describe('test/run-tests.js CLI and discovery utilities', () => {
     }
   })
 
-  test('normalizeSeedUserOptions supports both role string and options object signatures', () => {
+  test('normalizeSeedUserOptions normalizes defaults and rejects non-plain-object inputs', () => {
     // Arrange & Act
-    const fromRole = normalizeSeedUserOptions('admin', { REGISTRATION_MODE: 'invite' })
-    const fromObject = normalizeSeedUserOptions({
+    const defaults = normalizeSeedUserOptions()
+    const custom = normalizeSeedUserOptions({
       role: 'admin',
       emailVerified: false,
       username: 'Alice',
+      env: { REGISTRATION_MODE: 'invite' },
     })
 
     // Assert
-    assert.equal(fromRole.role, 'admin')
-    assert.equal(fromRole.emailVerified, true)
-    assert.deepEqual(fromRole.env, { REGISTRATION_MODE: 'invite' })
+    assert.equal(defaults.role, 'user')
+    assert.equal(defaults.emailVerified, true)
+    assert.deepEqual(defaults.env, {})
 
-    assert.equal(fromObject.role, 'admin')
-    assert.equal(fromObject.emailVerified, false)
-    assert.equal(fromObject.username, 'Alice')
+    assert.equal(custom.role, 'admin')
+    assert.equal(custom.emailVerified, false)
+    assert.equal(custom.username, 'Alice')
+    assert.deepEqual(custom.env, { REGISTRATION_MODE: 'invite' })
 
+    assert.throws(() => normalizeSeedUserOptions('admin'), TypeError)
     assert.throws(() => normalizeSeedUserOptions(42), TypeError)
     assert.throws(() => normalizeSeedUserOptions(['admin']), TypeError)
-    assert.throws(() => normalizeSeedUserOptions('admin', ['bad-env']), TypeError)
+    assert.throws(() => normalizeSeedUserOptions({ env: ['bad-env'] }), TypeError)
   })
 
   test('getTestEnv applies 1/4 Mongo pool defaults and preserves explicit zero or undefined overrides', () => {

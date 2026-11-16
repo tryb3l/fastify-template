@@ -3,7 +3,7 @@
 const { describe, test } = require('node:test')
 const assert = require('node:assert/strict')
 
-const { createBoundedLruCache } = require('../../plugins/cache')
+const { createBoundedLruCache } = require('../../utils/lru-cache')
 
 describe('createBoundedLruCache', () => {
   test('stores, retrieves, and deletes entries with remaining TTL metadata', (t) => {
