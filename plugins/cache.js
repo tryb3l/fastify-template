@@ -3,21 +3,46 @@
 const fp = require('fastify-plugin')
 const { DEFAULT_CACHE_MAX_ENTRIES, createBoundedLruCache } = require('../utils/lru-cache')
 
+const USER_PARTITION_PREFIX = 'user:'
+
+function isUserCacheKey(key) {
+  return typeof key === 'string' && key.startsWith(USER_PARTITION_PREFIX)
+}
+
 module.exports = fp(
-  async function cachePlugin(fastify) {
+  async function cachePlugin(fastify, opts = {}) {
     fastify.log.info('Starting registration of cache plugin')
 
     const maxEntries = fastify.config.CACHE_MAX_ENTRIES ?? DEFAULT_CACHE_MAX_ENTRIES
-    const lru = createBoundedLruCache(maxEntries)
+    const sharedClockOptions = {
+      perf: opts.perf,
+      ttlResolution: opts.ttlResolution,
+    }
 
-    fastify.decorate('cacheGet', async function cacheGet(key) {
-      return lru.get(key)
+    const userPartition = createBoundedLruCache({
+      maxEntries,
+      ...sharedClockOptions,
     })
-    fastify.decorate('cacheSet', async function cacheSet(key, value, ttl) {
-      lru.set(key, value, ttl)
+    const entityPartition = createBoundedLruCache({
+      maxEntries,
+      ...sharedClockOptions,
     })
-    fastify.decorate('cacheDelete', async function cacheDelete(key) {
-      lru.delete(key)
+
+    function selectPartition(key) {
+      return isUserCacheKey(key) ? userPartition : entityPartition
+    }
+
+    fastify.decorate('cacheGet', function cacheGet(key) {
+      return selectPartition(key).get(key)
+    })
+    fastify.decorate('cacheSet', function cacheSet(key, value, ttl) {
+      selectPartition(key).set(key, value, ttl)
+    })
+    fastify.decorate('cacheDelete', function cacheDelete(key) {
+      selectPartition(key).delete(key)
+    })
+    fastify.decorate('cacheFetch', function cacheFetch(key, loader, ttl) {
+      return selectPartition(key).fetch(key, loader, ttl)
     })
 
     fastify.log.info('Successfully registered cache plugin')
