@@ -3,6 +3,8 @@
 const { describe, test } = require('node:test')
 const assert = require('node:assert/strict')
 const { randomUUIDv7 } = require('node:crypto')
+const { setImmediate: nextImmediate } = require('node:timers/promises')
+const { buildApp } = require('../../test-setup')
 const { setup } = require('../../utils/setup-user')
 const { randomPassword } = require('../../utils/data-creator')
 const { buildRefreshTokenCookieHeader, issueCsrfContext } = require('../../utils/csrf')
@@ -44,6 +46,8 @@ describe('POST /auth/reset-password/confirm', () => {
       payload: { email, password: newPassword },
     })
     assert.equal(newPasswordLogin.statusCode, 200)
+    await nextImmediate()
+    await app.flushAuditLogs()
   })
 
   test('returns 200 and invalidates old password, active sessions, and writes audit event', async (t) => {
@@ -108,7 +112,7 @@ describe('POST /auth/reset-password/confirm', () => {
 
   test('returns 400 when newPassword violates password policy', async (t) => {
     // Arrange
-    const { app } = await setup(t, 'user')
+    const app = await buildApp(t)
 
     // Act
     const response = await app.inject({

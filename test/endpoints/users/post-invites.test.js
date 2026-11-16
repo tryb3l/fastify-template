@@ -65,24 +65,44 @@ describe('POST /users/invites', () => {
     assert.ok(sent[0].text.includes(invite.inviteToken))
   })
 
-  test('returns 400 when email format, role, or ttlHours violates schema bounds', async (t) => {
+  test('returns 400 when email format is invalid', async (t) => {
     // Arrange
     const admin = await seedUser(t, { role: 'admin' })
 
     // Act
-    const badEmailRes = await admin.app.inject({
+    const response = await admin.app.inject({
       method: 'POST',
       url: '/users/invites',
       headers: { Authorization: `Bearer ${admin.accessToken}` },
       payload: { email: 'not-an-email' },
     })
-    const badRoleRes = await admin.app.inject({
+
+    // Assert
+    assert.equal(response.statusCode, 400)
+  })
+
+  test('returns 400 when role is outside allowed enum', async (t) => {
+    // Arrange
+    const admin = await seedUser(t, { role: 'admin' })
+
+    // Act
+    const response = await admin.app.inject({
       method: 'POST',
       url: '/users/invites',
       headers: { Authorization: `Bearer ${admin.accessToken}` },
       payload: { role: 'superadmin' },
     })
-    const badTtlRes = await admin.app.inject({
+
+    // Assert
+    assert.equal(response.statusCode, 400)
+  })
+
+  test('returns 400 when ttlHours is below minimum bound', async (t) => {
+    // Arrange
+    const admin = await seedUser(t, { role: 'admin' })
+
+    // Act
+    const response = await admin.app.inject({
       method: 'POST',
       url: '/users/invites',
       headers: { Authorization: `Bearer ${admin.accessToken}` },
@@ -90,9 +110,7 @@ describe('POST /users/invites', () => {
     })
 
     // Assert
-    assert.equal(badEmailRes.statusCode, 400)
-    assert.equal(badRoleRes.statusCode, 400)
-    assert.equal(badTtlRes.statusCode, 400)
+    assert.equal(response.statusCode, 400)
   })
 
   test('returns 401 when unauthenticated', async (t) => {

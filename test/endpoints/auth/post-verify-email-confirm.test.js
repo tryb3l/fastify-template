@@ -3,12 +3,13 @@
 const { describe, test } = require('node:test')
 const assert = require('node:assert/strict')
 const { randomUUIDv7 } = require('node:crypto')
+const { buildApp } = require('../../test-setup')
 const { setup } = require('../../utils/setup-user')
 const { extractEmailVerificationToken, flipFirstHexChar } = require('../../utils/auth-helpers')
 const mailerPlugin = require('../../../plugins/mailer')
 
 describe('POST /auth/verify-email/confirm', () => {
-  test('returns 200 verified: true, marks user verified, writes audit log, and rejects replay', async (t) => {
+  test('returns 200 verified: true, marks user verified, and writes audit log', async (t) => {
     // Arrange
     const { app, accessToken, email, userId } = await setup(t, 'user', {
       REGISTRATION_MODE: 'open',
@@ -81,25 +82,34 @@ describe('POST /auth/verify-email/confirm', () => {
     assert.equal(response.json().message, 'Invalid or expired email verification token')
   })
 
-  test('returns 400 when token is missing or shorter than schema minimum', async (t) => {
+  test('returns 400 when token is missing', async (t) => {
     // Arrange
-    const { app } = await setup(t, 'user', { REGISTRATION_MODE: 'open' })
+    const app = await buildApp(t)
 
     // Act
-    const missingTokenRes = await app.inject({
+    const response = await app.inject({
       method: 'POST',
       url: '/auth/verify-email/confirm',
       payload: {},
     })
-    const shortTokenRes = await app.inject({
+
+    // Assert
+    assert.equal(response.statusCode, 400)
+  })
+
+  test('returns 400 when token is shorter than schema minimum', async (t) => {
+    // Arrange
+    const app = await buildApp(t)
+
+    // Act
+    const response = await app.inject({
       method: 'POST',
       url: '/auth/verify-email/confirm',
       payload: { token: 'short' },
     })
 
     // Assert
-    assert.equal(missingTokenRes.statusCode, 400)
-    assert.equal(shortTokenRes.statusCode, 400)
+    assert.equal(response.statusCode, 400)
   })
 
   test('returns 401 when verification token secret is invalid', async (t) => {
@@ -129,7 +139,7 @@ describe('POST /auth/verify-email/confirm', () => {
     assert.equal(response.json().message, 'Invalid or expired email verification token')
   })
 
-  test('returns 401 when verification token does not match any user or email', async (t) => {
+  test('returns 401 when verification token email does not match owner email', async (t) => {
     // Arrange
     const { app, accessToken } = await setup(t, 'user', { REGISTRATION_MODE: 'open' })
     mailerPlugin.clearTestMessages()
@@ -143,20 +153,29 @@ describe('POST /auth/verify-email/confirm', () => {
     const token = extractEmailVerificationToken(mailerPlugin.getTestMessages()[0].text)
 
     // Act
-    const wrongEmailRes = await app.inject({
+    const response = await app.inject({
       method: 'POST',
       url: '/auth/verify-email/confirm',
       payload: { email: 'different-user@example.com', token },
     })
-    const unknownTokenRes = await app.inject({
+
+    // Assert
+    assert.equal(response.statusCode, 401)
+  })
+
+  test('returns 401 when verification token id is unknown', async (t) => {
+    // Arrange
+    const app = await buildApp(t)
+
+    // Act
+    const response = await app.inject({
       method: 'POST',
       url: '/auth/verify-email/confirm',
       payload: { token: `${randomUUIDv7()}.${'0'.repeat(64)}` },
     })
 
     // Assert
-    assert.equal(wrongEmailRes.statusCode, 401)
-    assert.equal(unknownTokenRes.statusCode, 401)
+    assert.equal(response.statusCode, 401)
   })
 
   test('returns 401 when verification token is expired', async (t) => {

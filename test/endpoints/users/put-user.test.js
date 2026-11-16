@@ -72,20 +72,32 @@ describe('PUT /users/:id', () => {
     assert.equal(typeof auditLogs[0].requestId, 'string')
   })
 
-  test('returns 400 when attempting to update forbidden deleted field or malformed id', async (t) => {
+  test('returns 400 when attempting to update forbidden deleted field', async (t) => {
     // Arrange
     const admin = await seedUser(t, { role: 'admin' })
     const target = await seedUser(t, { app: admin.app, role: 'user' })
-    const { tooShort } = generateMalformedUUIDs()
 
     // Act
-    const forbiddenFieldRes = await admin.app.inject({
+    const response = await admin.app.inject({
       method: 'PUT',
       url: `/users/${target.userId}`,
       headers: { Authorization: `Bearer ${admin.accessToken}` },
       payload: { deleted: true },
     })
-    const malformedIdRes = await admin.app.inject({
+
+    // Assert
+    assert.equal(response.statusCode, 400)
+    const unchanged = await admin.app.usersDataSource.readUserDetails(target.userId)
+    assert.equal(unchanged.role, 'user')
+  })
+
+  test('returns 400 when user id param is not a valid UUID', async (t) => {
+    // Arrange
+    const admin = await seedUser(t, { role: 'admin' })
+    const { tooShort } = generateMalformedUUIDs()
+
+    // Act
+    const response = await admin.app.inject({
       method: 'PUT',
       url: `/users/${tooShort}`,
       headers: { Authorization: `Bearer ${admin.accessToken}` },
@@ -93,10 +105,7 @@ describe('PUT /users/:id', () => {
     })
 
     // Assert
-    assert.equal(forbiddenFieldRes.statusCode, 400)
-    assert.equal(malformedIdRes.statusCode, 400)
-    const unchanged = await admin.app.usersDataSource.readUserDetails(target.userId)
-    assert.equal(unchanged.role, 'user')
+    assert.equal(response.statusCode, 400)
   })
 
   test('returns 401 when unauthenticated', async (t) => {
@@ -149,28 +158,39 @@ describe('PUT /users/:id', () => {
     assert.equal(response.statusCode, 404)
   })
 
-  test('returns 409 when updating username or email to an existing user', async (t) => {
+  test('returns 409 when updating username to an existing user', async (t) => {
     // Arrange
     const admin = await seedUser(t, { role: 'admin' })
     const target = await seedUser(t, { app: admin.app, role: 'user' })
     const existing = await seedUser(t, { app: admin.app, role: 'user' })
 
     // Act
-    const duplicateUsernameRes = await admin.app.inject({
+    const response = await admin.app.inject({
       method: 'PUT',
       url: `/users/${target.userId}`,
       headers: { Authorization: `Bearer ${admin.accessToken}` },
       payload: { username: existing.username.toUpperCase() },
     })
-    const duplicateEmailRes = await admin.app.inject({
+
+    // Assert
+    assert.equal(response.statusCode, 409)
+  })
+
+  test('returns 409 when updating email to an existing user', async (t) => {
+    // Arrange
+    const admin = await seedUser(t, { role: 'admin' })
+    const target = await seedUser(t, { app: admin.app, role: 'user' })
+    const existing = await seedUser(t, { app: admin.app, role: 'user' })
+
+    // Act
+    const response = await admin.app.inject({
       method: 'PUT',
       url: `/users/${target.userId}`,
       headers: { Authorization: `Bearer ${admin.accessToken}` },
-      payload: { email: existing.email.toUpperCase(), username: randomUsername(14) },
+      payload: { email: existing.email.toUpperCase() },
     })
 
     // Assert
-    assert.equal(duplicateUsernameRes.statusCode, 409)
-    assert.equal(duplicateEmailRes.statusCode, 409)
+    assert.equal(response.statusCode, 409)
   })
 })

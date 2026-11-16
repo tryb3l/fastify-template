@@ -61,19 +61,31 @@ describe('PUT /users/me', () => {
     assert.equal(staleTokenRes.statusCode, 401)
   })
 
-  test('returns 400 when payload includes unknown properties', async (t) => {
+  test('returns 400 when attempting to escalate own role', async (t) => {
     // Arrange
     const actor = await seedUser(t)
-    const bystander = await seedUser(t, { app: actor.app })
 
     // Act
-    const roleAttempt = await actor.app.inject({
+    const response = await actor.app.inject({
       method: 'PUT',
       url: '/users/me',
       headers: { Authorization: `Bearer ${actor.accessToken}` },
       payload: { role: 'admin' },
     })
-    const identityAttempt = await actor.app.inject({
+
+    // Assert
+    assert.equal(response.statusCode, 400)
+    const currentActor = await actor.app.usersDataSource.readUserDetails(actor.userId)
+    assert.equal(currentActor.role, 'user')
+  })
+
+  test('returns 400 when payload includes forbidden identity or deleted fields', async (t) => {
+    // Arrange
+    const actor = await seedUser(t)
+    const bystander = await seedUser(t, { app: actor.app })
+
+    // Act
+    const response = await actor.app.inject({
       method: 'PUT',
       url: '/users/me',
       headers: { Authorization: `Bearer ${actor.accessToken}` },
@@ -85,26 +97,33 @@ describe('PUT /users/me', () => {
     })
 
     // Assert
-    assert.equal(roleAttempt.statusCode, 400)
-    assert.equal(identityAttempt.statusCode, 400)
-
+    assert.equal(response.statusCode, 400)
     const currentActor = await actor.app.usersDataSource.readUserDetails(actor.userId)
-    assert.equal(currentActor.role, 'user')
     assert.equal(currentActor.username, actor.username)
   })
 
-  test('returns 400 when username or email violates schema constraints', async (t) => {
+  test('returns 400 when username is shorter than minimum length', async (t) => {
     // Arrange
     const actor = await seedUser(t)
 
     // Act
-    const shortUsernameRes = await actor.app.inject({
+    const response = await actor.app.inject({
       method: 'PUT',
       url: '/users/me',
       headers: { Authorization: `Bearer ${actor.accessToken}` },
       payload: { username: 'ab' },
     })
-    const badEmailRes = await actor.app.inject({
+
+    // Assert
+    assert.equal(response.statusCode, 400)
+  })
+
+  test('returns 400 when email format is invalid', async (t) => {
+    // Arrange
+    const actor = await seedUser(t)
+
+    // Act
+    const response = await actor.app.inject({
       method: 'PUT',
       url: '/users/me',
       headers: { Authorization: `Bearer ${actor.accessToken}` },
@@ -112,8 +131,7 @@ describe('PUT /users/me', () => {
     })
 
     // Assert
-    assert.equal(shortUsernameRes.statusCode, 400)
-    assert.equal(badEmailRes.statusCode, 400)
+    assert.equal(response.statusCode, 400)
   })
 
   test('returns 401 when unauthenticated', async (t) => {
@@ -151,19 +169,30 @@ describe('PUT /users/me', () => {
     assert.equal(data.email, actor.email)
   })
 
-  test('returns 409 when updating username or email to an existing user', async (t) => {
+  test('returns 409 when updating username to an existing user', async (t) => {
     // Arrange
     const actor = await seedUser(t)
     const existing = await seedUser(t, { app: actor.app })
 
     // Act
-    const duplicateUsernameRes = await actor.app.inject({
+    const response = await actor.app.inject({
       method: 'PUT',
       url: '/users/me',
       headers: { Authorization: `Bearer ${actor.accessToken}` },
       payload: { username: existing.username.toUpperCase() },
     })
-    const duplicateEmailRes = await actor.app.inject({
+
+    // Assert
+    assert.equal(response.statusCode, 409)
+  })
+
+  test('returns 409 when updating email to an existing user', async (t) => {
+    // Arrange
+    const actor = await seedUser(t)
+    const existing = await seedUser(t, { app: actor.app })
+
+    // Act
+    const response = await actor.app.inject({
       method: 'PUT',
       url: '/users/me',
       headers: { Authorization: `Bearer ${actor.accessToken}` },
@@ -171,7 +200,6 @@ describe('PUT /users/me', () => {
     })
 
     // Assert
-    assert.equal(duplicateUsernameRes.statusCode, 409)
-    assert.equal(duplicateEmailRes.statusCode, 409)
+    assert.equal(response.statusCode, 409)
   })
 })

@@ -60,25 +60,34 @@ describe('GET /users', () => {
     assert.equal(body.data[0].username, uniqueUsername.toLowerCase())
   })
 
-  test('returns 400 when pagination parameters violate query bounds', async (t) => {
+  test('returns 400 when skip is negative', async (t) => {
     // Arrange
     const admin = await seedUser(t, { role: 'admin' })
 
     // Act
-    const negativeSkipRes = await admin.app.inject({
+    const response = await admin.app.inject({
       method: 'GET',
       url: '/users?skip=-1',
       headers: { Authorization: `Bearer ${admin.accessToken}` },
     })
-    const oversizedLimitRes = await admin.app.inject({
+
+    // Assert
+    assert.equal(response.statusCode, 400)
+  })
+
+  test('returns 400 when limit exceeds maximum bound', async (t) => {
+    // Arrange
+    const admin = await seedUser(t, { role: 'admin' })
+
+    // Act
+    const response = await admin.app.inject({
       method: 'GET',
       url: '/users?limit=101',
       headers: { Authorization: `Bearer ${admin.accessToken}` },
     })
 
     // Assert
-    assert.equal(negativeSkipRes.statusCode, 400)
-    assert.equal(oversizedLimitRes.statusCode, 400)
+    assert.equal(response.statusCode, 400)
   })
 
   test('returns 401 when unauthenticated', async (t) => {

@@ -4,7 +4,7 @@ const { describe, test } = require('node:test')
 const assert = require('node:assert/strict')
 const { buildApp } = require('../../test-setup')
 const { randomUsername, randomEmail, randomPassword } = require('../../utils/data-creator')
-const { seedUser } = require('../../utils/setup-user')
+const { setup } = require('../../utils/setup-user')
 
 async function registerUser(app, payload) {
   return await app.inject({
@@ -12,6 +12,23 @@ async function registerUser(app, payload) {
     url: '/auth/register',
     payload,
   })
+}
+
+async function createInviteViaHttpAdmin(t, payload = {}) {
+  const admin = await setup(t, 'admin', { REGISTRATION_MODE: 'open' })
+  const inviteApp = await buildApp(t, { REGISTRATION_MODE: 'invite' })
+  const createRes = await admin.app.inject({
+    method: 'POST',
+    url: '/users/invites',
+    headers: { Authorization: `Bearer ${admin.accessToken}` },
+    payload,
+  })
+  assert.equal(createRes.statusCode, 201)
+  return {
+    admin,
+    inviteApp,
+    invite: createRes.json().data,
+  }
 }
 
 describe('POST /auth/register', () => {
@@ -47,13 +64,11 @@ describe('POST /auth/register', () => {
 
   test('returns 201 with verified email and assigned role when consuming a single-use invite token', async (t) => {
     // Arrange
-    const admin = await seedUser(t, { role: 'admin', env: { REGISTRATION_MODE: 'invite' } })
     const targetEmail = randomEmail(10, 5)
-    const invite = await admin.app.usersDataSource.createInvite({
+    const { inviteApp, invite } = await createInviteViaHttpAdmin(t, {
       email: targetEmail.toUpperCase(),
       role: 'admin',
       ttlHours: 24,
-      createdBy: admin.userId,
     })
     const payload = {
       username: randomUsername(12),
@@ -63,13 +78,13 @@ describe('POST /auth/register', () => {
     }
 
     // Act
-    const response = await registerUser(admin.app, payload)
+    const response = await registerUser(inviteApp, payload)
 
     // Assert
     assert.equal(response.statusCode, 201)
     assert.deepEqual(response.json(), { registered: true })
 
-    const created = await admin.app.usersDataSource.readUserWithHash(payload.username)
+    const created = await inviteApp.usersDataSource.readUserWithHash(payload.username)
     assert.ok(created)
     assert.equal(created.emailVerified, true)
     assert.equal(created.role, 'admin')
@@ -154,16 +169,14 @@ describe('POST /auth/register', () => {
 
   test('returns 403 when inviteToken is bound to a different email address', async (t) => {
     // Arrange
-    const admin = await seedUser(t, { role: 'admin', env: { REGISTRATION_MODE: 'invite' } })
-    const invite = await admin.app.usersDataSource.createInvite({
+    const { inviteApp, invite } = await createInviteViaHttpAdmin(t, {
       email: randomEmail(10, 5),
       role: 'user',
       ttlHours: 24,
-      createdBy: admin.userId,
     })
 
     // Act
-    const response = await registerUser(admin.app, {
+    const response = await registerUser(inviteApp, {
       username: randomUsername(12),
       email: randomEmail(10, 5),
       password: randomPassword(14),
@@ -176,62 +189,75 @@ describe('POST /auth/register', () => {
 
   test('returns 403 when inviteToken is already consumed', async (t) => {
     // Arrange
-    const admin = await seedUser(t, { role: 'admin', env: { REGISTRATION_MODE: 'invite' } })
-    const consumedInvite = await admin.app.usersDataSource.createInvite({
+    const { inviteApp, invite } = await createInviteViaHttpAdmin(t, {
       role: 'user',
       ttlHours: 24,
-      createdBy: admin.userId,
     })
-    const firstSignup = await registerUser(admin.app, {
+    const firstSignup = await registerUser(inviteApp, {
       username: randomUsername(12),
       email: randomEmail(10, 5),
       password: randomPassword(14),
-      inviteToken: consumedInvite.inviteToken,
+      inviteToken: invite.inviteToken,
     })
     assert.equal(firstSignup.statusCode, 201)
 
     // Act
-    const response = await registerUser(admin.app, {
+    const response = await registerUser(inviteApp, {
       username: randomUsername(12),
       email: randomEmail(10, 5),
       password: randomPassword(14),
-      inviteToken: consumedInvite.inviteToken,
+      inviteToken: invite.inviteToken,
     })
 
     // Assert
     assert.equal(response.statusCode, 403)
   })
 
-  test('returns 403 when inviteToken is revoked or tampered', async (t) => {
+  test('returns 403 when inviteToken is revoked', async (t) => {
     // Arrange
-    const admin = await seedUser(t, { role: 'admin', env: { REGISTRATION_MODE: 'invite' } })
-    const revokedInvite = await admin.app.usersDataSource.createInvite({
+    const { admin, inviteApp, invite } = await createInviteViaHttpAdmin(t, {
       role: 'user',
       ttlHours: 24,
-      createdBy: admin.userId,
     })
-    await admin.app.usersDataSource.revokeInvite(revokedInvite.id)
+    const revokeRes = await admin.app.inject({
+      method: 'DELETE',
+      url: `/users/invites/${invite.id}`,
+      headers: { Authorization: `Bearer ${admin.accessToken}` },
+    })
+    assert.equal(revokeRes.statusCode, 204)
 
     // Act
-    const revokedResponse = await registerUser(admin.app, {
+    const response = await registerUser(inviteApp, {
       username: randomUsername(12),
       email: randomEmail(10, 5),
       password: randomPassword(14),
-      inviteToken: revokedInvite.inviteToken,
-    })
-    const tamperedResponse = await registerUser(admin.app, {
-      username: randomUsername(12),
-      email: randomEmail(10, 5),
-      password: randomPassword(14),
-      inviteToken: `${revokedInvite.id}.${'0'.repeat(64)}`,
+      inviteToken: invite.inviteToken,
     })
 
     // Assert
-    assert.equal(revokedResponse.statusCode, 403)
-    assert.equal(tamperedResponse.statusCode, 403)
+    assert.equal(response.statusCode, 403)
   })
 
-  test('returns 409 when username or email is already registered', async (t) => {
+  test('returns 403 when inviteToken secret is tampered', async (t) => {
+    // Arrange
+    const { inviteApp, invite } = await createInviteViaHttpAdmin(t, {
+      role: 'user',
+      ttlHours: 24,
+    })
+
+    // Act
+    const response = await registerUser(inviteApp, {
+      username: randomUsername(12),
+      email: randomEmail(10, 5),
+      password: randomPassword(14),
+      inviteToken: `${invite.id}.${'0'.repeat(64)}`,
+    })
+
+    // Assert
+    assert.equal(response.statusCode, 403)
+  })
+
+  test('returns 409 when username is already registered', async (t) => {
     // Arrange
     const app = await buildApp(t, { REGISTRATION_MODE: 'open' })
     const existingPayload = {
@@ -243,21 +269,37 @@ describe('POST /auth/register', () => {
     assert.equal(firstResponse.statusCode, 201)
 
     // Act
-    const duplicateUsernameRes = await registerUser(app, {
+    const response = await registerUser(app, {
       username: existingPayload.username.toUpperCase(),
       email: randomEmail(10, 5),
       password: randomPassword(14),
     })
-    const duplicateEmailRes = await registerUser(app, {
+
+    // Assert
+    assert.equal(response.statusCode, 409)
+    assert.ok(response.json().message.includes('User already registered'))
+  })
+
+  test('returns 409 when email is already registered', async (t) => {
+    // Arrange
+    const app = await buildApp(t, { REGISTRATION_MODE: 'open' })
+    const existingPayload = {
+      username: randomUsername(12),
+      email: randomEmail(10, 5),
+      password: randomPassword(14),
+    }
+    const firstResponse = await registerUser(app, existingPayload)
+    assert.equal(firstResponse.statusCode, 201)
+
+    // Act
+    const response = await registerUser(app, {
       username: randomUsername(12),
       email: existingPayload.email.toUpperCase(),
       password: randomPassword(14),
     })
 
     // Assert
-    assert.equal(duplicateUsernameRes.statusCode, 409)
-    assert.ok(duplicateUsernameRes.json().message.includes('User already registered'))
-    assert.equal(duplicateEmailRes.statusCode, 409)
-    assert.ok(duplicateEmailRes.json().message.includes('User already registered'))
+    assert.equal(response.statusCode, 409)
+    assert.ok(response.json().message.includes('User already registered'))
   })
 })

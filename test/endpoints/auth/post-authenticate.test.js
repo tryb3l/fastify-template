@@ -3,12 +3,8 @@
 const { describe, test } = require('node:test')
 const assert = require('node:assert/strict')
 const { randomPassword, randomUsername } = require('../../utils/data-creator')
+const { findRefreshCookie } = require('../../utils/csrf')
 const { setup } = require('../../utils/setup-user')
-
-function findRefreshCookie(setCookieHeader) {
-  const cookies = Array.isArray(setCookieHeader) ? setCookieHeader : [setCookieHeader]
-  return cookies.find((cookie) => cookie && cookie.startsWith('refreshToken='))
-}
 
 describe('POST /auth/authenticate', () => {
   test('returns 200 with Bearer access token, HttpOnly refresh cookie, and user profile', async (t) => {

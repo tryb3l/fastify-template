@@ -3,12 +3,11 @@
 const { describe, test } = require('node:test')
 const assert = require('node:assert/strict')
 const { setup } = require('../../utils/setup-user')
-const { buildRefreshTokenCookieHeader, issueCsrfContext } = require('../../utils/csrf')
-
-function findRefreshCookie(setCookieHeader) {
-  const cookies = Array.isArray(setCookieHeader) ? setCookieHeader : [setCookieHeader]
-  return cookies.find((cookie) => cookie && cookie.startsWith('refreshToken='))
-}
+const {
+  assertRefreshCookieExpired,
+  buildRefreshTokenCookieHeader,
+  issueCsrfContext,
+} = require('../../utils/csrf')
 
 describe('POST /auth/logout', () => {
   test('returns 204, clears refresh cookie, and revokes refresh token session', async (t) => {
@@ -29,10 +28,7 @@ describe('POST /auth/logout', () => {
 
     // Assert
     assert.equal(response.statusCode, 204)
-    const clearCookie = findRefreshCookie(response.headers['set-cookie'])
-    assert.ok(clearCookie)
-    assert.ok(clearCookie.includes('Max-Age=0') || clearCookie.includes('Expires='))
-    assert.ok(clearCookie.includes('Path=/auth'))
+    assertRefreshCookieExpired(response.headers['set-cookie'])
 
     const refreshResponse = await app.inject({
       method: 'POST',

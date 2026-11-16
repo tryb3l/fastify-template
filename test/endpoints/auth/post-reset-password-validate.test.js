@@ -3,6 +3,7 @@
 const { describe, test } = require('node:test')
 const assert = require('node:assert/strict')
 const { randomUUIDv7 } = require('node:crypto')
+const { buildApp } = require('../../test-setup')
 const { setup } = require('../../utils/setup-user')
 const { extractResetToken, flipFirstHexChar } = require('../../utils/auth-helpers')
 const mailerPlugin = require('../../../plugins/mailer')
@@ -36,25 +37,34 @@ describe('POST /auth/reset-password/validate', () => {
     assert.deepEqual(response.json(), { valid: true })
   })
 
-  test('returns 400 when resetId is not a valid UUID or secret is too short', async (t) => {
+  test('returns 400 when resetId is not a valid UUID', async (t) => {
     // Arrange
-    const { app } = await setup(t, 'user')
+    const app = await buildApp(t)
 
     // Act
-    const invalidIdRes = await app.inject({
+    const response = await app.inject({
       method: 'POST',
       url: '/auth/reset-password/validate',
       payload: { resetId: 'not-a-uuid', secret: 'a'.repeat(64) },
     })
-    const shortSecretRes = await app.inject({
+
+    // Assert
+    assert.equal(response.statusCode, 400)
+  })
+
+  test('returns 400 when secret is shorter than minimum length', async (t) => {
+    // Arrange
+    const app = await buildApp(t)
+
+    // Act
+    const response = await app.inject({
       method: 'POST',
       url: '/auth/reset-password/validate',
       payload: { resetId: randomUUIDv7(), secret: 'short' },
     })
 
     // Assert
-    assert.equal(invalidIdRes.statusCode, 400)
-    assert.equal(shortSecretRes.statusCode, 400)
+    assert.equal(response.statusCode, 400)
   })
 
   test('returns 401 when reset token secret is invalid', async (t) => {
@@ -84,7 +94,7 @@ describe('POST /auth/reset-password/validate', () => {
 
   test('returns 401 when resetId is unknown', async (t) => {
     // Arrange
-    const { app } = await setup(t, 'user')
+    const app = await buildApp(t)
 
     // Act
     const response = await app.inject({

@@ -3,20 +3,12 @@
 const { describe, test } = require('node:test')
 const assert = require('node:assert/strict')
 const { setup } = require('../../utils/setup-user')
-const { buildRefreshTokenCookieHeader, issueCsrfContext } = require('../../utils/csrf')
-
-function findRefreshCookie(setCookieHeader) {
-  const cookies = Array.isArray(setCookieHeader) ? setCookieHeader : [setCookieHeader]
-  return cookies.find((cookie) => cookie && cookie.startsWith('refreshToken='))
-}
-
-function assertRefreshCookieExpired(setCookieHeader) {
-  const clearCookie = findRefreshCookie(setCookieHeader)
-
-  assert.ok(clearCookie)
-  assert.ok(clearCookie.includes('Max-Age=0') || clearCookie.includes('Expires='))
-  assert.ok(clearCookie.includes('Path=/auth'))
-}
+const {
+  assertRefreshCookieExpired,
+  buildRefreshTokenCookieHeader,
+  findRefreshCookie,
+  issueCsrfContext,
+} = require('../../utils/csrf')
 
 describe('POST /auth/refresh', () => {
   test('returns 200 and rotates refresh token with valid CSRF context', async (t) => {

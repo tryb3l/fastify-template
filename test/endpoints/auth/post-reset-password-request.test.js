@@ -2,6 +2,7 @@
 
 const { describe, test } = require('node:test')
 const assert = require('node:assert/strict')
+const { buildApp } = require('../../test-setup')
 const { setup } = require('../../utils/setup-user')
 const mailerPlugin = require('../../../plugins/mailer')
 
@@ -33,7 +34,7 @@ describe('POST /auth/reset-password/request', () => {
 
   test('returns 200 without sending email when email is unknown', async (t) => {
     // Arrange
-    const { app } = await setup(t, 'user')
+    const app = await buildApp(t)
     mailerPlugin.clearTestMessages()
 
     // Act
@@ -91,26 +92,35 @@ describe('POST /auth/reset-password/request', () => {
     assert.equal(ignoredLogs.length, 1)
   })
 
-  test('returns 400 when email format is invalid or missing', async (t) => {
+  test('returns 400 when email format is invalid', async (t) => {
     // Arrange
-    const { app } = await setup(t, 'user')
+    const app = await buildApp(t)
 
     // Act
-    const invalidEmailRes = await app.inject({
+    const response = await app.inject({
       method: 'POST',
       url: '/auth/reset-password/request',
       payload: { email: 'not-an-email' },
     })
-    const missingEmailRes = await app.inject({
+
+    // Assert
+    assert.equal(response.statusCode, 400)
+    assert.ok(response.json().message)
+  })
+
+  test('returns 400 when email field is missing', async (t) => {
+    // Arrange
+    const app = await buildApp(t)
+
+    // Act
+    const response = await app.inject({
       method: 'POST',
       url: '/auth/reset-password/request',
       payload: {},
     })
 
     // Assert
-    assert.equal(invalidEmailRes.statusCode, 400)
-    assert.ok(invalidEmailRes.json().message)
-    assert.equal(missingEmailRes.statusCode, 400)
-    assert.ok(missingEmailRes.json().message)
+    assert.equal(response.statusCode, 400)
+    assert.ok(response.json().message)
   })
 })
