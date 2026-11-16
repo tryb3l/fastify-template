@@ -9,6 +9,7 @@ const {
   NOTE_READINESS_VALUES,
   NOTE_TYPES,
 } = require('../routes/notes/query-shapes')
+const { buildNoteCacheKey } = require('../utils/lru-cache')
 
 const NOTE_CACHE_TTL_MS = 300_000
 const SYNC_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000
@@ -222,10 +223,6 @@ function derivePreservedExplicitLinks(existingContext) {
   )
 }
 
-function buildNoteCacheKey(id, userId) {
-  return `note:${id}:${userId}`
-}
-
 function extractMarkdownLinks(body) {
   const extracted = new Map()
   if (typeof body !== 'string' || body.length === 0) {
@@ -363,7 +360,7 @@ const notesStorePlugin = fp(
     const syncTombstones = fastify.mongo.db.collection('syncTombstones')
 
     async function invalidateNoteCache(noteId, userId) {
-      if (typeof fastify.cacheDelete !== 'function' || !noteId || !userId) {
+      if (!noteId || !userId) {
         return
       }
       try {
@@ -631,8 +628,7 @@ const notesStorePlugin = fp(
 
       async readNote(id, userId, projection = {}) {
         fastify.log.debug('Entering readNote method')
-        const useCache =
-          Object.keys(projection).length === 0 && typeof fastify.cacheFetch === 'function'
+        const useCache = Object.keys(projection).length === 0
 
         const loadNoteFromDb = async () => {
           const note = await notes.findOne(

@@ -6,6 +6,19 @@ const DEFAULT_CACHE_MAX_ENTRIES = 2_000
 const DEFAULT_CACHE_MAX_BYTES = 32_000_000
 const DEFAULT_CACHE_MAX_ENTRY_BYTES = 256_000
 const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000
+const USER_CACHE_KEY_PREFIX = 'user:'
+
+function buildUserCacheKey(userId) {
+  return `${USER_CACHE_KEY_PREFIX}${userId}`
+}
+
+function buildNoteCacheKey(noteId, userId) {
+  return `note:${noteId}:${userId}`
+}
+
+function isUserCacheKey(key) {
+  return typeof key === 'string' && key.startsWith(USER_CACHE_KEY_PREFIX)
+}
 
 const NOTE_BASE_BYTES = 512
 const NOTE_TAG_BYTES = 64
@@ -183,6 +196,9 @@ module.exports = {
   DEFAULT_CACHE_MAX_BYTES,
   DEFAULT_CACHE_MAX_ENTRY_BYTES,
   DEFAULT_CACHE_TTL_MS,
+  buildUserCacheKey,
+  buildNoteCacheKey,
+  isUserCacheKey,
   estimateEntryBytes,
   createBoundedLruCache,
 }

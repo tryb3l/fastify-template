@@ -236,10 +236,8 @@ describe('Application configuration', () => {
     httpApp.cacheDelete(`user:${actor.userId}`)
 
     let findOneCalls = 0
-    let releaseLookup
-    const lookupGate = new Promise((resolve) => {
-      releaseLookup = resolve
-    })
+    let releaseUserLookup = () => {}
+    let nextUserFindGate = Promise.resolve()
     const fp = require('fastify-plugin')
     const gatedApp = Fastify({ logger: false })
     t.after(async () => {
@@ -261,7 +259,9 @@ describe('Application configuration', () => {
                 return {
                   async findOne(filter) {
                     findOneCalls += 1
-                    await lookupGate
+                    const gate = nextUserFindGate
+                    nextUserFindGate = Promise.resolve()
+                    await gate
                     if (filter._id === 'missing-user') {
                       return null
                     }
@@ -291,58 +291,21 @@ describe('Application configuration', () => {
       httpApp.inject({ method: 'GET', url: '/users/me', headers: authHeaders }),
     ])
 
-    // Act 2: coalesced cold readUserById + mid-flight cacheDelete race
+    // Act 2: coalesced cold readUserById + mid-flight cacheDelete race on the same gated store
+    nextUserFindGate = new Promise((resolve) => {
+      releaseUserLookup = resolve
+    })
     const coldReadA = gatedApp.usersDataSource.readUserById('u-coalesced')
     const coldReadB = gatedApp.usersDataSource.readUserById('u-coalesced')
-    releaseLookup()
+    releaseUserLookup()
     const [resolvedA, resolvedB] = await Promise.all([coldReadA, coldReadB])
 
-    let releaseRaceLookup
-    lookupGate.then(() => {})
-    let raceFindCalls = 0
-    const raceApp = Fastify({ logger: false })
-    t.after(async () => {
-      await raceApp.close()
+    nextUserFindGate = new Promise((resolve) => {
+      releaseUserLookup = resolve
     })
-    const raceGate = new Promise((resolve) => {
-      releaseRaceLookup = resolve
-    })
-    await raceApp.register(configPlugin, {
-      configData: buildConfigData({ CACHE_MAX_ENTRIES: '8' }),
-    })
-    await raceApp.register(cachePlugin)
-    await raceApp.register(
-      fp(
-        async (instance) => {
-          instance.decorate('mongo', {
-            db: {
-              collection() {
-                return {
-                  async findOne(filter) {
-                    raceFindCalls += 1
-                    await raceGate
-                    return {
-                      _id: filter._id,
-                      username: 'bob',
-                      email: 'bob@example.com',
-                      role: 'member',
-                      credentialsVersion: 1,
-                    }
-                  },
-                }
-              },
-            },
-          })
-        },
-        { name: 'db-plugin' },
-      ),
-    )
-    await raceApp.register(usersPlugin)
-    await raceApp.ready()
-
-    const inFlightUserRead = raceApp.usersDataSource.readUserById('u-race')
-    raceApp.cacheDelete('user:u-race')
-    releaseRaceLookup()
+    const inFlightUserRead = gatedApp.usersDataSource.readUserById('u-race')
+    gatedApp.cacheDelete('user:u-race')
+    releaseUserLookup()
     const inFlightResult = await inFlightUserRead
 
     // Assert
@@ -350,13 +313,12 @@ describe('Application configuration', () => {
     assert.equal(me2.statusCode, 200)
     assert.equal(me3.statusCode, 200)
     assert.equal(httpApp.cacheGet(`user:${actor.userId}`)?.id, actor.userId)
-    assert.equal(findOneCalls, 1)
+    assert.equal(findOneCalls, 2)
     assert.equal(resolvedA.id, 'u-coalesced')
     assert.equal(resolvedB.id, 'u-coalesced')
     assert.equal(gatedApp.cacheGet('user:u-coalesced')?.id, 'u-coalesced')
-    assert.equal(raceFindCalls, 1)
     assert.equal(inFlightResult.id, 'u-race')
-    assert.equal(raceApp.cacheGet('user:u-race'), null)
+    assert.equal(gatedApp.cacheGet('user:u-race'), null)
   })
 
   test('readNote coalesces cold reads, bypasses custom projections, enforces cache decorator metadata, and resists Leitner/edit stale-write races', async (t) => {
