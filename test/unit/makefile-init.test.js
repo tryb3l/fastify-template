@@ -41,7 +41,18 @@ function parseEnvFile(filePath) {
 }
 
 function runMake(args, options = {}) {
-  const { NODE: _inheritedNode, ...inheritedEnv } = process.env
+  const {
+    NODE: _inheritedNode,
+    ENV_FILE: _inheritedEnvFile,
+    JWT_SECRET: _inheritedJwtSecret,
+    COOKIE_SECRET: _inheritedCookieSecret,
+    MONGO_URL: _inheritedMongoUrl,
+    FRONTEND_URL: _inheritedFrontendUrl,
+    LOG_LEVEL: _inheritedLogLevel,
+    MAIL_FROM: _inheritedMailFrom,
+    NODE_ENV: _inheritedNodeEnv,
+    ...inheritedEnv
+  } = process.env
   const env = {
     ...inheritedEnv,
     ...options.env,

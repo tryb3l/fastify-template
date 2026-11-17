@@ -1,13 +1,54 @@
 'use strict'
 
+const { execFileSync } = require('node:child_process')
+const fs = require('node:fs')
+const https = require('node:https')
+const os = require('node:os')
+const path = require('node:path')
 const { describe, test } = require('node:test')
 const assert = require('node:assert/strict')
-const https = require('node:https')
 const Fastify = require('fastify')
 
+const { resolveHttpsOptions } = require('../../configs/server-options')
 const configPlugin = require('../../plugins/config')
 const swaggerPlugin = require('../../plugins/swagger')
 const { buildApp } = require('../test-setup')
+
+function createEphemeralHttpsOptions(t) {
+  const certDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fastify-https-test-'))
+  t.after(() => {
+    fs.rmSync(certDir, { recursive: true, force: true })
+  })
+
+  const keyPath = path.join(certDir, 'localhost-key.pem')
+  const certPath = path.join(certDir, 'localhost.pem')
+  execFileSync(
+    'openssl',
+    [
+      'req',
+      '-x509',
+      '-newkey',
+      'rsa:2048',
+      '-nodes',
+      '-sha256',
+      '-days',
+      '1',
+      '-subj',
+      '/CN=localhost',
+      '-keyout',
+      keyPath,
+      '-out',
+      certPath,
+    ],
+    { stdio: 'ignore' },
+  )
+
+  return resolveHttpsOptions({
+    NODE_ENV: 'test',
+    HTTPS_KEY_PATH: keyPath,
+    HTTPS_CERT_PATH: certPath,
+  })
+}
 
 describe('Swagger OpenAPI documentation', () => {
   test('serves OpenAPI specification JSON at GET /docs/json with bearerAuth scheme', async (t) => {
@@ -28,14 +69,10 @@ describe('Swagger OpenAPI documentation', () => {
     assert.ok(Object.keys(spec.paths || {}).length > 0)
   })
 
-  test('serves GET /docs/json over HTTPS when local TLS certificates are present', async (t) => {
+  test('serves GET /docs/json over HTTPS when TLS certificates are configured', async (t) => {
     // Arrange
-    const app = await buildApp(t)
-    if (!app.initialConfig?.https) {
-      t.skip('Local HTTPS certificates (.certs/) not present')
-      return
-    }
-
+    const httpsOptions = createEphemeralHttpsOptions(t)
+    const app = await buildApp(t, undefined, { https: httpsOptions })
     await app.listen({ port: 0, host: '127.0.0.1' })
     const port = app.server.address().port
 
