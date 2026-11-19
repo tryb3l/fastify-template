@@ -2,7 +2,6 @@
 
 const path = require('node:path')
 const AutoLoad = require('@fastify/autoload')
-const closeWithGrace = require('close-with-grace')
 
 module.exports = async function (fastify, opts) {
   try {
@@ -29,24 +28,6 @@ module.exports = async function (fastify, opts) {
       autoHooks: true,
       cascadeHooks: true,
       options: Object.assign({}, opts),
-    })
-
-    const closeListeners = closeWithGrace(
-      { delay: process.env.FASTIFY_CLOSE_GRACE_DELAY || 500 },
-      async function ({ signal, err }) {
-        if (err) {
-          fastify.log.error({ err }, 'Server closing due to error')
-        } else {
-          fastify.log.info(`${signal} received, gracefully shutting down server...`)
-        }
-
-        await fastify.close()
-      },
-    )
-
-    fastify.addHook('onClose', (_instance, done) => {
-      closeListeners.uninstall()
-      done()
     })
   } catch (err) {
     fastify.log.error(err)

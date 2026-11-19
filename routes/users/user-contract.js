@@ -10,6 +10,7 @@ const USER_CONSTRAINTS = Object.freeze({
   PASSWORD_PATTERN: '^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9]).{8,64}$',
   LIST_LIMIT_DEFAULT: 10,
   LIST_LIMIT_MAX: 100,
+  LIST_SKIP_MAX: 10_000,
 })
 
 const USER_ROLES = Object.freeze(['user', 'admin'])
@@ -163,6 +164,7 @@ function buildUserSchemas() {
         skip: {
           type: 'integer',
           minimum: 0,
+          maximum: USER_CONSTRAINTS.LIST_SKIP_MAX,
           default: 0,
         },
         limit: {

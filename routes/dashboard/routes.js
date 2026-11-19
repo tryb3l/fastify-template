@@ -88,6 +88,12 @@ const velocityDaySchema = {
 
 module.exports = async function dashboardRoutes(fastify) {
   fastify.get('/summary', {
+    config: {
+      rateLimit: {
+        max: 60,
+        timeWindow: '1 minute',
+      },
+    },
     schema: {
       tags: ['dashboard'],
       summary:

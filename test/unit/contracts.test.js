@@ -79,6 +79,9 @@ describe('domain schema and projection contracts', () => {
     assert.ok(schemaIds.includes('schema:user'))
     assert.ok(schemaIds.includes('schema:user:update:body'))
     assert.ok(schemaIds.includes('schema:user:update:admin:body'))
+    const userListQuery = schemas.find((s) => s.$id === 'schema:user:list:query')
+    assert.equal(USER_CONSTRAINTS.LIST_SKIP_MAX, 10_000)
+    assert.equal(userListQuery.properties.skip.maximum, USER_CONSTRAINTS.LIST_SKIP_MAX)
   })
 
   test('note-contract exposes frozen projections and bounded note schemas', () => {

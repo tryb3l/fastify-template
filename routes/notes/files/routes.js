@@ -2,11 +2,22 @@
 
 const fastifyMultipart = require('@fastify/multipart')
 const { createNotesCsvExportStream, importNotesFromCsvStream } = require('../../../utils/notes-csv')
-const { NOTE_EXPORT_PROJECTION } = require('../query-shapes')
+const { resolveNodeEnv } = require('../../../utils/runtime-env')
+const { NOTE_CONSTRAINTS, NOTE_EXPORT_PROJECTION } = require('../query-shapes')
 
-module.exports = async function fileRoutes(fastify) {
+module.exports = async function fileRoutes(fastify, opts) {
+  const nodeEnv = resolveNodeEnv(fastify, opts)
+  const filesMutationRateLimit = {
+    max: nodeEnv === 'test' ? 60 : 20,
+    timeWindow: '1 minute',
+  }
+  const filesDownloadRateLimit = {
+    max: 120,
+    timeWindow: '1 minute',
+  }
   const maxUploadBytes = Number(fastify.config?.MAX_UPLOAD_BYTES || 10_000_000)
   const userStorageQuotaBytes = Number(fastify.config?.USER_STORAGE_QUOTA_BYTES || 524_288_000)
+  const maxNoteAttachments = NOTE_CONSTRAINTS.ATTACHMENTS_MAX_ITEMS
 
   await fastify.register(fastifyMultipart, {
     limits: {
@@ -21,6 +32,7 @@ module.exports = async function fileRoutes(fastify) {
   fastify.route({
     method: 'POST',
     url: '/import',
+    config: { rateLimit: filesMutationRateLimit },
     schema: {
       tags: ['files'],
       summary: 'Import a note list from a CSV file',
@@ -60,6 +72,7 @@ module.exports = async function fileRoutes(fastify) {
   fastify.route({
     method: 'GET',
     url: '/export',
+    config: { rateLimit: filesMutationRateLimit },
     schema: {
       tags: ['files'],
       summary: 'Export a note list to a CSV file',
@@ -96,6 +109,7 @@ module.exports = async function fileRoutes(fastify) {
   fastify.route({
     method: 'POST',
     url: '/upload',
+    config: { rateLimit: filesMutationRateLimit },
     schema: {
       tags: ['files'],
       summary: 'Upload a raw file',
@@ -135,7 +149,16 @@ module.exports = async function fileRoutes(fastify) {
     handler: async function uploadFile(request, reply) {
       const { noteId } = request.query
 
-      await request.notesDataSource.readNote(noteId)
+      const note = await request.notesDataSource.readNote(noteId)
+      const existingAttachmentCount = Array.isArray(note.attachments) ? note.attachments.length : 0
+      if (existingAttachmentCount >= maxNoteAttachments) {
+        if (!request.raw.readableEnded) {
+          request.raw.resume()
+        }
+        throw fastify.httpErrors.badRequest(
+          `Note cannot exceed maximum of ${maxNoteAttachments} attachments`,
+        )
+      }
 
       const { dbFiles, cleanup } = await fastify.notesFileManager.stageUploads(
         request.parts(),
@@ -143,6 +166,13 @@ module.exports = async function fileRoutes(fastify) {
       )
 
       try {
+        if (existingAttachmentCount + dbFiles.length > maxNoteAttachments) {
+          await cleanup()
+          throw fastify.httpErrors.badRequest(
+            `Note cannot exceed maximum of ${maxNoteAttachments} attachments`,
+          )
+        }
+
         const batchBytes = dbFiles.reduce((acc, f) => acc + Number(f.size || 0), 0)
         const currentUsageBytes = await request.notesDataSource.getUserStorageUsageBytes()
         if (currentUsageBytes + batchBytes > userStorageQuotaBytes) {
@@ -169,12 +199,14 @@ module.exports = async function fileRoutes(fastify) {
     method: 'GET',
     url: '/:fileId',
     compress: false,
+    config: { rateLimit: filesDownloadRateLimit },
     schema: {
       tags: ['files'],
       summary: 'Download or stream an attachment (supports HTTP Range)',
       params: {
         type: 'object',
         required: ['fileId'],
+        additionalProperties: false,
         properties: {
           fileId: { type: 'string', format: 'uuid' },
         },
@@ -182,6 +214,7 @@ module.exports = async function fileRoutes(fastify) {
       querystring: {
         type: 'object',
         required: ['noteId'],
+        additionalProperties: false,
         properties: {
           noteId: { type: 'string', format: 'uuid' },
         },
@@ -250,6 +283,7 @@ module.exports = async function fileRoutes(fastify) {
   fastify.route({
     method: 'DELETE',
     url: '/:fileId',
+    config: { rateLimit: filesMutationRateLimit },
     schema: {
       tags: ['files'],
       summary: 'Delete an individual attachment from a note',

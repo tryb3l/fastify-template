@@ -5,6 +5,7 @@ const assert = require('node:assert')
 const { Readable } = require('node:stream')
 const {
   CSV_IMPORT_BATCH_SIZE,
+  MAX_CSV_IMPORT_ROWS,
   buildNoteImportHeaders,
   importNotesFromCsvStream,
   mapNoteImportRow,
@@ -184,6 +185,34 @@ test('importNotesFromCsvStream rejects with 413 when multipart stream is marked 
       }),
     (err) => {
       assert.strictEqual(err.statusCode, 413)
+      return true
+    },
+  )
+
+  assert.strictEqual(persistedBatches.length, 0)
+})
+
+test('importNotesFromCsvStream rejects with 400 before persisting when row count exceeds maxRows ceiling', async () => {
+  assert.strictEqual(MAX_CSV_IMPORT_ROWS, 5000)
+  const csvStream = Readable.from([
+    'title,body\n"Row 1","Body 1"\n"Row 2","Body 2"\n"Row 3","Body 3"\n',
+  ])
+
+  const persistedBatches = []
+  await assert.rejects(
+    () =>
+      importNotesFromCsvStream(
+        csvStream,
+        async (batch) => {
+          persistedBatches.push(batch)
+          return ['id-1']
+        },
+        CSV_IMPORT_BATCH_SIZE,
+        2,
+      ),
+    (err) => {
+      assert.strictEqual(err.statusCode, 400)
+      assert.match(err.message, /CSV import exceeds maximum allowed rows \(2\)/)
       return true
     },
   )

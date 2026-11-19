@@ -90,6 +90,46 @@ describe('GET /users', () => {
     assert.equal(response.statusCode, 400)
   })
 
+  test('returns 400 when skip exceeds maximum bound', async (t) => {
+    // Arrange
+    const admin = await seedUser(t, { role: 'admin' })
+
+    // Act
+    const response = await admin.app.inject({
+      method: 'GET',
+      url: '/users?skip=10001',
+      headers: { Authorization: `Bearer ${admin.accessToken}` },
+    })
+
+    // Assert
+    assert.equal(response.statusCode, 400)
+  })
+
+  test('returns deterministic reverse-chronological UUIDv7 pagination order across pages', async (t) => {
+    // Arrange
+    const admin = await seedUser(t, { role: 'admin' })
+    const userOne = await seedUser(t, { app: admin.app, role: 'user' })
+    const userTwo = await seedUser(t, { app: admin.app, role: 'user' })
+
+    // Act
+    const page1 = await admin.app.inject({
+      method: 'GET',
+      url: '/users?limit=1&skip=0',
+      headers: { Authorization: `Bearer ${admin.accessToken}` },
+    })
+    const page2 = await admin.app.inject({
+      method: 'GET',
+      url: '/users?limit=1&skip=1',
+      headers: { Authorization: `Bearer ${admin.accessToken}` },
+    })
+
+    // Assert
+    assert.equal(page1.statusCode, 200)
+    assert.equal(page2.statusCode, 200)
+    assert.equal(page1.json().data[0].id, userTwo.userId)
+    assert.equal(page2.json().data[0].id, userOne.userId)
+  })
+
   test('returns 401 when unauthenticated', async (t) => {
     // Arrange
     const { app } = await seedUser(t)

@@ -33,6 +33,7 @@ const NOTE_TAG_LIMITS = {
 }
 
 const CSV_IMPORT_BATCH_SIZE = 500
+const MAX_CSV_IMPORT_ROWS = 5_000
 const DANGEROUS_CSV_PREFIX = /^[\t\r\n ]*[=+\-@]/
 
 function sanitizeCsvCellValue(value) {
@@ -193,6 +194,7 @@ async function importNotesFromCsvStream(
   readableStream,
   onBatch,
   batchSize = CSV_IMPORT_BATCH_SIZE,
+  maxRows = MAX_CSV_IMPORT_ROWS,
 ) {
   const validatedNotes = []
   let headers
@@ -219,6 +221,9 @@ async function importNotesFromCsvStream(
       }
 
       rowNumber += 1
+      if (rowNumber > maxRows) {
+        throw createCsvImportError(`CSV import exceeds maximum allowed rows (${maxRows})`, 400)
+      }
       validatedNotes.push(mapNoteImportRow(headers, line, rowNumber))
     }
   } catch (err) {
@@ -270,6 +275,7 @@ function createNotesCsvExportStream(cursorStream) {
 module.exports = {
   CSV_EXPORT_COLUMNS,
   CSV_IMPORT_BATCH_SIZE,
+  MAX_CSV_IMPORT_ROWS,
   buildNoteImportHeaders,
   createNotesCsvExportStream,
   importNotesFromCsvStream,

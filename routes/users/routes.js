@@ -1,8 +1,19 @@
 'use strict'
 
 const { ADMIN_UPDATEABLE_USER_FIELDS, SELF_UPDATEABLE_USER_FIELDS } = require('./user-contract')
+const { resolveNodeEnv } = require('../../utils/runtime-env')
 
-module.exports = async function userRoutes(fastify) {
+module.exports = async function userRoutes(fastify, opts) {
+  const nodeEnv = resolveNodeEnv(fastify, opts)
+  const usersRateLimit = {
+    max: 60,
+    timeWindow: '1 minute',
+  }
+  const invitesCreateRateLimit = {
+    max: nodeEnv === 'test' ? 10 : 15,
+    timeWindow: '1 minute',
+  }
+
   function createRejectUnknownUpdateFields(allowedFields) {
     return async function rejectUnknownUpdateFields(request) {
       if (!request.body || typeof request.body !== 'object' || Array.isArray(request.body)) {
@@ -27,6 +38,7 @@ module.exports = async function userRoutes(fastify) {
   fastify.route({
     method: 'POST',
     url: '/invites',
+    config: { rateLimit: invitesCreateRateLimit },
     preHandler: fastify.authorize(['admin']),
     schema: {
       tags: ['users'],
@@ -68,6 +80,7 @@ module.exports = async function userRoutes(fastify) {
   fastify.route({
     method: 'GET',
     url: '/invites',
+    config: { rateLimit: usersRateLimit },
     preHandler: fastify.authorize(['admin']),
     schema: {
       tags: ['users'],
@@ -95,6 +108,7 @@ module.exports = async function userRoutes(fastify) {
   fastify.route({
     method: 'DELETE',
     url: '/invites/:id',
+    config: { rateLimit: usersRateLimit },
     preHandler: fastify.authorize(['admin']),
     schema: {
       tags: ['users'],
@@ -116,6 +130,7 @@ module.exports = async function userRoutes(fastify) {
   fastify.route({
     method: 'GET',
     url: '/me',
+    config: { rateLimit: usersRateLimit },
     schema: {
       tags: ['users'],
       summary: 'Read current user profile',
@@ -138,6 +153,7 @@ module.exports = async function userRoutes(fastify) {
   fastify.route({
     method: 'GET',
     url: '/',
+    config: { rateLimit: usersRateLimit },
     preHandler: fastify.authorize(['admin']),
     schema: {
       tags: ['users'],
@@ -163,6 +179,7 @@ module.exports = async function userRoutes(fastify) {
   fastify.route({
     method: 'GET',
     url: '/:id',
+    config: { rateLimit: usersRateLimit },
     preHandler: fastify.authorize(['admin']),
     schema: {
       tags: ['users'],
@@ -187,6 +204,7 @@ module.exports = async function userRoutes(fastify) {
   fastify.route({
     method: 'PUT',
     url: '/me',
+    config: { rateLimit: usersRateLimit },
     preValidation: rejectUnknownSelfUpdateFields,
     schema: {
       tags: ['users'],
@@ -213,6 +231,7 @@ module.exports = async function userRoutes(fastify) {
   fastify.route({
     method: 'DELETE',
     url: '/me',
+    config: { rateLimit: usersRateLimit },
     schema: {
       tags: ['users'],
       summary: 'Soft delete own account',
@@ -239,6 +258,7 @@ module.exports = async function userRoutes(fastify) {
   fastify.route({
     method: 'PUT',
     url: '/:id',
+    config: { rateLimit: usersRateLimit },
     preHandler: fastify.authorize(['admin']),
     preValidation: rejectUnknownAdminUpdateFields,
     schema: {
@@ -288,6 +308,7 @@ module.exports = async function userRoutes(fastify) {
   fastify.route({
     method: 'DELETE',
     url: '/:id',
+    config: { rateLimit: usersRateLimit },
     preHandler: fastify.authorize(['admin']),
     schema: {
       tags: ['users'],

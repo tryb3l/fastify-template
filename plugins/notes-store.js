@@ -4,6 +4,7 @@ const fp = require('fastify-plugin')
 const { randomUUIDv7 } = require('node:crypto')
 const { instantToDate, nowInstant, nowIsoInstantString } = require('../utils/time')
 const {
+  NOTE_CONSTRAINTS,
   NOTE_DETAIL_PROJECTION,
   NOTE_GRAPH_NODE_PROJECTION,
   NOTE_READINESS_VALUES,
@@ -440,7 +441,7 @@ const notesStorePlugin = fp(
             limit,
             skip,
           })
-          .sort({ modifiedAt: -1 })
+          .sort({ modifiedAt: -1, id: -1 })
         if (asStream) {
           fastify.log.debug('Exiting listNotes method with stream')
           return cursor.stream()
@@ -984,8 +985,20 @@ const notesStorePlugin = fp(
       },
 
       async addAttachments(id, attachments, userId) {
+        const maxAttachments = NOTE_CONSTRAINTS?.ATTACHMENTS_MAX_ITEMS || 10
+        const incomingCount = Array.isArray(attachments) ? attachments.length : 0
+
         const result = await notes.findOneAndUpdate(
-          { id, userId },
+          {
+            id,
+            userId,
+            $expr: {
+              $lte: [
+                { $add: [{ $size: { $ifNull: ['$attachments', []] } }, incomingCount] },
+                maxAttachments,
+              ],
+            },
+          },
           {
             $push: { attachments: { $each: attachments } },
             $set: { modifiedAt: instantToDate(nowInstant()) },
@@ -997,7 +1010,13 @@ const notesStorePlugin = fp(
         const updatedNote = result?.value ?? result
 
         if (!updatedNote) {
-          throw fastify.httpErrors.notFound('Note not found')
+          const exists = await notes.findOne({ id, userId }, { projection: { _id: 0, id: 1 } })
+          if (!exists) {
+            throw fastify.httpErrors.notFound('Note not found')
+          }
+          throw fastify.httpErrors.badRequest(
+            `Note cannot exceed maximum of ${maxAttachments} attachments`,
+          )
         }
 
         await invalidateNoteCache(id, userId)

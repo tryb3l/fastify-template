@@ -1,11 +1,9 @@
 'use strict'
 
+const { resolveNodeEnv } = require('../../utils/runtime-env')
+
 module.exports = async function flashcardRoutes(fastify, opts) {
-  const nodeEnv =
-    opts?.configData?.NODE_ENV ||
-    fastify.config?.NODE_ENV ||
-    fastify.secrets?.NODE_ENV ||
-    process.env.NODE_ENV
+  const nodeEnv = resolveNodeEnv(fastify, opts)
   const flashcardsRateLimit = {
     max: nodeEnv === 'test' ? 30 : 120,
     timeWindow: '1 minute',

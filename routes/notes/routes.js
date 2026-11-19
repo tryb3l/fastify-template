@@ -1,13 +1,10 @@
 'use strict'
 
 const { NOTE_LIST_PROJECTION } = require('./query-shapes')
+const { resolveNodeEnv } = require('../../utils/runtime-env')
 
 module.exports = async function noteRoutes(fastify, opts) {
-  const nodeEnv =
-    opts?.configData?.NODE_ENV ||
-    fastify.config?.NODE_ENV ||
-    fastify.secrets?.NODE_ENV ||
-    process.env.NODE_ENV
+  const nodeEnv = resolveNodeEnv(fastify, opts)
   const notesRateLimit = {
     max: nodeEnv === 'test' ? 5 : 30,
     timeWindow: '1 minute',

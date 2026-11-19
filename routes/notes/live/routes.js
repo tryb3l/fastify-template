@@ -15,6 +15,9 @@ module.exports = async function liveNotesRoutes(fastify) {
     '/:id',
     {
       websocket: true,
+      schema: {
+        params: { $ref: 'schema:note:read:params#' },
+      },
       preHandler: async (req) => {
         const noteId = req.params.id
         try {

@@ -680,4 +680,24 @@ describe('Application configuration', () => {
     assert.deepEqual(created, [{ userId: 1, noteId: 1, box: 1, nextReviewAt: 1 }])
     assert.deepEqual(dropped, ['userId_1_noteId_1_box_1_nextReviewAt_1'])
   })
+
+  test('delegates process signal graceful shutdown to fastify-cli without registering SIGTERM listeners inside app.js', async (t) => {
+    // Arrange
+    const appPlugin = require('../../app')
+    const dockerfile = fs.readFileSync(path.join(__dirname, '..', '..', 'Dockerfile'), 'utf8')
+    const isolatedApp = Fastify(appPlugin.options)
+    t.after(async () => {
+      await isolatedApp.close()
+    })
+    const sigtermBefore = process.listenerCount('SIGTERM')
+
+    // Act
+    await isolatedApp.register(appPlugin, { configData: getTestEnv() })
+    await isolatedApp.ready()
+    const sigtermAddedByAppPlugin = process.listenerCount('SIGTERM') - sigtermBefore
+
+    // Assert
+    assert.equal(sigtermAddedByAppPlugin, 0)
+    assert.match(dockerfile, /FASTIFY_CLOSE_GRACE_DELAY=10000/)
+  })
 })

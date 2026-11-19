@@ -176,6 +176,7 @@ async function usersPlugin(fastify) {
           .find(queryFilter, {
             projection: USER_DETAIL_PROJECTION,
           })
+          .sort({ _id: -1 })
           .skip(skip)
           .limit(limit)
           .toArray()

@@ -21,6 +21,7 @@ ENV APP_HOME=$HOME/node/
 ENV NODE_ENV=production
 ENV UV_THREADPOOL_SIZE=8
 ENV NODE_OPTIONS="--max-heap-size=1024"
+ENV FASTIFY_CLOSE_GRACE_DELAY=10000
 
 RUN addgroup -S node && adduser -S node -G node
 

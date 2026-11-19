@@ -315,6 +315,21 @@ describe('GET /notes/live/:id', () => {
     assert.equal(statusCode, 401)
   })
 
+  test('returns 400 rejecting authenticated WebSocket upgrade when :id is not a valid UUID', async (t) => {
+    // Arrange
+    const actor = await seedUser(t)
+    const server = await listenOnEphemeralPort(actor.app)
+    const ws = connectLiveSocket(t, server, 'not-a-valid-uuid', {
+      Authorization: `Bearer ${actor.accessToken}`,
+    })
+
+    // Act
+    const statusCode = await readUnexpectedUpgradeStatus(ws)
+
+    // Assert
+    assert.equal(statusCode, 400)
+  })
+
   test('returns 403 rejecting cross-user WebSocket subscription', async (t) => {
     // Arrange
     const owner = await seedUser(t)

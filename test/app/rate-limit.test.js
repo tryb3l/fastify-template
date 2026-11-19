@@ -70,4 +70,54 @@ describe('Rate limiting plugin', () => {
     assert.ok(payload.message.includes('Slow down please!'))
     assert.equal(typeof payload.requestId, 'string')
   })
+
+  test('enforces rate limit on POST /users/invites to prevent outbound invite spam', async (t) => {
+    // Arrange
+    const admin = await seedUser(t, { role: 'admin' })
+
+    // Act: exhaust admin's 10-request test bucket on POST /users/invites
+    for (let i = 0; i < 10; i += 1) {
+      const res = await admin.app.inject({
+        method: 'POST',
+        url: '/users/invites',
+        headers: { Authorization: `Bearer ${admin.accessToken}` },
+        payload: {},
+      })
+      assert.equal(res.statusCode, 201, `Invite request ${i + 1} should succeed`)
+    }
+
+    const blockedResponse = await admin.app.inject({
+      method: 'POST',
+      url: '/users/invites',
+      headers: { Authorization: `Bearer ${admin.accessToken}` },
+      payload: {},
+    })
+
+    // Assert
+    assert.equal(blockedResponse.statusCode, 429)
+    assert.equal(blockedResponse.json().error, 'Too Many Requests')
+  })
+
+  test('attaches per-user rate-limit headers on GET /dashboard/summary and GET /files/export', async (t) => {
+    // Arrange
+    const actor = await seedUser(t)
+
+    // Act
+    const dashboardRes = await actor.app.inject({
+      method: 'GET',
+      url: '/dashboard/summary',
+      headers: { Authorization: `Bearer ${actor.accessToken}` },
+    })
+    const exportRes = await actor.app.inject({
+      method: 'GET',
+      url: '/files/export',
+      headers: { Authorization: `Bearer ${actor.accessToken}` },
+    })
+
+    // Assert
+    assert.equal(dashboardRes.statusCode, 200)
+    assert.equal(dashboardRes.headers['x-ratelimit-limit'], '60')
+    assert.equal(exportRes.statusCode, 200)
+    assert.equal(exportRes.headers['x-ratelimit-limit'], '60')
+  })
 })

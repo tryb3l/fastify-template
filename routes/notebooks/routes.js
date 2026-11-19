@@ -1,5 +1,7 @@
 'use strict'
 
+const { resolveNodeEnv } = require('../../utils/runtime-env')
+
 const readinessSchema = {
   type: 'object',
   additionalProperties: false,
@@ -133,11 +135,7 @@ const workspaceTreeSchema = {
 }
 
 module.exports = async function notebookRoutes(fastify, opts) {
-  const nodeEnv =
-    opts?.configData?.NODE_ENV ||
-    fastify.config?.NODE_ENV ||
-    fastify.secrets?.NODE_ENV ||
-    process.env.NODE_ENV
+  const nodeEnv = resolveNodeEnv(fastify, opts)
   const notebooksRateLimit = {
     max: nodeEnv === 'test' ? 15 : 60,
     timeWindow: '1 minute',

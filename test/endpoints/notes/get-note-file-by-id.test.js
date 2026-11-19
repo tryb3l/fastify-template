@@ -433,4 +433,29 @@ describe('GET /files/:fileId', () => {
     assert.equal(response.statusCode, 416)
     assert.equal(response.headers['content-range'], `bytes */${content.length}`)
   })
+
+  test('strips undeclared query parameters via schema additionalProperties: false and attaches rate-limit headers', async (t) => {
+    // Arrange
+    const { app, accessToken, note } = await createNote(t)
+    const { uploadedFile } = await uploadNoteAttachment(
+      app,
+      accessToken,
+      note.data.id,
+      'strict-query-test',
+      { filename: 'strict-query.txt', contentType: 'text/plain' },
+      t,
+    )
+
+    // Act
+    const response = await app.inject({
+      method: 'GET',
+      url: `/files/${uploadedFile.fileId}?noteId=${note.data.id}&unexpectedParam=ignored`,
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+
+    // Assert
+    assert.equal(response.statusCode, 200)
+    assert.equal(response.body, 'strict-query-test')
+    assert.equal(response.headers['x-ratelimit-limit'], '120')
+  })
 })

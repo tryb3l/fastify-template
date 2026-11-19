@@ -3,6 +3,7 @@
 const { describe, test } = require('node:test')
 const assert = require('node:assert/strict')
 const { randomUUIDv7 } = require('node:crypto')
+const fs = require('node:fs/promises')
 const FormData = require('form-data')
 const { createNote } = require('../../utils/note-creator')
 const {
@@ -334,6 +335,119 @@ describe('POST /files/upload', () => {
     assert.equal(response.statusCode, 413)
     const persisted = await app.notesDataSource.readNote(note.data.id, userId)
     assert.equal(persisted.attachments.length, 1)
+  })
+
+  test('returns 400 when Note already has maximum 10 attachments without breaking GET /notes/:id serialization', async (t) => {
+    // Arrange
+    const { app, accessToken, userId, note } = await createNote(t)
+    const maxAttachments = Array.from({ length: 10 }, (_, idx) => ({
+      fileId: randomUUIDv7(),
+      originalFilename: `doc-${idx + 1}.txt`,
+      mimeType: 'text/plain',
+      size: 16,
+      uploadedAt: new Date().toISOString(),
+    }))
+    await app.notesDataSource.addAttachments(note.data.id, maxAttachments, userId)
+
+    const eleventhForm = buildUploadForm('eleventh attachment', {
+      filename: 'eleventh.txt',
+      contentType: 'text/plain',
+    })
+
+    // Act
+    const response = await app.inject({
+      method: 'POST',
+      url: `/files/upload?noteId=${note.data.id}`,
+      headers: {
+        ...eleventhForm.getHeaders(),
+        Authorization: `Bearer ${accessToken}`,
+      },
+      payload: eleventhForm,
+    })
+
+    // Assert
+    assert.equal(response.statusCode, 400)
+    const readRes = await app.inject({
+      method: 'GET',
+      url: `/notes/${note.data.id}`,
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    assert.equal(readRes.statusCode, 200)
+    assert.equal(readRes.json().data.attachments.length, 10)
+  })
+
+  test('enforces 10-attachment ceiling atomically under concurrent uploads and cleans up losing disk file', async (t) => {
+    // Arrange
+    const { app, accessToken, userId, note } = await createNote(t)
+    const initialNine = Array.from({ length: 9 }, (_, idx) => ({
+      fileId: randomUUIDv7(),
+      originalFilename: `doc-${idx + 1}.txt`,
+      mimeType: 'text/plain',
+      size: 16,
+      uploadedAt: new Date().toISOString(),
+    }))
+    await app.notesDataSource.addAttachments(note.data.id, initialNine, userId)
+
+    const dirEntriesBefore = new Set(
+      await fs.readdir(app.notesFileManager.uploadDir).catch(() => []),
+    )
+
+    const formA = buildUploadForm('concurrent-upload-a', {
+      filename: 'concurrent-a.txt',
+      contentType: 'text/plain',
+    })
+    const formB = buildUploadForm('concurrent-upload-b', {
+      filename: 'concurrent-b.txt',
+      contentType: 'text/plain',
+    })
+
+    // Act
+    const [resA, resB] = await Promise.all([
+      app.inject({
+        method: 'POST',
+        url: `/files/upload?noteId=${note.data.id}`,
+        headers: {
+          ...formA.getHeaders(),
+          Authorization: `Bearer ${accessToken}`,
+        },
+        payload: formA,
+      }),
+      app.inject({
+        method: 'POST',
+        url: `/files/upload?noteId=${note.data.id}`,
+        headers: {
+          ...formB.getHeaders(),
+          Authorization: `Bearer ${accessToken}`,
+        },
+        payload: formB,
+      }),
+    ])
+
+    const winner = resA.statusCode === 201 ? resA : resB
+    const loser = resA.statusCode === 201 ? resB : resA
+    if (winner.statusCode === 201) {
+      const uploadedFile = winner.json().files[0]
+      registerAttachmentCleanup(t, {
+        ...uploadedFile,
+        uploadDir: app.notesFileManager.uploadDir,
+      })
+    }
+
+    // Assert
+    assert.equal(winner.statusCode, 201)
+    assert.equal(loser.statusCode, 400)
+
+    const readRes = await app.inject({
+      method: 'GET',
+      url: `/notes/${note.data.id}`,
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    assert.equal(readRes.statusCode, 200)
+    assert.equal(readRes.json().data.attachments.length, 10)
+
+    const dirEntriesAfter = await fs.readdir(app.notesFileManager.uploadDir).catch(() => [])
+    const newFilesOnDisk = dirEntriesAfter.filter((name) => !dirEntriesBefore.has(name))
+    assert.equal(newFilesOnDisk.length, 1)
   })
 
   test('returns 415 on disallowed script extension', async (t) => {

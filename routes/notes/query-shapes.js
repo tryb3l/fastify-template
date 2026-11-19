@@ -1,6 +1,7 @@
 'use strict'
 
 const {
+  NOTE_CONSTRAINTS,
   NOTE_DETAIL_PROJECTION,
   NOTE_EXPORT_PROJECTION,
   NOTE_GRAPH_NODE_PROJECTION,
@@ -10,6 +11,7 @@ const {
 } = require('./note-contract')
 
 module.exports = {
+  NOTE_CONSTRAINTS,
   NOTE_DETAIL_PROJECTION,
   NOTE_EXPORT_PROJECTION,
   NOTE_GRAPH_NODE_PROJECTION,
