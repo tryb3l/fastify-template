@@ -85,7 +85,7 @@ module.exports = fp(
         smtp: {
           host: smtpHost,
           port: smtpPort,
-          secure: fastify.secrets.SMTP_SECURE,
+          secure: useMailpitDefaults ? false : fastify.secrets.SMTP_SECURE,
           user: fastify.secrets.SMTP_USER,
           pass: fastify.secrets.SMTP_PASS,
         },

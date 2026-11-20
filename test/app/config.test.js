@@ -54,22 +54,37 @@ function withoutProcessEnv(t, keys) {
 }
 
 describe('Application configuration', () => {
-  test('defaults development SMTP to local Mailpit when SMTP env is absent', async (t) => {
+  test('defaults development SMTP to local Mailpit when SMTP env is absent, forcing secure: false, but respects secure flag when explicitly configured', async (t) => {
     // Arrange
-    const app = Fastify({ logger: false })
+    const defaultApp = Fastify({ logger: false })
+    const explicitlyConfiguredApp = Fastify({ logger: false })
     t.after(async () => {
-      await app.close()
+      await defaultApp.close()
+      await explicitlyConfiguredApp.close()
     })
 
     // Act
-    await app.register(configPlugin, {
-      configData: buildConfigData({ NODE_ENV: 'development' }),
+    await defaultApp.register(configPlugin, {
+      configData: buildConfigData({
+        NODE_ENV: 'development',
+        SMTP_SECURE: 'true',
+      }),
+    })
+    await explicitlyConfiguredApp.register(configPlugin, {
+      configData: buildConfigData({
+        NODE_ENV: 'development',
+        SMTP_HOST: 'smtp.example.com',
+        SMTP_SECURE: 'true',
+      }),
     })
 
     // Assert
-    assert.equal(app.config.mailer.smtp.host, '127.0.0.1')
-    assert.equal(app.config.mailer.smtp.port, 1025)
-    assert.equal(app.config.mailer.smtp.secure, false)
+    assert.equal(defaultApp.config.mailer.smtp.host, '127.0.0.1')
+    assert.equal(defaultApp.config.mailer.smtp.port, 1025)
+    assert.equal(defaultApp.config.mailer.smtp.secure, false) // Forced to false despite SMTP_SECURE: 'true'
+
+    assert.equal(explicitlyConfiguredApp.config.mailer.smtp.host, 'smtp.example.com')
+    assert.equal(explicitlyConfiguredApp.config.mailer.smtp.secure, true) // Respected when host is explicit
   })
 
   test('requires SMTP outside development and test', async (t) => {
@@ -679,6 +694,91 @@ describe('Application configuration', () => {
     // Assert
     assert.deepEqual(created, [{ userId: 1, noteId: 1, box: 1, nextReviewAt: 1 }])
     assert.deepEqual(dropped, ['userId_1_noteId_1_box_1_nextReviewAt_1'])
+  })
+
+  test('conditionally applies SMTP auth based on credentials and correctly throws outside test when SMTP is omitted', async (t) => {
+    // Arrange
+    const net = require('node:net')
+    const commandsReceived = []
+
+    const server = net.createServer((socket) => {
+      socket.write('220 localhost ESMTP\r\n')
+      socket.on('data', (data) => {
+        const lines = data.toString().split('\r\n').filter(Boolean)
+        commandsReceived.push(...lines)
+
+        for (const line of lines) {
+          if (line.startsWith('EHLO') || line.startsWith('HELO')) {
+            socket.write('250-localhost\r\n250 AUTH PLAIN LOGIN\r\n')
+          } else if (line.startsWith('AUTH')) {
+            socket.write('235 OK\r\n')
+          } else if (line.startsWith('MAIL FROM') || line.startsWith('RCPT TO')) {
+            socket.write('250 OK\r\n')
+          } else if (line === 'DATA') {
+            socket.write('354 End data with <CR><LF>.<CR><LF>\r\n')
+          } else if (line === '.') {
+            socket.write('250 Queued\r\n')
+          } else if (line === 'QUIT') {
+            socket.write('221 Bye\r\n')
+            socket.end()
+          }
+        }
+      })
+    })
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const port = server.address().port
+
+    t.after(() => {
+      server.close()
+    })
+
+    const noAuthApp = Fastify({ logger: false })
+    const authApp = Fastify({ logger: false })
+
+    t.after(async () => {
+      await noAuthApp.close()
+      await authApp.close()
+    })
+
+    await noAuthApp.register(configPlugin, {
+      configData: buildConfigData({
+        NODE_ENV: 'production',
+        SMTP_HOST: '127.0.0.1',
+        SMTP_PORT: port,
+        SMTP_SECURE: 'false',
+      }),
+    })
+    await noAuthApp.register(mailerPlugin)
+
+    await authApp.register(configPlugin, {
+      configData: buildConfigData({
+        NODE_ENV: 'production',
+        SMTP_HOST: '127.0.0.1',
+        SMTP_PORT: port,
+        SMTP_SECURE: 'false',
+        SMTP_USER: 'testuser',
+        SMTP_PASS: 'testpass',
+      }),
+    })
+    await authApp.register(mailerPlugin)
+
+    // Act
+    await noAuthApp.mailer.sendPasswordResetSuccessMail({ to: 'user1@example.com' })
+    const authSentForNoAuth = commandsReceived.some((c) => c.startsWith('AUTH'))
+
+    commandsReceived.length = 0 // clear
+
+    await authApp.mailer.sendPasswordResetSuccessMail({ to: 'user2@example.com' })
+    const authSentForAuth = commandsReceived.some((c) => c.startsWith('AUTH'))
+
+    // Assert
+    assert.equal(
+      authSentForNoAuth,
+      false,
+      'Should not send AUTH when credentials are not configured',
+    )
+    assert.equal(authSentForAuth, true, 'Should send AUTH when credentials are configured')
   })
 
   test('delegates process signal graceful shutdown to fastify-cli without registering SIGTERM listeners inside app.js', async (t) => {

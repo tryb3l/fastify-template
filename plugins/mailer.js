@@ -43,9 +43,8 @@ async function mailerPlugin(fastify) {
 
   const { smtp, fromEmail } = fastify.config.mailer || {}
   const isTestEnv = fastify.config.NODE_ENV === 'test'
-  const isDevelopmentEnv = fastify.config.NODE_ENV === 'development'
   const hasSmtpConfig = Boolean(smtp?.host)
-  const useCaptureTransport = (isTestEnv || isDevelopmentEnv) && !hasSmtpConfig
+  const useCaptureTransport = isTestEnv && !hasSmtpConfig
   let transporter
 
   if (!hasSmtpConfig) {
@@ -63,15 +62,18 @@ async function mailerPlugin(fastify) {
       buffer: true,
     })
   } else {
-    transporter = nodemailer.createTransport({
+    const transportOptions = {
       host: smtp.host,
       port: smtp.port,
       secure: smtp.secure !== false,
-      auth: {
+    }
+    if (smtp.user || smtp.pass) {
+      transportOptions.auth = {
         user: smtp.user,
         pass: smtp.pass,
-      },
-    })
+      }
+    }
+    transporter = nodemailer.createTransport(transportOptions)
   }
 
   fastify.addHook('onClose', (_instance, done) => {
