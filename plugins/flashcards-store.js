@@ -4,7 +4,10 @@ const fp = require('fastify-plugin')
 const crypto = require('node:crypto')
 const { randomUUIDv7 } = crypto
 const { instantToDate, nowInstant } = require('../utils/time')
-const { LEITNER_BOX_INTERVAL_DAYS } = require('../routes/flashcards/flashcard-contract')
+const {
+  LEITNER_BOX_INTERVAL_DAYS,
+  FLASHCARD_RATINGS,
+} = require('../routes/flashcards/flashcard-contract')
 const { buildNoteCacheKey } = require('../utils/lru-cache')
 
 function normalizeFlashcardDoc(card) {
@@ -65,7 +68,7 @@ class ScopedFlashcardsDataSource {
   }
 
   updateFlashcard(id, data) {
-    return this.store.updateFlashcard(id, data, this.userId, this.request)
+    return this.store.updateFlashcard(id, data, this.userId)
   }
 
   deleteFlashcard(id) {
@@ -77,7 +80,7 @@ class ScopedFlashcardsDataSource {
   }
 
   reviewFlashcard(id, rating) {
-    return this.store.reviewFlashcard(id, rating, this.userId, this.request)
+    return this.store.reviewFlashcard(id, rating, this.userId)
   }
 }
 
@@ -117,14 +120,17 @@ module.exports = fp(
         return notesById
       }
 
-      await fastify.notebooksDataSource.verifyContainerFilter({ notebookId, folderId }, userId)
+      const verifiedContainers = await fastify.notebooksDataSource.verifyContainerFilter(
+        { notebookId, folderId },
+        userId,
+      )
+      const targetFolder = verifiedContainers?.folder
 
       let directFilter = { userId }
       if (folderId) {
-        const targetFolder = await folders.findOne(
-          { id: folderId, userId },
-          { projection: { _id: 0, id: 1, notebookId: 1 } },
-        )
+        if (!targetFolder) {
+          throw fastify.httpErrors.notFound('Folder not found')
+        }
         const allNbFolders = await folders
           .find(
             { userId, notebookId: targetFolder.notebookId },
@@ -390,28 +396,42 @@ module.exports = fp(
         }
 
         const isShuffled = order === 'shuffled'
-        let sortSpec = { box: 1, nextReviewAt: 1, id: 1 }
-        if (order === 'sequential') {
-          sortSpec = { createdAt: 1, id: 1 }
+        let rawCards
+
+        if (isShuffled && typeof flashcards.aggregate === 'function') {
+          rawCards = await flashcards
+            .aggregate([
+              { $match: query },
+              { $sample: { size: boundedLimit } },
+              { $project: { _id: 0, userId: 0 } },
+            ])
+            .toArray()
+        } else {
+          let sortSpec = { box: 1, nextReviewAt: 1, id: 1 }
+          if (order === 'sequential') {
+            sortSpec = { createdAt: 1, id: 1 }
+          }
+
+          const cursor = flashcards
+            .find(query, { projection: { _id: 0, userId: 0 } })
+            .sort(sortSpec)
+
+          if (!isShuffled) {
+            cursor.limit(boundedLimit)
+          }
+
+          rawCards = await cursor.toArray()
+
+          if (isShuffled) {
+            shuffleInPlace(rawCards)
+            rawCards = rawCards.slice(0, boundedLimit)
+          }
         }
 
-        const cursor = flashcards.find(query, { projection: { _id: 0, userId: 0 } }).sort(sortSpec)
+        const results = new Array(rawCards.length)
 
-        if (!isShuffled) {
-          cursor.limit(boundedLimit)
-        }
-
-        const rawCards = await cursor.toArray()
-
-        if (isShuffled) {
-          shuffleInPlace(rawCards)
-        }
-
-        const sliced = isShuffled ? rawCards.slice(0, boundedLimit) : rawCards
-        const results = new Array(sliced.length)
-
-        for (let i = 0; i < sliced.length; i += 1) {
-          const card = sliced[i]
+        for (let i = 0; i < rawCards.length; i += 1) {
+          const card = rawCards[i]
           const noteMeta = scopedNotesById.get(card.noteId)
           results[i] = {
             id: card.id,
@@ -437,51 +457,71 @@ module.exports = fp(
       },
 
       async reviewFlashcard(id, rating, userId) {
-        const existingCard = await flashcards.findOne(
-          { id, userId },
-          { projection: { _id: 0, id: 1, noteId: 1, box: 1 } },
-        )
-        if (!existingCard) {
-          throw fastify.httpErrors.notFound('Flashcard not found')
+        if (!FLASHCARD_RATINGS.includes(rating)) {
+          throw fastify.httpErrors.badRequest('Invalid flashcard rating')
         }
 
         const now = instantToDate(nowInstant())
         const nowMs = now.getTime()
-        const currentBox = Number(existingCard.box) || 1
-        let nextBox
-        let nextReviewAt
 
-        if (rating === 'again') {
-          nextBox = 1
-          nextReviewAt = new Date(nowMs + 60 * 60 * 1000)
-        } else if (rating === 'hard') {
-          nextBox = currentBox
-          const days = LEITNER_BOX_INTERVAL_DAYS[nextBox] || 1
-          nextReviewAt = new Date(nowMs + days * 86_400_000)
-        } else {
-          nextBox = Math.min(5, currentBox + 1)
-          const days = LEITNER_BOX_INTERVAL_DAYS[nextBox] || 1
-          nextReviewAt = new Date(nowMs + days * 86_400_000)
+        let updatedDoc = null
+        let existingCard = null
+
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          existingCard = await flashcards.findOne(
+            { id, userId },
+            { projection: { _id: 0, id: 1, noteId: 1, box: 1 } },
+          )
+          if (!existingCard) {
+            throw fastify.httpErrors.notFound('Flashcard not found')
+          }
+
+          const currentBox = Number(existingCard.box) || 1
+          let nextBox
+          let nextReviewAt
+
+          if (rating === 'again') {
+            nextBox = 1
+            nextReviewAt = new Date(nowMs + 60 * 60 * 1000)
+          } else if (rating === 'hard') {
+            nextBox = currentBox
+            const days = LEITNER_BOX_INTERVAL_DAYS[nextBox] || 1
+            nextReviewAt = new Date(nowMs + days * 86_400_000)
+          } else {
+            nextBox = Math.min(5, currentBox + 1)
+            const days = LEITNER_BOX_INTERVAL_DAYS[nextBox] || 1
+            nextReviewAt = new Date(nowMs + days * 86_400_000)
+          }
+
+          const updateResult = await flashcards.findOneAndUpdate(
+            { id, userId, box: currentBox },
+            {
+              $set: {
+                box: nextBox,
+                nextReviewAt,
+                lastReviewedAt: now,
+                lastRating: rating,
+                modifiedAt: now,
+              },
+              $inc: {
+                reviewCount: 1,
+                ...(rating === 'again' ? { lapseCount: 1 } : {}),
+              },
+            },
+            { returnDocument: 'after', projection: { _id: 0, userId: 0 } },
+          )
+          updatedDoc = updateResult?.value ?? updateResult
+
+          if (updatedDoc) {
+            break
+          }
         }
 
-        const updateResult = await flashcards.findOneAndUpdate(
-          { id, userId },
-          {
-            $set: {
-              box: nextBox,
-              nextReviewAt,
-              lastReviewedAt: now,
-              lastRating: rating,
-              modifiedAt: now,
-            },
-            $inc: {
-              reviewCount: 1,
-              ...(rating === 'again' ? { lapseCount: 1 } : {}),
-            },
-          },
-          { returnDocument: 'after', projection: { _id: 0, userId: 0 } },
-        )
-        const updatedCard = normalizeFlashcardDoc(updateResult?.value ?? updateResult)
+        if (!updatedDoc) {
+          throw fastify.httpErrors.notFound('Flashcard not found')
+        }
+
+        const updatedCard = normalizeFlashcardDoc(updatedDoc)
 
         // Record daily activity and load parent Note readiness coupling inputs concurrently
         const [, noteCards, parentNote] = await Promise.all([

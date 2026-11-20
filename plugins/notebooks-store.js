@@ -970,20 +970,27 @@ module.exports = fp(
       },
 
       async verifyContainerFilter({ notebookId, folderId } = {}, userId) {
+        let notebook = null
+        let folder = null
+
         if (
           (notebookId === undefined || notebookId === null) &&
           (folderId === undefined || folderId === null)
         ) {
-          return
+          return { notebook, folder }
         }
 
         if (notebookId && folderId) {
           await this.verifyContainerPlacement({ notebookId, folderId }, userId)
+          notebook = await this.readNotebook(notebookId, userId)
+          folder = await this.readFolder(folderId, userId)
         } else if (notebookId) {
-          await this.readNotebook(notebookId, userId)
+          notebook = await this.readNotebook(notebookId, userId)
         } else if (folderId) {
-          await this.readFolder(folderId, userId)
+          folder = await this.readFolder(folderId, userId)
         }
+
+        return { notebook, folder }
       },
 
       forUser(userId, request = null) {

@@ -365,4 +365,38 @@ describe('POST /flashcards/:id/review', () => {
     const unchanged = await owner.app.flashcardsDataSource.readFlashcard(ownerCard.id, owner.userId)
     assert.equal(unchanged.reviewCount, 0)
   })
+
+  test('resolves concurrent reviews atomically without overwriting boxes (CAS)', async (t) => {
+    const actor = await seedUser(t)
+    const note = await actor.app.notesDataSource.createNote(
+      { title: 'Concurrent Box', body: 'text' },
+      actor.userId,
+    )
+    const card = await actor.app.flashcardsDataSource.createFlashcard(
+      { noteId: note.id, front: 'Q', back: 'A' },
+      actor.userId,
+    )
+
+    const [res1, res2] = await Promise.all([
+      actor.app.inject({
+        method: 'POST',
+        url: `/flashcards/${card.id}/review`,
+        headers: { Authorization: `Bearer ${actor.accessToken}` },
+        payload: { rating: 'good' },
+      }),
+      actor.app.inject({
+        method: 'POST',
+        url: `/flashcards/${card.id}/review`,
+        headers: { Authorization: `Bearer ${actor.accessToken}` },
+        payload: { rating: 'good' },
+      }),
+    ])
+
+    assert.equal(res1.statusCode, 200)
+    assert.equal(res2.statusCode, 200)
+
+    const finalCard = await actor.app.flashcardsDataSource.readFlashcard(card.id, actor.userId)
+    assert.equal(finalCard.box, 3)
+    assert.equal(finalCard.reviewCount, 2)
+  })
 })
