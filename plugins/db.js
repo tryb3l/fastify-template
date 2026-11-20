@@ -24,7 +24,11 @@ function resolveMongoPoolOptions(config = {}) {
 const dbPlugin = fp(
   async function dbPlugin(fastify) {
     fastify.log.info("Registering 'db-plugin' plugin")
-    fastify.log.debug(`Attempting to connect to MongoDB at: ${fastify.config.MONGO_URL}`)
+    const redactedUrl = fastify.config.MONGO_URL.replace(
+      /(mongodb(?:\+srv)?:\/\/)([^/?]+)(@)/,
+      '$1***$3',
+    )
+    fastify.log.debug(`Attempting to connect to MongoDB at: ${redactedUrl}`)
 
     const { maxPoolSize, minPoolSize } = resolveMongoPoolOptions(fastify.config)
 
