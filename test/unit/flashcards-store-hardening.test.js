@@ -7,89 +7,73 @@ const fastify = require('fastify')
 const flashcardsStorePlugin = require('../../plugins/flashcards-store')
 const { randomUUIDv7 } = require('node:crypto')
 
+async function buildIsolatedFlashcardsApp(t, { collections = {}, notebooksDataSource = {} } = {}) {
+  const app = fastify({ logger: false })
+  t.after(async () => {
+    await app.close()
+  })
+
+  app.decorate('mongo', {
+    db: {
+      collection: (name) => collections[name] || {},
+    },
+  })
+  app.decorate('notebooksDataSource', notebooksDataSource)
+  app.decorate('cacheDelete', async () => {})
+  app.decorate('httpErrors', {
+    badRequest: (msg) => Object.assign(new Error(msg), { statusCode: 400 }),
+    notFound: (msg) => Object.assign(new Error(msg), { statusCode: 404 }),
+    conflict: (msg) => Object.assign(new Error(msg), { statusCode: 409 }),
+  })
+
+  await app.register(fp(async () => {}, { name: 'db-plugin' }))
+  await app.register(fp(async () => {}, { name: 'notebooks-store' }))
+  await app.register(fp(async () => {}, { name: 'app-cache' }))
+  await app.register(flashcardsStorePlugin)
+  await app.ready()
+
+  return app
+}
+
 describe('Flashcards Store Hardening', () => {
-  test('Slice A: reviewFlashcard rejects unknown ratings outside FLASHCARD_RATINGS', async () => {
-    const app = fastify()
-    app.decorate('mongo', { db: { collection: () => ({}) } })
-    app.decorate('notebooksDataSource', {})
-    app.decorate('cacheDelete', async () => {})
-    app.decorate('httpErrors', {
-      badRequest: (msg) => new Error(msg),
-      notFound: (msg) => new Error(msg),
-    })
-
-    const p1 = fp(async function () {}, { name: 'db-plugin' })
-    const p2 = fp(async function () {}, { name: 'notebooks-store' })
-    const p3 = fp(async function () {}, { name: 'app-cache' })
-
-    await app.register(p1)
-    await app.register(p2)
-    await app.register(p3)
-
-    await app.register(flashcardsStorePlugin)
-    await app.ready()
-
+  test('reviewFlashcard rejects unknown ratings outside FLASHCARD_RATINGS', async (t) => {
+    const app = await buildIsolatedFlashcardsApp(t)
     const ds = app.flashcardsDataSource.forUser(randomUUIDv7())
 
     await assert.rejects(
       () => ds.reviewFlashcard(randomUUIDv7(), 'invalid'),
-      /Invalid flashcard rating/,
+      (err) => err.statusCode === 400 && /Invalid flashcard rating/.test(err.message),
     )
   })
 
-  test('drillFlashcards with order: shuffled uses aggregate', async () => {
-    const app = fastify()
+  test('drillFlashcards with order: shuffled uses aggregate $sample without find', async (t) => {
     let aggregateCalled = false
     let findCalled = false
 
-    app.decorate('mongo', {
-      db: {
-        collection: (name) => {
-          if (name === 'notes') {
+    const app = await buildIsolatedFlashcardsApp(t, {
+      collections: {
+        notes: {
+          findOne: async () => ({ id: 'n1', userId: 'u1' }),
+        },
+        flashcards: {
+          aggregate: (pipeline) => {
+            aggregateCalled = true
+            assert.ok(pipeline.some((s) => s.$sample && s.$sample.size === 50))
+            assert.ok(pipeline.some((s) => s.$match))
+            assert.ok(pipeline.some((s) => s.$project))
+            return { toArray: async () => [{ id: 'fc1', noteId: 'n1' }] }
+          },
+          find: () => {
+            findCalled = true
             return {
-              findOne: async () => ({ id: 'n1', userId: 'u1' }),
+              sort: () => ({ limit: () => {}, toArray: async () => [] }),
+              limit: () => {},
+              toArray: async () => [],
             }
-          }
-          if (name === 'flashcards') {
-            return {
-              aggregate: (pipeline) => {
-                aggregateCalled = true
-                assert.ok(pipeline.some((s) => s.$sample && s.$sample.size === 50))
-                assert.ok(pipeline.some((s) => s.$match))
-                assert.ok(pipeline.some((s) => s.$project))
-                return { toArray: async () => [{ id: 'fc1', noteId: 'n1' }] }
-              },
-              find: () => {
-                findCalled = true
-                return {
-                  sort: () => ({ limit: () => {}, toArray: async () => [] }),
-                  limit: () => {},
-                  toArray: async () => [],
-                }
-              },
-            }
-          }
-          return {}
+          },
         },
       },
     })
-
-    app.decorate('notebooksDataSource', {})
-    app.decorate('cacheDelete', async () => {})
-    app.decorate('httpErrors', {
-      badRequest: (msg) => new Error(msg),
-      notFound: (msg) => {
-        const e = new Error(msg)
-        e.statusCode = 404
-        return e
-      },
-    })
-
-    await app.register(fp(async () => {}, { name: 'db-plugin' }))
-    await app.register(fp(async () => {}, { name: 'notebooks-store' }))
-    await app.register(fp(async () => {}, { name: 'app-cache' }))
-    await app.register(flashcardsStorePlugin)
-    await app.ready()
 
     const ds = app.flashcardsDataSource.forUser('u1')
     await ds.drillFlashcards({ noteId: 'n1', order: 'shuffled', limit: 50 })
@@ -98,145 +82,110 @@ describe('Flashcards Store Hardening', () => {
     assert.equal(findCalled, false)
   })
 
-  test('reviewFlashcard concurrent delete throws 404', async () => {
-    const app = fastify()
+  test('reviewFlashcard concurrent delete throws 404', async (t) => {
     let findOneCount = 0
 
-    app.decorate('mongo', {
-      db: {
-        collection: (name) => {
-          if (name === 'flashcards') {
-            return {
-              findOne: async () => {
-                findOneCount += 1
-                if (findOneCount === 1) return { id: 'fc1', box: 1, noteId: 'n1' }
-                return null // deleted concurrently
-              },
-              findOneAndUpdate: async () => null, // modified concurrently
-            }
-          }
-          return {}
+    const app = await buildIsolatedFlashcardsApp(t, {
+      collections: {
+        flashcards: {
+          findOne: async () => {
+            findOneCount += 1
+            if (findOneCount === 1) return { id: 'fc1', box: 1, reviewCount: 0, noteId: 'n1' }
+            return null
+          },
+          findOneAndUpdate: async () => null,
         },
       },
     })
 
-    app.decorate('notebooksDataSource', {})
-    app.decorate('cacheDelete', async () => {})
-    app.decorate('httpErrors', {
-      badRequest: (msg) => new Error(msg),
-      notFound: (msg) => {
-        const e = new Error(msg)
-        e.statusCode = 404
-        return e
-      },
-      conflict: (msg) => {
-        const e = new Error(msg)
-        e.statusCode = 409
-        return e
-      },
-    })
-
-    await app.register(fp(async () => {}, { name: 'db-plugin' }))
-    await app.register(fp(async () => {}, { name: 'notebooks-store' }))
-    await app.register(fp(async () => {}, { name: 'app-cache' }))
-    await app.register(flashcardsStorePlugin)
-    await app.ready()
-
     const ds = app.flashcardsDataSource.forUser('u1')
-    try {
-      await ds.reviewFlashcard('fc1', 'hard')
-      assert.fail('Should throw')
-    } catch (err) {
-      assert.equal(err.statusCode, 404)
-      assert.equal(err.message, 'Flashcard not found')
-    }
+    await assert.rejects(
+      () => ds.reviewFlashcard('fc1', 'hard'),
+      (err) => err.statusCode === 404 && err.message === 'Flashcard not found',
+    )
   })
 
-  test('reviewFlashcard CAS contention throws 409', async () => {
-    const app = fastify()
+  test('reviewFlashcard CAS contention on reviewCount throws 409 even when box stays constant (e.g. hard or box 5)', async (t) => {
     let findOneCount = 0
 
-    app.decorate('mongo', {
-      db: {
-        collection: (name) => {
-          if (name === 'flashcards') {
-            return {
-              findOne: async () => {
-                findOneCount += 1
-                return { id: 'fc1', box: findOneCount, noteId: 'n1' } // card keeps changing
-              },
-              findOneAndUpdate: async () => null, // update fails
-            }
-          }
-          return {}
+    const app = await buildIsolatedFlashcardsApp(t, {
+      collections: {
+        flashcards: {
+          findOne: async () => {
+            findOneCount += 1
+            return { id: 'fc1', box: 5, reviewCount: findOneCount, noteId: 'n1' }
+          },
+          findOneAndUpdate: async () => null,
         },
       },
     })
 
-    app.decorate('notebooksDataSource', {})
-    app.decorate('cacheDelete', async () => {})
-    app.decorate('httpErrors', {
-      badRequest: (msg) => new Error(msg),
-      notFound: (msg) => {
-        const e = new Error(msg)
-        e.statusCode = 404
-        return e
-      },
-      conflict: (msg) => {
-        const e = new Error(msg)
-        e.statusCode = 409
-        return e
-      },
-    })
-
-    await app.register(fp(async () => {}, { name: 'db-plugin' }))
-    await app.register(fp(async () => {}, { name: 'notebooks-store' }))
-    await app.register(fp(async () => {}, { name: 'app-cache' }))
-    await app.register(flashcardsStorePlugin)
-    await app.ready()
-
     const ds = app.flashcardsDataSource.forUser('u1')
-    try {
-      await ds.reviewFlashcard('fc1', 'hard')
-      assert.fail('Should throw')
-    } catch (err) {
-      assert.equal(err.statusCode, 409)
-      assert.equal(err.message, 'Flashcard was modified concurrently, please retry')
-    }
+    await assert.rejects(
+      () => ds.reviewFlashcard('fc1', 'good'),
+      (err) =>
+        err.statusCode === 409 &&
+        err.message === 'Flashcard was modified concurrently, please retry',
+    )
   })
 
-  test('resolveScopedNotes throws 404 if folder missing', async () => {
-    const app = fastify()
+  test('reviewFlashcard handles legacy documents missing box and reviewCount fields using reviewCount CAS', async (t) => {
+    let capturedFilter = null
+    const now = new Date()
 
-    app.decorate('mongo', {
-      db: { collection: () => ({}) },
-    })
-
-    app.decorate('notebooksDataSource', {
-      verifyContainerFilter: async () => ({ folder: null }), // explicitly return no folder
-    })
-    app.decorate('cacheDelete', async () => {})
-    app.decorate('httpErrors', {
-      notFound: (msg) => {
-        const e = new Error(msg)
-        e.statusCode = 404
-        return e
+    const app = await buildIsolatedFlashcardsApp(t, {
+      collections: {
+        flashcards: {
+          findOne: async () => ({ id: 'fc-legacy', noteId: 'n1' }),
+          findOneAndUpdate: async (filter) => {
+            capturedFilter = filter
+            if (filter.box !== undefined) {
+              // Simulate real MongoDB: { box: 1 } does NOT match a doc missing `box`!
+              return null
+            }
+            return {
+              id: 'fc-legacy',
+              noteId: 'n1',
+              front: 'Q',
+              back: 'A',
+              box: 2,
+              nextReviewAt: now,
+              lastReviewedAt: now,
+              reviewCount: 1,
+              lapseCount: 0,
+              lastRating: 'good',
+              createdAt: now,
+              modifiedAt: now,
+            }
+          },
+          find: () => ({ toArray: async () => [{ box: 2 }] }),
+        },
+        notes: {
+          findOne: async () => ({ id: 'n1', userId: 'u1', readiness: 'in_progress' }),
+        },
       },
     })
 
-    await app.register(fp(async () => {}, { name: 'db-plugin' }))
-    await app.register(fp(async () => {}, { name: 'notebooks-store' }))
-    await app.register(fp(async () => {}, { name: 'app-cache' }))
-    await app.register(flashcardsStorePlugin)
-    await app.ready()
+    const ds = app.flashcardsDataSource.forUser('u1')
+    const res = await ds.reviewFlashcard('fc-legacy', 'good')
+
+    assert.equal(res.flashcard.box, 2)
+    assert.equal(res.flashcard.reviewCount, 1)
+    assert.ok(Array.isArray(capturedFilter.$or), 'Expected $or fallback for missing/0 reviewCount')
+    assert.equal(capturedFilter.box, undefined)
+  })
+
+  test('resolveScopedNotes throws 404 if folder missing', async (t) => {
+    const app = await buildIsolatedFlashcardsApp(t, {
+      notebooksDataSource: {
+        verifyContainerFilter: async () => ({ folder: null }),
+      },
+    })
 
     const ds = app.flashcardsDataSource.forUser('u1')
-    try {
-      await ds.listFlashcards({ folderId: 'f1' })
-      assert.fail('Should throw')
-    } catch (err) {
-      assert.equal(err.statusCode, 404)
-      assert.equal(err.message, 'Folder not found')
-    }
+    await assert.rejects(
+      () => ds.listFlashcards({ folderId: 'f1' }),
+      (err) => err.statusCode === 404 && err.message === 'Folder not found',
+    )
   })
 })

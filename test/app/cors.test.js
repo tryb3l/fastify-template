@@ -57,7 +57,7 @@ describe('CORS plugin', () => {
     assert.ok(exposedHeaders.includes('content-length'))
   })
 
-  test('handles CORS preflight OPTIONS requests for allowed origins', async (t) => {
+  test('handles CORS preflight OPTIONS requests for allowed origins including Range and conditional caching headers', async (t) => {
     // Arrange
     const app = await buildIsolatedApp(t)
 
@@ -68,7 +68,8 @@ describe('CORS plugin', () => {
       headers: {
         Origin: 'http://localhost:5173',
         'Access-Control-Request-Method': 'GET',
-        'Access-Control-Request-Headers': 'Content-Type, Authorization',
+        'Access-Control-Request-Headers':
+          'Content-Type, Authorization, Range, If-None-Match, If-Modified-Since',
       },
     })
 
@@ -76,6 +77,10 @@ describe('CORS plugin', () => {
     assert.equal(response.statusCode, 204) // fastify-cors intercepts options
     assert.equal(response.headers['access-control-allow-origin'], 'http://localhost:5173')
     assert.equal(response.headers['access-control-allow-methods'], 'GET, POST, PUT, DELETE')
+    const allowedHeaders = response.headers['access-control-allow-headers'].toLowerCase()
+    assert.ok(allowedHeaders.includes('range'))
+    assert.ok(allowedHeaders.includes('if-none-match'))
+    assert.ok(allowedHeaders.includes('if-modified-since'))
   })
 
   test('omits allow-origin header for disallowed browser origins', async (t) => {

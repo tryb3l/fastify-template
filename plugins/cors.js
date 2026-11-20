@@ -26,6 +26,9 @@ module.exports = fp(
       allowedHeaders: [
         'Content-Type',
         'Authorization',
+        'Range',
+        'If-None-Match',
+        'If-Modified-Since',
         'csrf-token',
         'x-csrf-token',
         'xsrf-token',

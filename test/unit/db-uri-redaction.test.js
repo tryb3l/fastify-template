@@ -1,10 +1,10 @@
 'use strict'
 
 const { test } = require('node:test')
-const assert = require('node:assert')
+const assert = require('node:assert/strict')
 const Fastify = require('fastify')
 const fp = require('fastify-plugin')
-const stream = require('stream')
+const stream = require('node:stream')
 
 // Mock @fastify/mongodb to prevent actual connection attempts and 5-second hangs
 const requireCachePath = require.resolve('@fastify/mongodb')
@@ -74,10 +74,10 @@ test('db-plugin redacts usernames and passwords from MONGO_URL in debug logs', a
   ]
 
   for (const { url, expected } of scenarios) {
-    await t.test(`redacts ${url}`, async () => {
+    await t.test(`redacts ${url}`, async (subT) => {
       const logMessages = []
       const ws = new stream.Writable({
-        write(chunk, enc, cb) {
+        write(chunk, _enc, cb) {
           logMessages.push(chunk.toString())
           cb()
         },
@@ -88,6 +88,9 @@ test('db-plugin redacts usernames and passwords from MONGO_URL in debug logs', a
           level: 'debug',
           stream: ws,
         },
+      })
+      subT.after(async () => {
+        await fastify.close()
       })
 
       // Mock application-config plugin to provide MONGO_URL

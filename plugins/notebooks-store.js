@@ -952,20 +952,26 @@ module.exports = fp(
           throw fastify.httpErrors.badRequest('Folder requires an owning notebookId')
         }
 
-        if (normalizedNotebookId !== null) {
-          await this.readNotebook(normalizedNotebookId, userId)
-        }
+        let notebook = null
+        let folder = null
 
-        if (normalizedFolderId !== null) {
-          const folder = await this.readFolder(normalizedFolderId, userId)
+        if (normalizedNotebookId !== null && normalizedFolderId !== null) {
+          ;[notebook, folder] = await Promise.all([
+            this.readNotebook(normalizedNotebookId, userId),
+            this.readFolder(normalizedFolderId, userId),
+          ])
           if (folder.notebookId !== normalizedNotebookId) {
             throw fastify.httpErrors.badRequest('Folder does not belong to the specified notebook')
           }
+        } else if (normalizedNotebookId !== null) {
+          notebook = await this.readNotebook(normalizedNotebookId, userId)
         }
 
         return {
           notebookId: normalizedNotebookId,
           folderId: normalizedFolderId,
+          notebook,
+          folder,
         }
       },
 
@@ -981,9 +987,9 @@ module.exports = fp(
         }
 
         if (notebookId && folderId) {
-          await this.verifyContainerPlacement({ notebookId, folderId }, userId)
-          notebook = await this.readNotebook(notebookId, userId)
-          folder = await this.readFolder(folderId, userId)
+          const verified = await this.verifyContainerPlacement({ notebookId, folderId }, userId)
+          notebook = verified.notebook
+          folder = verified.folder
         } else if (notebookId) {
           notebook = await this.readNotebook(notebookId, userId)
         } else if (folderId) {

@@ -32,7 +32,7 @@ function redactMongoUri(uri) {
     return parsed.toString().replace('***:@', '***@')
   } catch {
     // Fallback for multi-host comma-delimited replica-set URIs
-    return uri.replace(/(mongodb(?:\+srv)?:\/\/)([^/?]+)(@)/, '$1***$3')
+    return uri.replace(/(mongodb(?:\+srv)?:\/\/)([^/?@]+)(@)/, '$1***$3')
   }
 }
 

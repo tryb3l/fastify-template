@@ -6,15 +6,17 @@ const { buildApp } = require('../test-setup')
 const { seedUser } = require('../utils/setup-user')
 
 describe('Rate limiting plugin', () => {
-  test('rateLimitPlugin explicitly requires authentication-plugin', async (t) => {
+  test('rateLimitPlugin can be registered in isolation with application-config and keys strictly on request.user vs request.ip', async (t) => {
     const Fastify = require('fastify')
     const configPlugin = require('../../plugins/config')
     const rateLimitPlugin = require('../../plugins/rate-limit')
 
     const app = Fastify({ logger: false })
-    t.after(() => app.close().catch(() => {}))
+    t.after(async () => {
+      await app.close()
+    })
 
-    app.register(configPlugin, {
+    await app.register(configPlugin, {
       configData: {
         MONGO_URL: 'mongodb://localhost:27017/test',
         NODE_ENV: 'test',
@@ -23,10 +25,30 @@ describe('Rate limiting plugin', () => {
         FRONTEND_URL: 'http://localhost:5173',
       },
     })
+    await app.register(rateLimitPlugin)
 
-    await assert.rejects(async () => {
-      await app.register(rateLimitPlugin)
-    }, /The dependency 'authentication-plugin' of plugin 'rate-limit' is not registered/)
+    app.get(
+      '/public-probe',
+      { config: { rateLimit: { max: 2, timeWindow: '1 minute' } } },
+      async () => ({ ok: true }),
+    )
+    await app.ready()
+
+    const r1 = await app.inject({
+      method: 'GET',
+      url: '/public-probe',
+      headers: { Authorization: 'Bearer fake-token' },
+    })
+    const r2 = await app.inject({ method: 'GET', url: '/public-probe' })
+    const r3 = await app.inject({
+      method: 'GET',
+      url: '/public-probe',
+      headers: { Authorization: 'Bearer fake-token' },
+    })
+
+    assert.equal(r1.statusCode, 200)
+    assert.equal(r2.statusCode, 200)
+    assert.equal(r3.statusCode, 429)
   })
 
   test('blocks authenticated user after exceeding route max and isolates buckets per user', async (t) => {

@@ -126,7 +126,7 @@ test('notes-store, notebooks-store, and flashcards-store parallelize independent
     },
     notebooks: {
       findOne: () =>
-        Promise.resolve({
+        tracker.track(async () => ({
           id: 'nb-1',
           userId: 'u1',
           name: 'NB',
@@ -136,11 +136,11 @@ test('notes-store, notebooks-store, and flashcards-store parallelize independent
           targetDate: null,
           createdAt: new Date(),
           modifiedAt: new Date(),
-        }),
+        })),
       deleteOne: () => tracker.track(async () => ({ deletedCount: 1 })),
     },
     folders: {
-      findOne: () => Promise.resolve({ id: 'fold-1', notebookId: 'nb-1', name: 'F' }),
+      findOne: () => tracker.track(async () => ({ id: 'fold-1', notebookId: 'nb-1', name: 'F' })),
       deleteOne: () => tracker.track(async () => ({ deletedCount: 1 })),
       countDocuments: () => Promise.resolve(0),
     },
@@ -262,5 +262,35 @@ test('notes-store, notebooks-store, and flashcards-store parallelize independent
     tracker.getMaxActive(),
     3,
     'Expected reviewFlashcard to parallelize recordDailyActivity + flashcards.find + notes.findOne',
+  )
+
+  // 6. verifyContainerFilter({ notebookId, folderId }) fetches notebook + folder once concurrently (2 queries, maxActive === 2)
+  let containerReadCount = 0
+  const origNbFindOne = collections.notebooks.findOne
+  const origFolderFindOne = collections.folders.findOne
+  collections.notebooks.findOne = (...args) => {
+    containerReadCount += 1
+    return origNbFindOne(...args)
+  }
+  collections.folders.findOne = (...args) => {
+    containerReadCount += 1
+    return origFolderFindOne(...args)
+  }
+  tracker.reset()
+  const verified = await app.notebooksDataSource.verifyContainerFilter(
+    { notebookId: 'nb-1', folderId: 'fold-1' },
+    'u1',
+  )
+  assert.strictEqual(verified.notebook.id, 'nb-1')
+  assert.strictEqual(verified.folder.id, 'fold-1')
+  assert.strictEqual(
+    containerReadCount,
+    2,
+    `Expected verifyContainerFilter to issue exactly 2 queries (notebook + folder), got ${containerReadCount}`,
+  )
+  assert.strictEqual(
+    tracker.getMaxActive(),
+    2,
+    'Expected verifyContainerFilter to fetch notebook and folder concurrently in Promise.all',
   )
 })

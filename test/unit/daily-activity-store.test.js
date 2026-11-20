@@ -1,7 +1,8 @@
 'use strict'
 
 const test = require('node:test')
-const assert = require('node:assert')
+const assert = require('node:assert/strict')
+const stream = require('node:stream')
 const Fastify = require('fastify')
 const fp = require('fastify-plugin')
 const dailyActivityStorePlugin = require('../../plugins/daily-activity-store')
@@ -49,16 +50,17 @@ test('Slice 1: recordDailyActivity retries once on E11000 race and accumulates i
 })
 
 test('Slice 2: recordDailyActivity logs warning and swallows persistent DB errors', async (t) => {
-  let loggedWarnings = 0
-  const app = Fastify({ logger: false })
+  const logLines = []
+  const ws = new stream.Writable({
+    write(chunk, _enc, cb) {
+      logLines.push(chunk.toString())
+      cb()
+    },
+  })
+  const app = Fastify({ logger: { level: 'warn', stream: ws } })
   t.after(async () => {
     await app.close()
   })
-
-  // Override log.warn after creation
-  app.log.warn = () => {
-    loggedWarnings += 1
-  }
 
   app.decorate('mongo', {
     db: {
@@ -89,5 +91,9 @@ test('Slice 2: recordDailyActivity logs warning and swallows persistent DB error
   // This should NOT throw
   await app.recordDailyActivity('u1', { flashcardsCreated: 1 })
 
-  assert.strictEqual(loggedWarnings, 1, 'Expected one warning to be logged')
+  const warnEntry = logLines
+    .map((line) => JSON.parse(line))
+    .find((entry) => entry.msg === 'Failed to record daily activity telemetry')
+  assert.ok(warnEntry, 'Expected structured warning log to be emitted')
+  assert.equal(warnEntry.userId, 'u1')
 })

@@ -35,7 +35,7 @@ module.exports = fp(
   },
   {
     name: 'rate-limit',
-    dependencies: ['application-config', 'authentication-plugin'],
+    dependencies: ['application-config'],
     decorators: {
       fastify: ['config'],
     },

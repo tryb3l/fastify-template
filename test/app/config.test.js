@@ -696,32 +696,47 @@ describe('Application configuration', () => {
     assert.deepEqual(dropped, ['userId_1_noteId_1_box_1_nextReviewAt_1'])
   })
 
-  test('conditionally applies SMTP auth based on credentials and correctly throws outside test when SMTP is omitted', async (t) => {
+  test('conditionally applies SMTP auth, enforces SMTP timeouts, and allows capture fallback when mailer is mounted directly in development without SMTP host', async (t) => {
     // Arrange
     const net = require('node:net')
+    const { once } = require('node:events')
+    const fp = require('fastify-plugin')
     const commandsReceived = []
 
     const server = net.createServer((socket) => {
+      let buffer = ''
+      let inDataBody = false
       socket.write('220 localhost ESMTP\r\n')
-      socket.on('data', (data) => {
-        const lines = data.toString().split('\r\n').filter(Boolean)
-        commandsReceived.push(...lines)
+      socket.on('data', (chunk) => {
+        buffer += chunk.toString()
+        let idx = buffer.indexOf('\r\n')
+        while (idx !== -1) {
+          const line = buffer.slice(0, idx)
+          buffer = buffer.slice(idx + 2)
 
-        for (const line of lines) {
-          if (line.startsWith('EHLO') || line.startsWith('HELO')) {
-            socket.write('250-localhost\r\n250 AUTH PLAIN LOGIN\r\n')
-          } else if (line.startsWith('AUTH')) {
-            socket.write('235 OK\r\n')
-          } else if (line.startsWith('MAIL FROM') || line.startsWith('RCPT TO')) {
-            socket.write('250 OK\r\n')
-          } else if (line === 'DATA') {
-            socket.write('354 End data with <CR><LF>.<CR><LF>\r\n')
-          } else if (line === '.') {
-            socket.write('250 Queued\r\n')
-          } else if (line === 'QUIT') {
-            socket.write('221 Bye\r\n')
-            socket.end()
+          if (inDataBody) {
+            if (line === '.') {
+              inDataBody = false
+              socket.write('250 Queued\r\n')
+            }
+          } else {
+            commandsReceived.push(line)
+            if (line.startsWith('EHLO') || line.startsWith('HELO')) {
+              socket.write('250-localhost\r\n250 AUTH PLAIN LOGIN\r\n')
+            } else if (line.startsWith('AUTH')) {
+              socket.write('235 OK\r\n')
+            } else if (line.startsWith('MAIL FROM') || line.startsWith('RCPT TO')) {
+              socket.write('250 OK\r\n')
+            } else if (line === 'DATA') {
+              inDataBody = true
+              socket.write('354 End data with <CR><LF>.<CR><LF>\r\n')
+            } else if (line === 'QUIT') {
+              socket.write('221 Bye\r\n')
+              socket.end()
+            }
           }
+
+          idx = buffer.indexOf('\r\n')
         }
       })
     })
@@ -729,16 +744,19 @@ describe('Application configuration', () => {
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
     const port = server.address().port
 
-    t.after(() => {
+    t.after(async () => {
       server.close()
+      await once(server, 'close')
     })
 
     const noAuthApp = Fastify({ logger: false })
     const authApp = Fastify({ logger: false })
+    const directDevApp = Fastify({ logger: false })
 
     t.after(async () => {
       await noAuthApp.close()
       await authApp.close()
+      await directDevApp.close()
     })
 
     await noAuthApp.register(configPlugin, {
@@ -763,14 +781,33 @@ describe('Application configuration', () => {
     })
     await authApp.register(mailerPlugin)
 
+    // Direct mount in development with no smtp.host should use capture transport (matching error message contract)
+    await directDevApp.register(
+      fp(
+        async (instance) => {
+          instance.decorate('config', {
+            NODE_ENV: 'development',
+            FRONTEND_URL: 'http://localhost:5173',
+            mailer: { fromEmail: 'dev@example.com', smtp: {} },
+          })
+        },
+        { name: 'application-config' },
+      ),
+    )
+    await directDevApp.register(mailerPlugin)
+    await directDevApp.ready()
+
     // Act
     await noAuthApp.mailer.sendPasswordResetSuccessMail({ to: 'user1@example.com' })
     const authSentForNoAuth = commandsReceived.some((c) => c.startsWith('AUTH'))
 
-    commandsReceived.length = 0 // clear
+    commandsReceived.length = 0
 
     await authApp.mailer.sendPasswordResetSuccessMail({ to: 'user2@example.com' })
     const authSentForAuth = commandsReceived.some((c) => c.startsWith('AUTH'))
+
+    mailerPlugin.clearTestMessages()
+    await directDevApp.mailer.sendPasswordResetSuccessMail({ to: 'dev@example.com' })
 
     // Assert
     assert.equal(
@@ -779,6 +816,12 @@ describe('Application configuration', () => {
       'Should not send AUTH when credentials are not configured',
     )
     assert.equal(authSentForAuth, true, 'Should send AUTH when credentials are configured')
+    assert.equal(mailerPlugin.getTestMessages().length, 1)
+    assert.deepEqual(mailerPlugin.SMTP_TRANSPORT_TIMEOUTS_MS, {
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 15_000,
+    })
   })
 
   test('delegates process signal graceful shutdown to fastify-cli without registering SIGTERM listeners inside app.js', async (t) => {

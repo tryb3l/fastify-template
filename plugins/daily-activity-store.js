@@ -148,7 +148,7 @@ module.exports = fp(
           )
           break
         } catch (err) {
-          if (err.code === 11000 && attempt === 1) {
+          if (err?.code === 11000 && attempt === 1) {
             continue
           }
           fastify.log.warn({ err, userId, dateKey }, 'Failed to record daily activity telemetry')

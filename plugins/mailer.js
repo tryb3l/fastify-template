@@ -5,6 +5,11 @@ const nodemailer = require('nodemailer')
 const { resolvePrimaryFrontendUrl } = require('../utils/url')
 
 const MAX_CAPTURED_TEST_MESSAGES = 100
+const SMTP_TRANSPORT_TIMEOUTS_MS = Object.freeze({
+  connectionTimeout: 10_000,
+  greetingTimeout: 10_000,
+  socketTimeout: 15_000,
+})
 const sentMessages = []
 
 const HTML_ESCAPE_CHECK_RE = /[&<>"']/
@@ -42,9 +47,9 @@ async function mailerPlugin(fastify) {
   fastify.log.info('Starting registration of mailer plugin')
 
   const { smtp, fromEmail } = fastify.config.mailer || {}
-  const isTestEnv = fastify.config.NODE_ENV === 'test'
+  const nodeEnv = fastify.config.NODE_ENV
   const hasSmtpConfig = Boolean(smtp?.host)
-  const useCaptureTransport = isTestEnv && !hasSmtpConfig
+  const useCaptureTransport = !hasSmtpConfig && (nodeEnv === 'test' || nodeEnv === 'development')
   let transporter
 
   if (!hasSmtpConfig) {
@@ -66,6 +71,7 @@ async function mailerPlugin(fastify) {
       host: smtp.host,
       port: smtp.port,
       secure: smtp.secure !== false,
+      ...SMTP_TRANSPORT_TIMEOUTS_MS,
     }
     if (smtp.user || smtp.pass) {
       transportOptions.auth = {
@@ -185,3 +191,4 @@ module.exports = fp(mailerPlugin, {
 
 module.exports.getTestMessages = getTestMessages
 module.exports.clearTestMessages = clearTestMessages
+module.exports.SMTP_TRANSPORT_TIMEOUTS_MS = SMTP_TRANSPORT_TIMEOUTS_MS

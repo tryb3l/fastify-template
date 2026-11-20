@@ -10,6 +10,8 @@ const {
 } = require('../routes/flashcards/flashcard-contract')
 const { buildNoteCacheKey } = require('../utils/lru-cache')
 
+const VALID_FLASHCARD_RATINGS_SET = new Set(FLASHCARD_RATINGS)
+
 function normalizeFlashcardDoc(card) {
   return {
     id: card.id,
@@ -440,7 +442,7 @@ module.exports = fp(
       },
 
       async reviewFlashcard(id, rating, userId) {
-        if (!FLASHCARD_RATINGS.includes(rating)) {
+        if (!VALID_FLASHCARD_RATINGS_SET.has(rating)) {
           throw fastify.httpErrors.badRequest('Invalid flashcard rating')
         }
 
@@ -453,13 +455,14 @@ module.exports = fp(
         for (let attempt = 0; attempt < 2; attempt += 1) {
           existingCard = await flashcards.findOne(
             { id, userId },
-            { projection: { _id: 0, id: 1, noteId: 1, box: 1 } },
+            { projection: { _id: 0, id: 1, noteId: 1, box: 1, reviewCount: 1 } },
           )
           if (!existingCard) {
             throw fastify.httpErrors.notFound('Flashcard not found')
           }
 
           const currentBox = Number(existingCard.box) || 1
+          const currentReviewCount = Number(existingCard.reviewCount) || 0
           let nextBox
           let nextReviewAt
 
@@ -472,8 +475,15 @@ module.exports = fp(
             nextReviewAt = new Date(nowMs + days * 86_400_000)
           }
 
+          const casFilter = { id, userId }
+          if (currentReviewCount === 0) {
+            casFilter.$or = [{ reviewCount: 0 }, { reviewCount: { $exists: false } }]
+          } else {
+            casFilter.reviewCount = currentReviewCount
+          }
+
           const updateResult = await flashcards.findOneAndUpdate(
-            { id, userId, box: currentBox },
+            casFilter,
             {
               $set: {
                 box: nextBox,
