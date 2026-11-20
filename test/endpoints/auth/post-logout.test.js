@@ -41,6 +41,45 @@ describe('POST /auth/logout', () => {
     assert.equal(refreshResponse.statusCode, 401)
   })
 
+  test('returns 401 and clears refresh cookie when presenting an already-revoked refresh token WITHOUT incrementing credentialsVersion', async (t) => {
+    // Arrange
+    const { app, refreshToken, userId } = await setup(t, 'user')
+    const { csrfToken, csrfCookieHeader } = await issueCsrfContext(app)
+    const cookieHeader = buildRefreshTokenCookieHeader(refreshToken, csrfCookieHeader)
+
+    // First logout
+    await app.inject({
+      method: 'POST',
+      url: '/auth/logout',
+      headers: {
+        cookie: cookieHeader,
+        'x-csrf-token': csrfToken,
+      },
+    })
+
+    // Act - Second logout
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/logout',
+      headers: {
+        cookie: cookieHeader,
+        'x-csrf-token': csrfToken,
+      },
+    })
+
+    // Assert
+    assert.equal(response.statusCode, 401)
+    assertRefreshCookieExpired(response.headers['set-cookie'])
+
+    const user = await app.usersDataSource.readUserById(userId)
+    assert.equal(user.credentialsVersion, 0) // Did not increment
+
+    await app.flushAuditLogs()
+    const logs = await app.mongo.db.collection('auditLogs').find({ userId }).toArray()
+    const reuseLog = logs.find(log => log.action === 'auth_refresh_token_reused')
+    assert.ok(!reuseLog, 'Should NOT emit auth_refresh_token_reused audit log on logout')
+  })
+
   test('returns 401 when refreshToken cookie is missing', async (t) => {
     // Arrange
     const { app } = await setup(t, 'user')

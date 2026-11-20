@@ -521,12 +521,32 @@ async function usersPlugin(fastify) {
         })
 
         fastify.log.debug({ jti }, 'Token added to TTL blocklist')
+        return true
       } catch (error) {
         if (error.code === 11000) {
           fastify.log.debug({ jti }, 'Token was already revoked')
-          return
+          return false
         }
         fastify.log.error({ error, jti }, 'Database failure on token revoke')
+        throw error
+      }
+    },
+
+    async incrementCredentialsVersion(userId) {
+      fastify.log.debug({ userId }, 'Entering incrementCredentialsVersion method')
+      try {
+        await users.updateOne(
+          { _id: userId },
+          {
+            $inc: { credentialsVersion: 1 },
+            $set: { modifiedAt: instantToDate(nowInstant()) },
+          },
+        )
+        const { buildUserCacheKey } = require('../utils/lru-cache')
+        await fastify.cacheDelete(buildUserCacheKey(userId))
+        fastify.log.debug({ userId }, 'Exiting incrementCredentialsVersion method')
+      } catch (error) {
+        fastify.log.error({ error, userId }, 'Database failure incrementing credentialsVersion')
         throw error
       }
     },

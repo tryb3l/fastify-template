@@ -134,8 +134,9 @@ module.exports = fp(
 
     fastify.decorateRequest('revokeToken', async function (jti, exp, userId) {
       fastify.log.debug('Entering revokeToken method')
-      await fastify.usersDataSource.revokeToken(jti, exp, userId)
-      fastify.log.debug({ jti }, 'Token revoked successfully')
+      const result = await fastify.usersDataSource.revokeToken(jti, exp, userId)
+      fastify.log.debug({ jti, result }, 'Token revoked status')
+      return result
     })
 
     fastify.decorate('verifyRefreshToken', async function (request, reply) {
@@ -165,7 +166,23 @@ module.exports = fp(
 
       const isRevoked = await fastify.usersDataSource.checkIfRevoked(decoded.jti)
       if (isRevoked) {
-        request.log.warn({ jti: decoded.jti }, 'Rejected revoked refresh token')
+        request.log.warn({ jti: decoded.jti, url: request.routeOptions.url }, 'Rejected revoked refresh token')
+        if (request.routeOptions.url === '/auth/refresh') {
+          await fastify.usersDataSource.incrementCredentialsVersion(decoded.sub)
+          fastify.auditLog({
+            request,
+            action: 'auth_refresh_token_reused',
+            userId: decoded.sub,
+            resourceType: 'user',
+            resourceId: decoded.sub,
+            details: { jti: decoded.jti, reason: 'already_revoked', severity: 'high' }
+          })
+          reply.clearCookie('refreshToken', { path: '/auth' })
+          throw fastify.httpErrors.unauthorized('Invalid refresh token')
+        } else if (request.routeOptions.url === '/auth/logout') {
+          reply.clearCookie('refreshToken', { path: '/auth' })
+          throw fastify.httpErrors.unauthorized('Invalid refresh token')
+        }
         throw fastify.httpErrors.unauthorized('Invalid refresh token')
       }
 
