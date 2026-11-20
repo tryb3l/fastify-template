@@ -131,19 +131,30 @@ module.exports = fp(
 
       incDoc.totalActions = totalActions
 
-      await dailyActivity.updateOne(
-        { userId, date: dateKey },
-        {
-          $inc: incDoc,
-          $set: { updatedAt: now },
-          $setOnInsert: {
-            userId,
-            date: dateKey,
-            createdAt: now,
-          },
-        },
-        { upsert: true },
-      )
+      for (let attempt = 1; attempt <= 2; attempt += 1) {
+        try {
+          await dailyActivity.updateOne(
+            { userId, date: dateKey },
+            {
+              $inc: incDoc,
+              $set: { updatedAt: now },
+              $setOnInsert: {
+                userId,
+                date: dateKey,
+                createdAt: now,
+              },
+            },
+            { upsert: true },
+          )
+          break
+        } catch (err) {
+          if (err.code === 11000 && attempt === 1) {
+            continue
+          }
+          fastify.log.warn({ err, userId, dateKey }, 'Failed to record daily activity telemetry')
+          break
+        }
+      }
     }
 
     async function getDashboardSummary(userId) {
