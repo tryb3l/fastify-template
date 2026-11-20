@@ -57,7 +57,7 @@ A poly-hierarchical graph projection (`{ nodes, edges }`) of Notes and their Not
 _Avoid_: Knowledge tree, network diagram
 
 **User Invitation**:
-An admin-issued, single-use, TTL-bound registration token (`<inviteId>.<secret>`) optionally restricted to a specific email address (and emailed via `sendInviteMail`), required to register an account when `REGISTRATION_MODE` is `invite` and automatically marking the redeemed account `emailVerified: true`.
+An admin-issued, single-use, TTL-bound registration token (`<inviteId>.<secret>`) optionally restricted to a specific email address (and emailed via `sendInviteMail`), required to register an account when `REGISTRATION_MODE` is `invite` and automatically marking the redeemed account `emailVerified: true` if the invitation was explicitly bound to that email address.
 _Avoid_: Referral code, coupon, signup voucher
 
 **Sync Tombstone**:

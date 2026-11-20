@@ -24,7 +24,7 @@ module.exports = async function authRoutes(fastify) {
       }
 
       let verifiedInvite = null
-      if (registrationMode === 'invite') {
+      if (registrationMode !== 'open') {
         if (!request.body.inviteToken) {
           throw fastify.httpErrors.forbidden('A valid invitation token is required to register')
         }
@@ -63,7 +63,7 @@ module.exports = async function authRoutes(fastify) {
       const newUserId = await fastify.usersDataSource.createUser({
         username: request.body.username,
         email: request.body.email,
-        emailVerified: Boolean(verifiedInvite),
+        emailVerified: Boolean(verifiedInvite && verifiedInvite.email),
         hash: hash,
         role: verifiedInvite?.role || 'user',
       })
@@ -213,8 +213,7 @@ module.exports = async function authRoutes(fastify) {
   })
 
   fastify.post('/refresh', {
-    onRequest: fastify.verifyRefreshToken,
-    preValidation: fastify.csrfProtection,
+    preValidation: [fastify.csrfProtection, fastify.verifyRefreshToken],
     config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
     schema: {
       tags: ['auth'],
@@ -276,8 +275,7 @@ module.exports = async function authRoutes(fastify) {
   })
 
   fastify.post('/logout', {
-    onRequest: fastify.verifyRefreshToken,
-    preValidation: fastify.csrfProtection,
+    preValidation: [fastify.csrfProtection, fastify.verifyRefreshToken],
     config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
     schema: {
       tags: ['auth'],

@@ -137,16 +137,16 @@ describe('POST /auth/refresh', () => {
     assertRefreshCookieExpired(response.headers['set-cookie'])
   })
 
-  test('returns 403 when CSRF header is missing', async (t) => {
+  test('returns 403 when CSRF header is missing even if refreshToken is also missing', async (t) => {
     // Arrange
-    const { app, refreshToken } = await setup(t, 'user')
+    const { app } = await setup(t, 'user')
 
     // Act
     const response = await app.inject({
       method: 'POST',
       url: '/auth/refresh',
       headers: {
-        cookie: `refreshToken=${refreshToken}`,
+        // No cookies, no CSRF
       },
     })
 

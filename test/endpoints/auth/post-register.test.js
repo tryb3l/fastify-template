@@ -90,6 +90,32 @@ describe('POST /auth/register', () => {
     assert.equal(created.role, 'admin')
   })
 
+  test('returns 201 with emailVerified: false and assigned role when consuming an unbound invite token', async (t) => {
+    // Arrange
+    const { inviteApp, invite } = await createInviteViaHttpAdmin(t, {
+      role: 'user',
+      ttlHours: 24,
+    })
+    const payload = {
+      username: randomUsername(12),
+      email: randomEmail(10, 5),
+      password: randomPassword(14),
+      inviteToken: invite.inviteToken,
+    }
+
+    // Act
+    const response = await registerUser(inviteApp, payload)
+
+    // Assert
+    assert.equal(response.statusCode, 201)
+    assert.deepEqual(response.json(), { registered: true })
+
+    const created = await inviteApp.usersDataSource.readUserWithHash(payload.username)
+    assert.ok(created)
+    assert.equal(created.emailVerified, false)
+    assert.equal(created.role, 'user')
+  })
+
   test('returns 400 when required password field is missing', async (t) => {
     // Arrange
     const app = await buildApp(t, { REGISTRATION_MODE: 'open' })
@@ -135,6 +161,22 @@ describe('POST /auth/register', () => {
     // Assert
     assert.equal(response.statusCode, 400)
     assert.ok(response.json().message)
+  })
+
+  test('returns 403 when REGISTRATION_MODE is unrecognized and inviteToken is missing', async (t) => {
+    // Arrange
+    const app = await buildApp(t, { REGISTRATION_MODE: 'invite' })
+    app.config.REGISTRATION_MODE = 'typo-mode'
+
+    // Act
+    const response = await registerUser(app, {
+      username: randomUsername(12),
+      email: randomEmail(10, 5),
+      password: randomPassword(14),
+    })
+
+    // Assert
+    assert.equal(response.statusCode, 403)
   })
 
   test('returns 403 when REGISTRATION_MODE is closed', async (t) => {
