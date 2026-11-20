@@ -6,6 +6,25 @@ const { buildApp } = require('../test-setup')
 const { seedUser } = require('../utils/setup-user')
 
 describe('Rate limiting plugin', () => {
+  test('rateLimitPlugin explicitly requires authentication-plugin', async () => {
+    const Fastify = require('fastify')
+    const configPlugin = require('../../plugins/config')
+    const rateLimitPlugin = require('../../plugins/rate-limit')
+
+    const app = Fastify()
+    process.env.MONGO_URL = 'mongodb://localhost:27017/test'
+    process.env.JWT_SECRET = 'supersecret'
+    process.env.COOKIE_SECRET = 'supersecretcookie'
+
+    app.register(configPlugin)
+
+    await assert.rejects(async () => {
+      await app.register(rateLimitPlugin)
+    }, /The dependency 'authentication-plugin' of plugin 'rate-limit' is not registered/)
+
+    await app.close()
+  })
+
   test('blocks authenticated user after exceeding route max and isolates buckets per user', async (t) => {
     // Arrange
     const userA = await seedUser(t)
@@ -69,6 +88,45 @@ describe('Rate limiting plugin', () => {
     assert.equal(payload.error, 'Too Many Requests')
     assert.ok(payload.message.includes('Slow down please!'))
     assert.equal(typeof payload.requestId, 'string')
+  })
+
+  test('shares IP bucket across alternating authenticated and unauthenticated requests on public routes', async (t) => {
+    // Arrange
+    const user = await seedUser(t)
+
+    // Act: 1 request with token
+    const res1 = await user.app.inject({
+      method: 'POST',
+      url: '/auth/reset-password/request',
+      headers: { Authorization: `Bearer ${user.accessToken}` },
+      payload: { email: 'test1@example.com' },
+    })
+    assert.equal(res1.statusCode, 200, 'Authenticated request 1 should succeed')
+
+    // Act: 2 request without token
+    const res2 = await user.app.inject({
+      method: 'POST',
+      url: '/auth/reset-password/request',
+      payload: { email: 'test2@example.com' },
+    })
+    assert.equal(res2.statusCode, 200, 'Unauthenticated request 2 should succeed')
+
+    // Act: 3 request with token
+    const res3 = await user.app.inject({
+      method: 'POST',
+      url: '/auth/reset-password/request',
+      headers: { Authorization: `Bearer ${user.accessToken}` },
+      payload: { email: 'test3@example.com' },
+    })
+    assert.equal(res3.statusCode, 200, 'Authenticated request 3 should succeed')
+
+    // Act: 4 request without token should hit 429
+    const res4 = await user.app.inject({
+      method: 'POST',
+      url: '/auth/reset-password/request',
+      payload: { email: 'test4@example.com' },
+    })
+    assert.equal(res4.statusCode, 429, 'Request 4 should be rate limited')
   })
 
   test('enforces rate limit on POST /users/invites to prevent outbound invite spam', async (t) => {
