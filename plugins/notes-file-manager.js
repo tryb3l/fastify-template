@@ -40,16 +40,12 @@ function isNotModifiedSince(header, fileStats) {
 }
 
 // Strips characters that are unsafe inside a quoted Content-Disposition filename.
-function sanitizeContentDispositionFilename(name) {
+function buildContentDispositionHeader(name) {
+  const base = path.basename(String(name ?? ''))
   let hasSafeVisibleCharacter = false
-  const safeName = Array.from(path.basename(String(name ?? '')), (char) => {
-    if (
-      char === '\\' ||
-      char === '\r' ||
-      char === '\n' ||
-      char === '"' ||
-      char.charCodeAt(0) === 0
-    ) {
+  const safeName = Array.from(base, (char) => {
+    const code = char.charCodeAt(0)
+    if (char === '\\' || char === '"' || code < 0x20 || code === 0x7f || code > 0x7e) {
       return '_'
     }
 
@@ -62,7 +58,16 @@ function sanitizeContentDispositionFilename(name) {
     .join('')
     .trim()
 
-  return hasSafeVisibleCharacter && safeName ? safeName : 'attachment'
+  const finalAscii = hasSafeVisibleCharacter && safeName ? safeName : 'attachment'
+
+  // eslint-disable-next-line no-control-regex
+  const noControl = base.replace(/[\x00-\x1f\x7f]/g, '')
+  const rfc5987 = encodeURIComponent(noControl).replace(
+    /['()*]/g,
+    (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase(),
+  )
+
+  return `attachment; filename="${finalAscii}"; filename*=UTF-8''${rfc5987}`
 }
 
 function parseByteRangeHeader(rangeHeader, totalSize) {
@@ -307,7 +312,7 @@ module.exports = fp(
         const totalSize = Number(fileStats.size || 0)
         const etag = buildAttachmentEtag(fileStats)
         const lastModified = fileStats.mtime.toUTCString()
-        const safeFilename = sanitizeContentDispositionFilename(attachment.originalFilename)
+        const contentDisposition = buildContentDispositionHeader(attachment.originalFilename)
 
         const ifNoneMatch = requestHeaders['if-none-match']
         const notModified = ifNoneMatch
@@ -322,7 +327,7 @@ module.exports = fp(
           totalSize,
           etag,
           lastModified,
-          safeFilename,
+          contentDisposition,
           notModified,
           range,
           createStream: (rangeOpts = {}) => storageProvider.getStream(storageKey, rangeOpts),
@@ -345,5 +350,5 @@ module.exports = fp(
 module.exports.buildAttachmentEtag = buildAttachmentEtag
 module.exports.doesIfNoneMatch = doesIfNoneMatch
 module.exports.isNotModifiedSince = isNotModifiedSince
-module.exports.sanitizeContentDispositionFilename = sanitizeContentDispositionFilename
+module.exports.buildContentDispositionHeader = buildContentDispositionHeader
 module.exports.parseByteRangeHeader = parseByteRangeHeader

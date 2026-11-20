@@ -262,7 +262,7 @@ module.exports = async function fileRoutes(fastify, opts) {
           })
         }
 
-        reply.header('Content-Disposition', `attachment; filename="${download.safeFilename}"`)
+        reply.header('Content-Disposition', download.contentDisposition)
         reply.header('Content-Range', download.range.contentRange)
         reply.header('Content-Length', download.range.contentLength)
         reply.type(download.attachment.mimeType)
@@ -272,7 +272,7 @@ module.exports = async function fileRoutes(fastify, opts) {
           .send(download.createStream({ start: download.range.start, end: download.range.end }))
       }
 
-      reply.header('Content-Disposition', `attachment; filename="${download.safeFilename}"`)
+      reply.header('Content-Disposition', download.contentDisposition)
       reply.header('Content-Length', download.totalSize)
       reply.type(download.attachment.mimeType)
 

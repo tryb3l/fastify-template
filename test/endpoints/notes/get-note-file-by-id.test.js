@@ -71,14 +71,20 @@ describe('GET /files/:fileId', () => {
 
     // Assert
     assert.equal(response.statusCode, 200)
-    const filename = response.headers['content-disposition'].match(
-      /^attachment; filename="(.+)"$/,
-    )?.[1]
-    assert.ok(filename)
+    const contentDisposition = response.headers['content-disposition']
+    assert.ok(contentDisposition)
+
+    const filenameMatch = contentDisposition.match(/filename="([^"]+)"/)
+    assert.ok(filenameMatch)
+    const filename = filenameMatch[1]
+
     assert.ok(!filename.includes('"'))
     assert.ok(!filename.includes('\\'))
     assert.ok(!filename.includes('\r'))
     assert.ok(!filename.includes('\n'))
+
+    const rfc5987Match = contentDisposition.match(/filename\*=UTF-8''(.+)$/)
+    assert.ok(rfc5987Match)
   })
 
   test('returns 200 falling back to "attachment" when filename has only unsafe characters', async (t) => {
@@ -113,7 +119,10 @@ describe('GET /files/:fileId', () => {
 
     // Assert
     assert.equal(response.statusCode, 200)
-    assert.equal(response.headers['content-disposition'], 'attachment; filename="attachment"')
+    assert.equal(
+      response.headers['content-disposition'],
+      'attachment; filename="attachment"; filename*=UTF-8\'\'%5C%22%20%20%20',
+    )
   })
 
   test('returns 200 preferring If-None-Match over If-Modified-Since when ETag mismatches', async (t) => {

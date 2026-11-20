@@ -5,10 +5,10 @@ const assert = require('node:assert/strict')
 
 const {
   buildAttachmentEtag,
+  buildContentDispositionHeader,
   doesIfNoneMatch,
   isNotModifiedSince,
   parseByteRangeHeader,
-  sanitizeContentDispositionFilename,
 } = require('../../plugins/notes-file-manager')
 
 describe('notes-file-manager pure HTTP utilities', () => {
@@ -50,17 +50,44 @@ describe('notes-file-manager pure HTTP utilities', () => {
     assert.equal(isNotModifiedSince('Fri, 01 May 2026 12:00:10 GMT', legacyStats), true)
   })
 
-  test('sanitizeContentDispositionFilename strips path traversal and unsafe characters', () => {
+  test('buildContentDispositionHeader strips path traversal, replaces unsafe ASCII/non-ASCII with underscores, and includes RFC 5987', () => {
     // Arrange & Act & Assert
-    assert.equal(sanitizeContentDispositionFilename('report.pdf'), 'report.pdf')
-    assert.equal(sanitizeContentDispositionFilename('../../etc/passwd'), 'passwd')
     assert.equal(
-      sanitizeContentDispositionFilename('bad"file\r\nname\\x\0.txt'),
-      'bad_file__name_x_.txt',
+      buildContentDispositionHeader('report.pdf'),
+      'attachment; filename="report.pdf"; filename*=UTF-8\'\'report.pdf',
     )
-    assert.equal(sanitizeContentDispositionFilename('   '), 'attachment')
-    assert.equal(sanitizeContentDispositionFilename('"\r\n\0'), 'attachment')
-    assert.equal(sanitizeContentDispositionFilename(null), 'attachment')
+    assert.equal(
+      buildContentDispositionHeader('../../etc/passwd'),
+      'attachment; filename="passwd"; filename*=UTF-8\'\'passwd',
+    )
+    assert.equal(
+      buildContentDispositionHeader('bad"file\r\nname\\x\0.txt'),
+      'attachment; filename="bad_file__name_x_.txt"; filename*=UTF-8\'\'bad%22filename%5Cx.txt',
+    )
+    assert.equal(
+      buildContentDispositionHeader('   '),
+      'attachment; filename="attachment"; filename*=UTF-8\'\'%20%20%20',
+    )
+    assert.equal(
+      buildContentDispositionHeader('"\r\n\0'),
+      'attachment; filename="attachment"; filename*=UTF-8\'\'%22',
+    )
+    assert.equal(
+      buildContentDispositionHeader(null),
+      'attachment; filename="attachment"; filename*=UTF-8\'\'',
+    )
+    assert.equal(
+      buildContentDispositionHeader('тест.txt'),
+      'attachment; filename="____.txt"; filename*=UTF-8\'\'%D1%82%D0%B5%D1%81%D1%82.txt',
+    )
+    assert.equal(
+      buildContentDispositionHeader('😀.txt'),
+      'attachment; filename="_.txt"; filename*=UTF-8\'\'%F0%9F%98%80.txt',
+    )
+    assert.equal(
+      buildContentDispositionHeader('hello(world)*.txt'),
+      'attachment; filename="hello(world)*.txt"; filename*=UTF-8\'\'hello%28world%29%2A.txt',
+    )
   })
 
   test('parseByteRangeHeader parses valid ranges and flags unsatisfiable ranges', () => {
