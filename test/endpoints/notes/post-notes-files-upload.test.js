@@ -564,4 +564,112 @@ describe('POST /files/upload', () => {
     // Assert
     assert.equal(response.statusCode, 415)
   })
+
+  test('cleans up staged files when multipart parts limit triggers FST_FILES_LIMIT (413)', async (t) => {
+    const uploadDir = await fs.mkdtemp(
+      require('node:path').join(require('node:os').tmpdir(), 'fastify-upload-'),
+    )
+    t.after(async () => {
+      await fs.rm(uploadDir, { recursive: true, force: true })
+    })
+
+    const { app, accessToken, note } = await createNote(
+      t,
+      {},
+      { env: { UPLOAD_DIR: uploadDir, MAX_UPLOAD_FILES: 1 } }, // force 1 max file limit
+    )
+
+    const form = new FormData()
+    form.append('file1', PNG_SAMPLE, { filename: 'valid1.png', contentType: 'image/png' })
+    form.append('file2', PNG_SAMPLE, { filename: 'valid2.png', contentType: 'image/png' })
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/files/upload?noteId=${note.data.id}`,
+      headers: {
+        ...form.getHeaders(),
+        Authorization: `Bearer ${accessToken}`,
+      },
+      payload: form,
+    })
+
+    assert.equal(response.statusCode, 413)
+
+    const files = await fs.readdir(uploadDir)
+    assert.equal(files.length, 0)
+  })
+
+  test('returns 415 and cleans up staged files when multipart part is missing filename attribute', async (t) => {
+    const uploadDir = await fs.mkdtemp(
+      require('node:path').join(require('node:os').tmpdir(), 'fastify-upload-'),
+    )
+    t.after(async () => {
+      await fs.rm(uploadDir, { recursive: true, force: true })
+    })
+
+    const { app, accessToken, note } = await createNote(t, {}, { env: { UPLOAD_DIR: uploadDir } })
+
+    const boundary = '--------------------------8d499294453d3222d9ae5f46'
+    const payload = [
+      `--${boundary}`,
+      `Content-Disposition: form-data; name="file1"`,
+      `Content-Type: application/octet-stream`,
+      '',
+      PNG_SAMPLE.toString('binary'),
+      `--${boundary}--`,
+      '',
+    ].join('\r\n')
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/files/upload?noteId=${note.data.id}`,
+      headers: {
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        Authorization: `Bearer ${accessToken}`,
+      },
+      payload: Buffer.from(payload, 'binary'),
+    })
+
+    assert.equal(response.statusCode, 415)
+
+    const files = await fs.readdir(uploadDir)
+    assert.equal(files.length, 0)
+  })
+
+  test('returns 415 and cleans up staged files when multipart part has empty filename attribute', async (t) => {
+    const uploadDir = await fs.mkdtemp(
+      require('node:path').join(require('node:os').tmpdir(), 'fastify-upload-'),
+    )
+    t.after(async () => {
+      await fs.rm(uploadDir, { recursive: true, force: true })
+    })
+
+    const { app, accessToken, note } = await createNote(t, {}, { env: { UPLOAD_DIR: uploadDir } })
+
+    const boundary = '--------------------------8d499294453d3222d9ae5f46'
+    const payload = [
+      `--${boundary}`,
+      `Content-Disposition: form-data; name="file1"; filename=""`,
+      `Content-Type: image/png`,
+      '',
+      PNG_SAMPLE.toString('binary'),
+      `--${boundary}--`,
+      '',
+    ].join('\r\n')
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/files/upload?noteId=${note.data.id}`,
+      headers: {
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        Authorization: `Bearer ${accessToken}`,
+      },
+      payload: Buffer.from(payload, 'binary'),
+    })
+
+    assert.equal(response.statusCode, 415)
+
+    const files = await fs.readdir(uploadDir)
+    assert.equal(files.length, 0)
+  })
 })

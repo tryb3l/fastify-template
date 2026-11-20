@@ -190,79 +190,98 @@ module.exports = fp(
           )
         }
 
-        for await (const part of parts) {
-          if (!part.file) {
-            continue
-          }
+        try {
+          for await (const part of parts) {
+            if (!part.file) {
+              continue
+            }
 
-          const ext = path.extname(part.filename).toLowerCase()
-          const allowedExts = ALLOWED_UPLOAD_MIME_TYPES[part.mimetype]
+            const rawFilename = typeof part.filename === 'string' ? part.filename.trim() : ''
+            if (!rawFilename) {
+              part.file.resume()
+              await cleanup()
+              throw fastify.httpErrors.unsupportedMediaType('File part is missing a valid filename')
+            }
 
-          const isValid =
-            allowedExts &&
-            (Array.isArray(allowedExts) ? allowedExts.includes(ext) : allowedExts === ext)
+            const ext = path.extname(rawFilename).toLowerCase()
+            const allowedExts = ALLOWED_UPLOAD_MIME_TYPES[part.mimetype]
 
-          if (!isValid) {
-            await cleanup()
-            throw fastify.httpErrors.unsupportedMediaType(
-              `File type not allowed or extension mismatch: ${part.filename}`,
-            )
-          }
+            const isValid =
+              allowedExts &&
+              (Array.isArray(allowedExts) ? allowedExts.includes(ext) : allowedExts === ext)
 
-          const safeFilename = randomUUIDv7() + ext
-          const storageKey = path.basename(safeFilename)
-          const fileId = safeFilename.slice(0, safeFilename.lastIndexOf('.'))
-          const uploadedAt = nowIsoInstantString()
-          let filePath = storageProvider.resolveKeyPath(storageKey)
+            if (!isValid) {
+              part.file.resume()
+              await cleanup()
+              throw fastify.httpErrors.unsupportedMediaType(
+                `File type not allowed or extension mismatch: ${rawFilename}`,
+              )
+            }
 
-          uploadedFiles.push({
-            fileId,
-            originalFilename: part.filename,
-            mimeType: part.mimetype,
-            size: 0,
-            uploadedAt,
-            storageKey,
-            filePath,
-          })
+            const safeFilename = randomUUIDv7() + ext
+            const storageKey = path.basename(safeFilename)
+            const fileId = safeFilename.slice(0, safeFilename.lastIndexOf('.'))
+            const uploadedAt = nowIsoInstantString()
+            let filePath = storageProvider.resolveKeyPath(storageKey)
 
-          try {
-            filePath = await storageProvider.putStream(storageKey, part.file)
-          } catch (err) {
-            logger.error(err)
-            await cleanup()
-            throw fastify.httpErrors.internalServerError('File upload failed')
-          }
-
-          if (part.file.truncated) {
-            await cleanup()
-            throw fastify.httpErrors.badRequest('File is too large')
-          }
-
-          uploadedFiles[uploadedFiles.length - 1].size = Number(part.file.bytesRead || 0)
-
-          try {
-            await assertUploadedFileContent({
-              filePath,
-              filename: part.filename,
+            uploadedFiles.push({
+              fileId,
+              originalFilename: rawFilename,
               mimeType: part.mimetype,
+              size: 0,
+              uploadedAt,
+              storageKey,
+              filePath,
             })
-          } catch (err) {
-            logger.warn(
-              { err, filename: part.filename },
-              'Uploaded file content verification failed',
-            )
-            await cleanup()
 
-            if (err.statusCode === 400) {
-              throw fastify.httpErrors.badRequest(err.message)
+            try {
+              filePath = await storageProvider.putStream(storageKey, part.file)
+            } catch (err) {
+              logger.error(err)
+              await cleanup()
+              throw fastify.httpErrors.internalServerError('File upload failed')
             }
 
-            if (err.statusCode === 415) {
-              throw fastify.httpErrors.unsupportedMediaType(err.message)
+            if (part.file.truncated) {
+              await cleanup()
+              throw fastify.httpErrors.badRequest('File is too large')
             }
 
-            throw fastify.httpErrors.internalServerError('File upload failed')
+            uploadedFiles[uploadedFiles.length - 1].size = Number(part.file.bytesRead || 0)
+
+            try {
+              await assertUploadedFileContent({
+                filePath,
+                filename: rawFilename,
+                mimeType: part.mimetype,
+              })
+            } catch (err) {
+              logger.warn(
+                { err, filename: rawFilename },
+                'Uploaded file content verification failed',
+              )
+              await cleanup()
+
+              if (err.statusCode === 400) {
+                throw fastify.httpErrors.badRequest(err.message)
+              }
+
+              if (err.statusCode === 415) {
+                throw fastify.httpErrors.unsupportedMediaType(err.message)
+              }
+
+              throw fastify.httpErrors.internalServerError('File upload failed')
+            }
           }
+        } catch (err) {
+          await cleanup()
+
+          if (err.statusCode) {
+            throw err
+          }
+
+          logger.error({ err }, 'Unexpected error during multipart upload')
+          throw fastify.httpErrors.internalServerError('File upload failed')
         }
 
         if (uploadedFiles.length === 0) {
