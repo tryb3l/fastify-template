@@ -117,7 +117,7 @@ describe('POST /auth/refresh', () => {
     assert.equal(failures.length, 2)
 
     const user = await app.usersDataSource.readUserById(userId)
-    assert.equal(user.credentialsVersion, 2) // Bumped twice for the two failures
+    assert.equal(user.credentialsVersion, 1) // Bumped once for the compromised generation
 
     await app.flushAuditLogs()
     const logs = await app.mongo.db
@@ -125,6 +125,69 @@ describe('POST /auth/refresh', () => {
       .find({ userId, action: 'auth_refresh_token_reused' })
       .toArray()
     assert.equal(logs.length, 2) // One for each failed attempt
+  })
+
+  test('replaying a pre-reset revoked refresh token returns 401 and audits without invalidating a newer post-reset session', async (t) => {
+    // Arrange
+    const { app, refreshToken: oldRefreshToken, userId, username } = await setup(t, 'user')
+    const { csrfToken, csrfCookieHeader } = await issueCsrfContext(app)
+    const oldCookieHeader = buildRefreshTokenCookieHeader(oldRefreshToken, csrfCookieHeader)
+
+    // Rotate oldRefreshToken once so its jti (cv: 0) is recorded in revokedTokens
+    const rotateRes = await app.inject({
+      method: 'POST',
+      url: '/auth/refresh',
+      headers: {
+        cookie: oldCookieHeader,
+        'x-csrf-token': csrfToken,
+      },
+    })
+    assert.equal(rotateRes.statusCode, 200)
+
+    // User changes email / resets credentials (bumping credentialsVersion from 0 -> 1) and logs in anew
+    const newPassword = 'PostResetPassword!987'
+    const { hashPassword } = require('../../../routes/auth/generate-hash')
+    await app.usersDataSource.updateUser(userId, { hash: await hashPassword(newPassword) })
+
+    const newLoginRes = await app.inject({
+      method: 'POST',
+      url: '/auth/authenticate',
+      payload: { username, password: newPassword },
+    })
+    assert.equal(newLoginRes.statusCode, 200)
+    const newAccessToken = newLoginRes.json().access_token
+
+    // Act: attacker replays the stale pre-reset revoked refresh token (cv: 0)
+    const replayRes = await app.inject({
+      method: 'POST',
+      url: '/auth/refresh',
+      headers: {
+        cookie: oldCookieHeader,
+        'x-csrf-token': csrfToken,
+      },
+    })
+
+    // Assert: replay is rejected and audited, but the post-reset session (cv: 1) stays alive
+    assert.equal(replayRes.statusCode, 401)
+    assertRefreshCookieExpired(replayRes.headers['set-cookie'])
+
+    const userAfterReplay = await app.usersDataSource.readUserById(userId)
+    assert.equal(userAfterReplay.credentialsVersion, 1)
+
+    const meRes = await app.inject({
+      method: 'GET',
+      url: '/users/me',
+      headers: { Authorization: `Bearer ${newAccessToken}` },
+    })
+    assert.equal(meRes.statusCode, 200)
+
+    await app.flushAuditLogs()
+    const logs = await app.mongo.db
+      .collection('auditLogs')
+      .find({ userId, action: 'auth_refresh_token_reused' })
+      .toArray()
+    assert.equal(logs.length, 1)
+    assert.equal(logs[0].details.reason, 'already_revoked')
   })
 
   test('returns 401 and clears cookie when refreshToken cookie is missing', async (t) => {

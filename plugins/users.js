@@ -532,18 +532,25 @@ async function usersPlugin(fastify) {
       }
     },
 
-    async incrementCredentialsVersion(userId) {
-      fastify.log.debug({ userId }, 'Entering incrementCredentialsVersion method')
+    async incrementCredentialsVersion(userId, expectedVersion = null) {
+      fastify.log.debug({ userId, expectedVersion }, 'Entering incrementCredentialsVersion method')
       try {
-        await users.updateOne(
-          { _id: userId, deleted: { $ne: true } },
-          {
-            $inc: { credentialsVersion: 1 },
-            $set: { modifiedAt: instantToDate(nowInstant()) },
-          },
-        )
-        await invalidateUserCache(userId)
+        const filter = { _id: userId, deleted: { $ne: true } }
+        if (typeof expectedVersion === 'number') {
+          filter.$or =
+            expectedVersion === 0
+              ? [{ credentialsVersion: 0 }, { credentialsVersion: { $exists: false } }]
+              : [{ credentialsVersion: expectedVersion }]
+        }
+        const res = await users.updateOne(filter, {
+          $inc: { credentialsVersion: 1 },
+          $set: { modifiedAt: instantToDate(nowInstant()) },
+        })
+        if (res.modifiedCount > 0) {
+          await invalidateUserCache(userId)
+        }
         fastify.log.debug({ userId }, 'Exiting incrementCredentialsVersion method')
+        return res.modifiedCount > 0
       } catch (error) {
         fastify.log.error({ error, userId }, 'Database failure incrementing credentialsVersion')
         throw error

@@ -252,6 +252,7 @@ module.exports = async function authRoutes(fastify) {
           userId: request.user._id,
           jti: request.refreshTokenId,
           reason: 'concurrent_race',
+          expectedVersion: request.user.credentialsVersion ?? 0,
         })
       }
 
