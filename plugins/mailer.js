@@ -131,7 +131,7 @@ async function mailerPlugin(fastify) {
 
     async sendInviteMail({ to, inviteToken, role = 'user', expiresAt }) {
       const frontendBaseUrl = resolvePrimaryFrontendUrl(fastify.config?.FRONTEND_URL)
-      const inviteUrl = `${frontendBaseUrl}/register?inviteToken=${encodeURIComponent(inviteToken)}`
+      const inviteUrl = `${frontendBaseUrl}/register#inviteToken=${encodeURIComponent(inviteToken)}`
       const expiryStr =
         expiresAt instanceof Date ? expiresAt.toISOString() : String(expiresAt || '')
       const safeRole = escapeHtml(role)

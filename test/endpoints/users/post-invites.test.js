@@ -63,6 +63,12 @@ describe('POST /users/invites', () => {
     assert.equal(sent.length, 1)
     assert.equal(sent[0].to, targetEmail.toLowerCase())
     assert.ok(sent[0].text.includes(invite.inviteToken))
+
+    const encodedToken = encodeURIComponent(invite.inviteToken)
+    assert.ok(sent[0].text.includes(`#inviteToken=${encodedToken}`))
+    assert.ok(sent[0].html.includes(`#inviteToken=${encodedToken}`))
+    assert.ok(!sent[0].text.includes('?inviteToken='))
+    assert.ok(!sent[0].html.includes('?inviteToken='))
   })
 
   test('returns 400 when email format is invalid', async (t) => {
