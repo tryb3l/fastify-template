@@ -2,12 +2,37 @@
 
 const { describe, test } = require('node:test')
 const assert = require('node:assert/strict')
-const { buildApp } = require('../test-setup')
+const fastify = require('fastify')
+const corsPlugin = require('../../plugins/cors')
+
+const fp = require('fastify-plugin')
+
+async function buildIsolatedApp(t, configOverrides = {}) {
+  const app = fastify()
+  app.register(
+    fp(
+      async (fastify) => {
+        fastify.decorate('config', {
+          FRONTEND_URL: 'http://localhost:5173',
+          ...configOverrides,
+        })
+      },
+      { name: 'application-config' },
+    ),
+  )
+
+  await app.register(corsPlugin)
+  app.get('/', () => 'ok')
+  app.options('/', () => 'ok')
+  await app.ready()
+  t.after(() => app.close())
+  return app
+}
 
 describe('CORS plugin', () => {
-  test('exposes x-request-id header for allowed browser origins', async (t) => {
+  test('exposes specific headers for allowed browser origins', async (t) => {
     // Arrange
-    const app = await buildApp(t)
+    const app = await buildIsolatedApp(t)
 
     // Act
     const response = await app.inject({
@@ -22,13 +47,19 @@ describe('CORS plugin', () => {
     assert.equal(response.statusCode, 200)
     assert.equal(response.headers['access-control-allow-origin'], 'http://localhost:5173')
     assert.equal(response.headers['access-control-allow-credentials'], 'true')
-    assert.ok(response.headers['access-control-expose-headers'].includes('x-request-id'))
-    assert.equal(typeof response.headers['x-request-id'], 'string')
+
+    const exposedHeaders = response.headers['access-control-expose-headers'].toLowerCase()
+    assert.ok(exposedHeaders.includes('x-request-id'))
+    assert.ok(exposedHeaders.includes('content-disposition'))
+    assert.ok(exposedHeaders.includes('etag'))
+    assert.ok(exposedHeaders.includes('content-range'))
+    assert.ok(exposedHeaders.includes('accept-ranges'))
+    assert.ok(exposedHeaders.includes('content-length'))
   })
 
   test('handles CORS preflight OPTIONS requests for allowed origins', async (t) => {
     // Arrange
-    const app = await buildApp(t)
+    const app = await buildIsolatedApp(t)
 
     // Act
     const response = await app.inject({
@@ -42,14 +73,14 @@ describe('CORS plugin', () => {
     })
 
     // Assert
-    assert.equal(response.statusCode, 204)
+    assert.equal(response.statusCode, 204) // fastify-cors intercepts options
     assert.equal(response.headers['access-control-allow-origin'], 'http://localhost:5173')
     assert.equal(response.headers['access-control-allow-methods'], 'GET, POST, PUT, DELETE')
   })
 
   test('omits allow-origin header for disallowed browser origins', async (t) => {
     // Arrange
-    const app = await buildApp(t)
+    const app = await buildIsolatedApp(t)
 
     // Act
     const response = await app.inject({
@@ -63,5 +94,39 @@ describe('CORS plugin', () => {
     // Assert
     assert.equal(response.statusCode, 200)
     assert.equal(response.headers['access-control-allow-origin'], undefined)
+  })
+
+  test('filters out blank entries from FRONTEND_URL cleanly', async (t) => {
+    const app = await buildIsolatedApp(t, {
+      FRONTEND_URL: 'http://localhost:5173, , https://app.example.com,',
+    })
+
+    const res1 = await app.inject({
+      method: 'GET',
+      url: '/',
+      headers: { Origin: 'http://localhost:5173' },
+    })
+    assert.equal(res1.headers['access-control-allow-origin'], 'http://localhost:5173')
+
+    const res2 = await app.inject({
+      method: 'GET',
+      url: '/',
+      headers: { Origin: 'https://app.example.com' },
+    })
+    assert.equal(res2.headers['access-control-allow-origin'], 'https://app.example.com')
+
+    const res3 = await app.inject({
+      method: 'GET',
+      url: '/',
+      headers: { Origin: ' ' },
+    })
+    assert.equal(res3.headers['access-control-allow-origin'], undefined)
+
+    const res4 = await app.inject({
+      method: 'GET',
+      url: '/',
+      headers: { Origin: '' },
+    })
+    assert.equal(res4.headers['access-control-allow-origin'], undefined)
   })
 })
