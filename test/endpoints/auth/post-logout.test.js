@@ -76,7 +76,7 @@ describe('POST /auth/logout', () => {
 
     await app.flushAuditLogs()
     const logs = await app.mongo.db.collection('auditLogs').find({ userId }).toArray()
-    const reuseLog = logs.find(log => log.action === 'auth_refresh_token_reused')
+    const reuseLog = logs.find((log) => log.action === 'auth_refresh_token_reused')
     assert.ok(!reuseLog, 'Should NOT emit auth_refresh_token_reused audit log on logout')
   })
 

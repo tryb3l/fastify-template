@@ -166,7 +166,10 @@ module.exports = fp(
 
       const isRevoked = await fastify.usersDataSource.checkIfRevoked(decoded.jti)
       if (isRevoked) {
-        request.log.warn({ jti: decoded.jti, url: request.routeOptions.url }, 'Rejected revoked refresh token')
+        request.log.warn(
+          { jti: decoded.jti, url: request.routeOptions.url },
+          'Rejected revoked refresh token',
+        )
         if (request.routeOptions.url === '/auth/refresh') {
           await fastify.usersDataSource.incrementCredentialsVersion(decoded.sub)
           fastify.auditLog({
@@ -175,7 +178,7 @@ module.exports = fp(
             userId: decoded.sub,
             resourceType: 'user',
             resourceId: decoded.sub,
-            details: { jti: decoded.jti, reason: 'already_revoked', severity: 'high' }
+            details: { jti: decoded.jti, reason: 'already_revoked', severity: 'high' },
           })
           reply.clearCookie('refreshToken', { path: '/auth' })
           throw fastify.httpErrors.unauthorized('Invalid refresh token')
