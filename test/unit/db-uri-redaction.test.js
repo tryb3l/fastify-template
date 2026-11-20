@@ -8,16 +8,56 @@ const stream = require('stream')
 
 // Mock @fastify/mongodb to prevent actual connection attempts and 5-second hangs
 const requireCachePath = require.resolve('@fastify/mongodb')
-require.cache[requireCachePath] = {
-  id: requireCachePath,
-  filename: requireCachePath,
-  loaded: true,
-  exports: fp(async () => {}), // Dummy plugin
-}
+const originalCache = require.cache[requireCachePath]
 
-const dbPlugin = require('../../plugins/db')
+test('dbPlugin.redactMongoUri unit tests', (t) => {
+  require.cache[requireCachePath] = {
+    id: requireCachePath,
+    filename: requireCachePath,
+    loaded: true,
+    exports: fp(async () => {}), // Dummy plugin
+  }
+  const dbPlugin = require('../../plugins/db')
+
+  t.after(() => {
+    if (originalCache) require.cache[requireCachePath] = originalCache
+    else delete require.cache[requireCachePath]
+    delete require.cache[require.resolve('../../plugins/db')]
+  })
+
+  const { redactMongoUri } = dbPlugin
+
+  assert.equal(redactMongoUri('mongodb://user:pass@host:27017/db'), 'mongodb://***@host:27017/db')
+  assert.equal(
+    redactMongoUri('mongodb+srv://admin:secret@cluster.example.net/prod'),
+    'mongodb+srv://***@cluster.example.net/prod',
+  )
+  assert.equal(
+    redactMongoUri('mongodb://u:p%40ss@h1:27017,h2:27017/db?replicaSet=rs0'),
+    'mongodb://***@h1:27017,h2:27017/db?replicaSet=rs0',
+  )
+  assert.equal(redactMongoUri('mongodb://host:27017/db'), 'mongodb://host:27017/db')
+  assert.equal(
+    redactMongoUri('mongodb+srv://cluster.example.net/prod'),
+    'mongodb+srv://cluster.example.net/prod',
+  )
+})
 
 test('db-plugin redacts usernames and passwords from MONGO_URL in debug logs', async (t) => {
+  require.cache[requireCachePath] = {
+    id: requireCachePath,
+    filename: requireCachePath,
+    loaded: true,
+    exports: fp(async () => {}), // Dummy plugin
+  }
+  const dbPlugin = require('../../plugins/db')
+
+  t.after(() => {
+    if (originalCache) require.cache[requireCachePath] = originalCache
+    else delete require.cache[requireCachePath]
+    delete require.cache[require.resolve('../../plugins/db')]
+  })
+
   const scenarios = [
     {
       url: 'mongodb://user:pass@host:27017/db',
@@ -75,6 +115,8 @@ test('db-plugin redacts usernames and passwords from MONGO_URL in debug logs', a
 
       const parsedLog = JSON.parse(debugLog)
       const loggedMsg = parsedLog.msg
+
+      assert.equal(parsedLog.mongoTarget, expected, 'mongoTarget should be in structured logs')
 
       assert.ok(
         !loggedMsg.includes('pass') &&

@@ -38,16 +38,6 @@ class ScopedNoteNode {
   }
 }
 
-function shuffleInPlace(items) {
-  for (let i = items.length - 1; i > 0; i -= 1) {
-    const j = crypto.randomInt(0, i + 1)
-    const tmp = items[i]
-    items[i] = items[j]
-    items[j] = tmp
-  }
-  return items
-}
-
 class ScopedFlashcardsDataSource {
   constructor(store, userId, request = null) {
     this.store = store
@@ -398,7 +388,7 @@ module.exports = fp(
         const isShuffled = order === 'shuffled'
         let rawCards
 
-        if (isShuffled && typeof flashcards.aggregate === 'function') {
+        if (isShuffled) {
           rawCards = await flashcards
             .aggregate([
               { $match: query },
@@ -416,16 +406,9 @@ module.exports = fp(
             .find(query, { projection: { _id: 0, userId: 0 } })
             .sort(sortSpec)
 
-          if (!isShuffled) {
-            cursor.limit(boundedLimit)
-          }
+          cursor.limit(boundedLimit)
 
           rawCards = await cursor.toArray()
-
-          if (isShuffled) {
-            shuffleInPlace(rawCards)
-            rawCards = rawCards.slice(0, boundedLimit)
-          }
         }
 
         const results = new Array(rawCards.length)
@@ -467,7 +450,7 @@ module.exports = fp(
         let updatedDoc = null
         let existingCard = null
 
-        for (let attempt = 0; attempt < 3; attempt += 1) {
+        for (let attempt = 0; attempt < 2; attempt += 1) {
           existingCard = await flashcards.findOne(
             { id, userId },
             { projection: { _id: 0, id: 1, noteId: 1, box: 1 } },
@@ -483,12 +466,8 @@ module.exports = fp(
           if (rating === 'again') {
             nextBox = 1
             nextReviewAt = new Date(nowMs + 60 * 60 * 1000)
-          } else if (rating === 'hard') {
-            nextBox = currentBox
-            const days = LEITNER_BOX_INTERVAL_DAYS[nextBox] || 1
-            nextReviewAt = new Date(nowMs + days * 86_400_000)
           } else {
-            nextBox = Math.min(5, currentBox + 1)
+            nextBox = rating === 'hard' ? currentBox : Math.min(5, currentBox + 1)
             const days = LEITNER_BOX_INTERVAL_DAYS[nextBox] || 1
             nextReviewAt = new Date(nowMs + days * 86_400_000)
           }
@@ -518,7 +497,11 @@ module.exports = fp(
         }
 
         if (!updatedDoc) {
-          throw fastify.httpErrors.notFound('Flashcard not found')
+          const checkExists = await flashcards.findOne({ id, userId }, { projection: { _id: 1 } })
+          if (!checkExists) {
+            throw fastify.httpErrors.notFound('Flashcard not found')
+          }
+          throw fastify.httpErrors.conflict('Flashcard was modified concurrently, please retry')
         }
 
         const updatedCard = normalizeFlashcardDoc(updatedDoc)

@@ -21,14 +21,29 @@ function resolveMongoPoolOptions(config = {}) {
   return { maxPoolSize, minPoolSize }
 }
 
+function redactMongoUri(uri) {
+  if (typeof uri !== 'string') return ''
+  try {
+    const parsed = new URL(uri)
+    if (parsed.username || parsed.password) {
+      parsed.username = '***'
+      parsed.password = ''
+    }
+    return parsed.toString().replace('***:@', '***@')
+  } catch {
+    // Fallback for multi-host comma-delimited replica-set URIs
+    return uri.replace(/(mongodb(?:\+srv)?:\/\/)([^/?]+)(@)/, '$1***$3')
+  }
+}
+
 const dbPlugin = fp(
   async function dbPlugin(fastify) {
     fastify.log.info("Registering 'db-plugin' plugin")
-    const redactedUrl = fastify.config.MONGO_URL.replace(
-      /(mongodb(?:\+srv)?:\/\/)([^/?]+)(@)/,
-      '$1***$3',
+    const redactedUrl = redactMongoUri(fastify.config.MONGO_URL)
+    fastify.log.debug(
+      { mongoTarget: redactedUrl },
+      `Attempting to connect to MongoDB at: ${redactedUrl}`,
     )
-    fastify.log.debug(`Attempting to connect to MongoDB at: ${redactedUrl}`)
 
     const { maxPoolSize, minPoolSize } = resolveMongoPoolOptions(fastify.config)
 
@@ -57,6 +72,10 @@ const dbPlugin = fp(
 
 Object.defineProperty(dbPlugin, 'resolveMongoPoolOptions', {
   value: resolveMongoPoolOptions,
+  enumerable: false,
+})
+Object.defineProperty(dbPlugin, 'redactMongoUri', {
+  value: redactMongoUri,
   enumerable: false,
 })
 

@@ -6,23 +6,27 @@ const { buildApp } = require('../test-setup')
 const { seedUser } = require('../utils/setup-user')
 
 describe('Rate limiting plugin', () => {
-  test('rateLimitPlugin explicitly requires authentication-plugin', async () => {
+  test('rateLimitPlugin explicitly requires authentication-plugin', async (t) => {
     const Fastify = require('fastify')
     const configPlugin = require('../../plugins/config')
     const rateLimitPlugin = require('../../plugins/rate-limit')
 
-    const app = Fastify()
-    process.env.MONGO_URL = 'mongodb://localhost:27017/test'
-    process.env.JWT_SECRET = 'supersecret'
-    process.env.COOKIE_SECRET = 'supersecretcookie'
+    const app = Fastify({ logger: false })
+    t.after(() => app.close().catch(() => {}))
 
-    app.register(configPlugin)
+    app.register(configPlugin, {
+      configData: {
+        MONGO_URL: 'mongodb://localhost:27017/test',
+        NODE_ENV: 'test',
+        JWT_SECRET: 'secret-11111111',
+        COOKIE_SECRET: 'cookie-secret-11111111',
+        FRONTEND_URL: 'http://localhost:5173',
+      },
+    })
 
     await assert.rejects(async () => {
       await app.register(rateLimitPlugin)
     }, /The dependency 'authentication-plugin' of plugin 'rate-limit' is not registered/)
-
-    await app.close()
   })
 
   test('blocks authenticated user after exceeding route max and isolates buckets per user', async (t) => {
