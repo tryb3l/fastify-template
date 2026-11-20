@@ -558,8 +558,21 @@ const notesStorePlugin = fp(
       async createNotes(noteList, userId, options = {}) {
         fastify.log.debug('Entering createNotes method')
 
-        const targetNotebookId = options.notebookId ?? null
-        const targetFolderId = options.folderId ?? null
+        let targetNotebookId = options.notebookId ?? null
+        let targetFolderId = options.folderId ?? null
+
+        if (targetNotebookId !== null || targetFolderId !== null) {
+          const verifiedPlacement = await fastify.notebooksDataSource.verifyContainerPlacement(
+            { notebookId: targetNotebookId, folderId: targetFolderId },
+            userId,
+          )
+          targetNotebookId = verifiedPlacement.notebookId
+          targetFolderId = verifiedPlacement.folderId
+        }
+
+        if (!Array.isArray(noteList) || noteList.length === 0) {
+          return []
+        }
 
         const now = instantToDate(nowInstant())
         const batchNoteIds = new Set()
@@ -580,8 +593,9 @@ const notesStorePlugin = fp(
           return {
             _id,
             userId,
-            ...rawNote,
+            title: rawNote.title,
             body: normalizedBody,
+            tags: rawNote.tags,
             readiness: VALID_READINESS_SET.has(rawNote.readiness) ? rawNote.readiness : 'to_review',
             noteType: VALID_NOTE_TYPES_SET.has(rawNote.noteType) ? rawNote.noteType : 'standard',
             notebookId: targetNotebookId,
