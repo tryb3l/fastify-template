@@ -191,7 +191,7 @@ test('createStyledNodeTestReporter styles summary values for interactive streams
   assert.ok(output.includes(`  ${styles.muted('failed:'.padEnd(12))} ${styles.danger('2')}`))
   assert.ok(output.includes(`  ${styles.muted('skipped:'.padEnd(12))} ${styles.warning('1')}`))
   assert.ok(output.includes(`  ${styles.muted('todo:'.padEnd(12))} ${styles.pending('1')}`))
-  assert.ok(output.includes(`  ${styles.muted('duration:'.padEnd(12))} ${styles.info('16ms')}`))
+  assert.ok(output.includes(`  ${styles.muted('duration:'.padEnd(12))} ${styles.strong('16ms')}`))
 })
 
 test('createStyledNodeTestReporter suppresses stdout and stderr for passing tests by default', async (t) => {

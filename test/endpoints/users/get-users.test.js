@@ -2,6 +2,7 @@
 
 const { describe, test } = require('node:test')
 const assert = require('node:assert/strict')
+const { setTimeout: delay } = require('node:timers/promises')
 const { randomUsername } = require('../../utils/data-creator')
 const { seedUser } = require('../../utils/setup-user')
 
@@ -106,28 +107,65 @@ describe('GET /users', () => {
   })
 
   test('returns deterministic reverse-chronological UUIDv7 pagination order across pages', async (t) => {
-    // Arrange
+    // Arrange: space creations across distinct millisecond ticks so native crypto.randomUUIDv7()
+    // 48-bit Unix epoch timestamps strictly increase (admin < userOne < userTwo)
     const admin = await seedUser(t, { role: 'admin' })
+    await delay(2)
     const userOne = await seedUser(t, { app: admin.app, role: 'user' })
+    await delay(2)
     const userTwo = await seedUser(t, { app: admin.app, role: 'user' })
 
-    // Act
-    const page1 = await admin.app.inject({
-      method: 'GET',
-      url: '/users?limit=1&skip=0',
-      headers: { Authorization: `Bearer ${admin.accessToken}` },
-    })
-    const page2 = await admin.app.inject({
-      method: 'GET',
-      url: '/users?limit=1&skip=1',
-      headers: { Authorization: `Bearer ${admin.accessToken}` },
-    })
+    assert.ok(admin.userId < userOne.userId)
+    assert.ok(userOne.userId < userTwo.userId)
+
+    // Act: retry if a parallel test worker inserted a user between page1 and page2
+    let page1
+    let page2
+    let fullWindow
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const beforeCount = (
+        await admin.app.inject({
+          method: 'GET',
+          url: '/users?limit=1&skip=0',
+          headers: { Authorization: `Bearer ${admin.accessToken}` },
+        })
+      ).json().totalCount
+
+      page1 = await admin.app.inject({
+        method: 'GET',
+        url: '/users?limit=1&skip=0',
+        headers: { Authorization: `Bearer ${admin.accessToken}` },
+      })
+      page2 = await admin.app.inject({
+        method: 'GET',
+        url: '/users?limit=1&skip=1',
+        headers: { Authorization: `Bearer ${admin.accessToken}` },
+      })
+      fullWindow = await admin.app.inject({
+        method: 'GET',
+        url: '/users?limit=100&skip=0',
+        headers: { Authorization: `Bearer ${admin.accessToken}` },
+      })
+
+      if (fullWindow.json().totalCount === beforeCount) {
+        break
+      }
+    }
 
     // Assert
     assert.equal(page1.statusCode, 200)
     assert.equal(page2.statusCode, 200)
-    assert.equal(page1.json().data[0].id, userTwo.userId)
-    assert.equal(page2.json().data[0].id, userOne.userId)
+    assert.equal(fullWindow.statusCode, 200)
+
+    const windowIds = fullWindow.json().data.map((u) => u.id)
+    assert.equal(page1.json().data[0].id, windowIds[0])
+    assert.equal(page2.json().data[0].id, windowIds[1])
+
+    const idxTwo = windowIds.indexOf(userTwo.userId)
+    const idxOne = windowIds.indexOf(userOne.userId)
+    const idxAdmin = windowIds.indexOf(admin.userId)
+    assert.ok(idxTwo !== -1 && idxOne !== -1 && idxAdmin !== -1)
+    assert.ok(idxTwo < idxOne && idxOne < idxAdmin)
   })
 
   test('returns 401 when unauthenticated', async (t) => {

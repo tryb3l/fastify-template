@@ -96,7 +96,7 @@ function formatSummaryValue(key, value, styles) {
     case 'todo':
       return value > 0 ? styles.pending(text) : styles.strong(text)
     case 'duration':
-      return styles.info(text)
+      return styles.strong(text)
     default:
       return styles.strong(text)
   }
