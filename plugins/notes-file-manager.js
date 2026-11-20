@@ -62,10 +62,12 @@ function buildContentDispositionHeader(name) {
 
   // eslint-disable-next-line no-control-regex
   const noControl = base.replace(/[\x00-\x1f\x7f]/g, '')
-  const rfc5987 = encodeURIComponent(noControl).replace(
-    /['()*]/g,
-    (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase(),
-  )
+  const rfc5987 = noControl.replace(/"/g, '').trim()
+    ? encodeURIComponent(noControl).replace(
+        /['()*]/g,
+        (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase(),
+      )
+    : 'attachment'
 
   return `attachment; filename="${finalAscii}"; filename*=UTF-8''${rfc5987}`
 }
@@ -199,7 +201,6 @@ module.exports = fp(
             const rawFilename = typeof part.filename === 'string' ? part.filename.trim() : ''
             if (!rawFilename) {
               part.file.resume()
-              await cleanup()
               throw fastify.httpErrors.unsupportedMediaType('File part is missing a valid filename')
             }
 
@@ -212,7 +213,6 @@ module.exports = fp(
 
             if (!isValid) {
               part.file.resume()
-              await cleanup()
               throw fastify.httpErrors.unsupportedMediaType(
                 `File type not allowed or extension mismatch: ${rawFilename}`,
               )

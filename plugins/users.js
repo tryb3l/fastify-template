@@ -536,14 +536,13 @@ async function usersPlugin(fastify) {
       fastify.log.debug({ userId }, 'Entering incrementCredentialsVersion method')
       try {
         await users.updateOne(
-          { _id: userId },
+          { _id: userId, deleted: { $ne: true } },
           {
             $inc: { credentialsVersion: 1 },
             $set: { modifiedAt: instantToDate(nowInstant()) },
           },
         )
-        const { buildUserCacheKey } = require('../utils/lru-cache')
-        await fastify.cacheDelete(buildUserCacheKey(userId))
+        await invalidateUserCache(userId)
         fastify.log.debug({ userId }, 'Exiting incrementCredentialsVersion method')
       } catch (error) {
         fastify.log.error({ error, userId }, 'Database failure incrementing credentialsVersion')

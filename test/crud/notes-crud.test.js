@@ -53,6 +53,36 @@ describe('createNotes store boundary', () => {
     assert.equal(dbNote.title, 'Hacked Note')
     assert.equal(dbNote.unknownField, undefined)
   })
+
+  test('normalizes tags and attachments to arrays if provided as non-arrays', async (t) => {
+    const actor = await seedUser(t)
+    const store = actor.app.notesDataSource.forUser(actor.userId)
+    const rawNoteList = [
+      {
+        title: 'Note 1',
+        body: 'Content',
+        tags: 'not-an-array',
+        attachments: null,
+      },
+      {
+        title: 'Note 2',
+        body: 'Content',
+        tags: null,
+        attachments: 'not-an-array',
+      },
+    ]
+
+    const resultIds = await store.createNotes(rawNoteList)
+    assert.equal(resultIds.length, 2)
+
+    const dbNote1 = await actor.app.mongo.db.collection('notes').findOne({ id: resultIds[0] })
+    assert.deepEqual(dbNote1.tags, [])
+    assert.deepEqual(dbNote1.attachments, [])
+
+    const dbNote2 = await actor.app.mongo.db.collection('notes').findOne({ id: resultIds[1] })
+    assert.deepEqual(dbNote2.tags, [])
+    assert.deepEqual(dbNote2.attachments, [])
+  })
 })
 
 describe('Notes CRUD lifecycle', () => {

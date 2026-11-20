@@ -139,76 +139,90 @@ module.exports = fp(
       return result
     })
 
-    fastify.decorate('verifyRefreshToken', async function (request, reply) {
-      fastify.log.debug('Entering verifyRefreshToken method')
-      const token = request.cookies?.refreshToken
+    const handleRefreshTokenReuse = async (request, reply, { userId, jti, reason }) => {
+      await fastify.usersDataSource.incrementCredentialsVersion(userId)
+      fastify.auditLog({
+        request,
+        action: 'auth_refresh_token_reused',
+        userId,
+        resourceType: 'user',
+        resourceId: userId,
+        details: { jti, reason, severity: 'high' },
+      })
+      reply.clearCookie('refreshToken', { path: '/auth' })
+      throw fastify.httpErrors.unauthorized('Invalid refresh token')
+    }
+    fastify.decorate('handleRefreshTokenReuse', handleRefreshTokenReuse)
 
-      if (!token) {
-        request.log.warn('Missing refresh token cookie')
-        rejectRefreshToken(reply)
-      }
+    const createRefreshTokenVerifier = ({ detectReuse } = {}) =>
+      async function (request, reply) {
+        fastify.log.debug('Entering verifyRefreshToken method')
+        const token = request.cookies?.refreshToken
 
-      let decoded
-      try {
-        decoded = await fastify.jwt.verify(token)
-      } catch (err) {
-        request.log.warn({ err }, 'Verify refresh token failed')
-        rejectRefreshToken(reply)
-      }
+        if (!token) {
+          request.log.warn('Missing refresh token cookie')
+          rejectRefreshToken(reply)
+        }
 
-      if (decoded.type !== 'refresh') {
-        request.log.warn(
-          { tokenType: decoded.type },
-          'Rejecting token with invalid refresh token type',
-        )
-        rejectRefreshToken(reply)
-      }
+        let decoded
+        try {
+          decoded = await fastify.jwt.verify(token)
+        } catch (err) {
+          request.log.warn({ err }, 'Verify refresh token failed')
+          rejectRefreshToken(reply)
+        }
 
-      const isRevoked = await fastify.usersDataSource.checkIfRevoked(decoded.jti)
-      if (isRevoked) {
-        request.log.warn(
-          { jti: decoded.jti, url: request.routeOptions.url },
-          'Rejected revoked refresh token',
-        )
-        if (request.routeOptions.url === '/auth/refresh') {
-          await fastify.usersDataSource.incrementCredentialsVersion(decoded.sub)
-          fastify.auditLog({
-            request,
-            action: 'auth_refresh_token_reused',
-            userId: decoded.sub,
-            resourceType: 'user',
-            resourceId: decoded.sub,
-            details: { jti: decoded.jti, reason: 'already_revoked', severity: 'high' },
-          })
-          reply.clearCookie('refreshToken', { path: '/auth' })
-          throw fastify.httpErrors.unauthorized('Invalid refresh token')
-        } else if (request.routeOptions.url === '/auth/logout') {
+        if (decoded.type !== 'refresh') {
+          request.log.warn(
+            { tokenType: decoded.type },
+            'Rejecting token with invalid refresh token type',
+          )
+          rejectRefreshToken(reply)
+        }
+
+        const isRevoked = await fastify.usersDataSource.checkIfRevoked(decoded.jti)
+        if (isRevoked) {
+          request.log.warn(
+            { jti: decoded.jti, url: request.routeOptions.url },
+            'Rejected revoked refresh token',
+          )
+          if (detectReuse) {
+            return await handleRefreshTokenReuse(request, reply, {
+              userId: decoded.sub,
+              jti: decoded.jti,
+              reason: 'already_revoked',
+            })
+          }
           reply.clearCookie('refreshToken', { path: '/auth' })
           throw fastify.httpErrors.unauthorized('Invalid refresh token')
         }
-        throw fastify.httpErrors.unauthorized('Invalid refresh token')
+
+        const user = await fastify.usersDataSource.readUserById(decoded.sub)
+        if (!user) {
+          request.log.warn(
+            { userId: decoded.sub },
+            'User not found during refresh token verification',
+          )
+          rejectRefreshToken(reply)
+        }
+
+        const userCredentialsVersion = user.credentialsVersion ?? 0
+        const tokenCredentialsVersion = decoded.cv ?? 0
+
+        if (userCredentialsVersion !== tokenCredentialsVersion) {
+          rejectRefreshToken(reply, 'Refresh token session invalidated')
+        }
+
+        request.user = user
+        request.refreshTokenId = decoded.jti
+        request.refreshTokenExp = decoded.exp
       }
 
-      const user = await fastify.usersDataSource.readUserById(decoded.sub)
-      if (!user) {
-        request.log.warn(
-          { userId: decoded.sub },
-          'User not found during refresh token verification',
-        )
-        rejectRefreshToken(reply)
-      }
-
-      const userCredentialsVersion = user.credentialsVersion ?? 0
-      const tokenCredentialsVersion = decoded.cv ?? 0
-
-      if (userCredentialsVersion !== tokenCredentialsVersion) {
-        rejectRefreshToken(reply, 'Refresh token session invalidated')
-      }
-
-      request.user = user
-      request.refreshTokenId = decoded.jti
-      request.refreshTokenExp = decoded.exp
-    })
+    fastify.decorate('verifyRefreshToken', createRefreshTokenVerifier({ detectReuse: false }))
+    fastify.decorate(
+      'verifyRefreshTokenForRotation',
+      createRefreshTokenVerifier({ detectReuse: true }),
+    )
 
     fastify.log.info('Successfully registered auth plugin')
   },

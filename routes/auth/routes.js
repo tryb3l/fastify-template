@@ -213,7 +213,7 @@ module.exports = async function authRoutes(fastify) {
   })
 
   fastify.post('/refresh', {
-    preValidation: [fastify.csrfProtection, fastify.verifyRefreshToken],
+    preValidation: [fastify.csrfProtection, fastify.verifyRefreshTokenForRotation],
     config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
     schema: {
       tags: ['auth'],
@@ -248,17 +248,11 @@ module.exports = async function authRoutes(fastify) {
 
       if (!revoked) {
         // Lost the concurrent race
-        await fastify.usersDataSource.incrementCredentialsVersion(request.user._id)
-        fastify.auditLog({
-          request,
-          action: 'auth_refresh_token_reused',
+        return await fastify.handleRefreshTokenReuse(request, reply, {
           userId: request.user._id,
-          resourceType: 'user',
-          resourceId: request.user._id,
-          details: { jti: request.refreshTokenId, reason: 'concurrent_race', severity: 'high' },
+          jti: request.refreshTokenId,
+          reason: 'concurrent_race',
         })
-        reply.clearCookie('refreshToken', { path: '/auth' })
-        throw fastify.httpErrors.unauthorized('Invalid refresh token')
       }
 
       const { accessToken, refreshToken } = await request.generateTokens(request.user)

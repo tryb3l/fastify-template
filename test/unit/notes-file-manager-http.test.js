@@ -66,15 +66,15 @@ describe('notes-file-manager pure HTTP utilities', () => {
     )
     assert.equal(
       buildContentDispositionHeader('   '),
-      'attachment; filename="attachment"; filename*=UTF-8\'\'%20%20%20',
+      'attachment; filename="attachment"; filename*=UTF-8\'\'attachment',
     )
     assert.equal(
       buildContentDispositionHeader('"\r\n\0'),
-      'attachment; filename="attachment"; filename*=UTF-8\'\'%22',
+      'attachment; filename="attachment"; filename*=UTF-8\'\'attachment',
     )
     assert.equal(
       buildContentDispositionHeader(null),
-      'attachment; filename="attachment"; filename*=UTF-8\'\'',
+      'attachment; filename="attachment"; filename*=UTF-8\'\'attachment',
     )
     assert.equal(
       buildContentDispositionHeader('тест.txt'),
